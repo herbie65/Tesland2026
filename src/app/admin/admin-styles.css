@@ -1,0 +1,318 @@
+/* Apple-inspired Liquid Glass Admin Styles */
+
+@font-face {
+  font-family: "Kenteken";
+  src:
+    url("/fonts/Kenteken.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CSS Custom Property for glass opacity - defaults to 0.3 (30% - zeer doorzichtig) */
+:root {
+  --admin-glass-opacity: 0.3;
+}
+
+/* Background gradient - soft, muted colors like the reference image */
+.admin-background {
+  background: linear-gradient(135deg,
+    rgba(255, 240, 230, 0.6) 0%,
+    rgba(240, 245, 250, 0.7) 30%,
+    rgba(235, 240, 245, 0.6) 60%,
+    rgba(245, 248, 252, 0.7) 100%);
+  background-image: var(--admin-background-image, none);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  min-height: 100vh;
+  position: relative;
+}
+
+.admin-background::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(200, 180, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(180, 220, 255, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255, 200, 180, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* When background image is set, add overlay for better readability */
+.admin-background[data-has-background="true"]::before {
+  background:
+    linear-gradient(135deg,
+      rgba(255, 240, 230, 0.5) 0%,
+      rgba(240, 245, 250, 0.6) 30%,
+      rgba(235, 240, 245, 0.5) 60%,
+      rgba(245, 248, 252, 0.6) 100%),
+    radial-gradient(circle at 20% 30%, rgba(200, 180, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(180, 220, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255, 200, 180, 0.05) 0%, transparent 50%);
+}
+
+/* Glass morphism cards - frosted glass effect */
+.glass-card {
+  background: rgba(255, 255, 255, var(--admin-glass-opacity, 0.3));
+  backdrop-filter: blur(25px) saturate(150%);
+  -webkit-backdrop-filter: blur(25px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.4));
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px 0 rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.6)),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) + 0.1));
+  box-shadow:
+    0 12px 40px 0 rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.8)),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.02);
+}
+
+/* Glass sidebar */
+.glass-sidebar {
+  background: rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.93));
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  border-right: 1px solid rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.43));
+  box-shadow:
+    4px 0 24px 0 rgba(0, 0, 0, 0.08),
+    inset 1px 0 0 0 rgba(255, 255, 255, calc(var(--admin-glass-opacity, 0.3) * 0.71)),
+    inset -1px 0 0 0 rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 1;
+  overflow-x: visible;
+}
+
+/* Navigation items */
+.glass-nav-item {
+  background: transparent;
+  border-radius: 0;
+  color: rgba(0, 0, 0, 0.75);
+  transition: background-color 0.2s ease, color 0.2s ease;
+  border: none;
+  border-left: 3px solid transparent;
+  position: relative;
+  margin-left: 0;
+  transform: none;
+}
+
+.glass-nav-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.glass-nav-item.active {
+  background: rgba(139, 92, 246, 0.1);
+  border-left: 3px solid rgba(139, 92, 246, 0.8);
+  color: rgba(139, 92, 246, 1);
+  font-weight: 600;
+}
+
+/* Text colors for glass theme */
+.glass-text-primary {
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.glass-text-secondary {
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Scrollbar styling */
+.glass-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.glass-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Planning blocks - overlap handling */
+.planning-block {
+  position: absolute;
+  transition: left 120ms ease, width 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+  cursor: pointer;
+}
+
+
+.planning-block:hover {
+  z-index: 20;
+  left: 6px !important;
+  width: calc(100% - 12px) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  transform: translateY(-2px);
+}
+
+/* Day schedule layout */
+.planning-day-schedule {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.planning-day-header,
+.planning-day-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 0.75rem;
+}
+
+.planning-day-label {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+.planning-day-axis {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 0;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  min-height: 72px;
+}
+
+.planning-day-axis-slot {
+  border-left: 1px solid rgba(148, 163, 184, 0.35);
+  padding: 0.35rem 0.4rem;
+  font-size: 0.75rem;
+  color: rgba(71, 85, 105, 0.8);
+}
+
+.planning-day-axis-slot:first-child {
+  border-left: none;
+}
+
+.planning-day-rows .planning-day-axis {
+  min-height: 78px;
+}
+
+.planning-day-block {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border: 2px solid rgba(99, 102, 241, 0.7);
+  border-radius: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* Modal */
+.planning-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.planning-modal {
+  width: min(920px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
+  animation: modal-pop 160ms ease;
+}
+
+.planning-modal-overlay {
+  align-items: center;
+}
+
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+
+/* Dutch license plate styling */
+.license-plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Kenteken", "DIN 1451", "DIN Alternate", "D-DIN", "DIN", "Arial Black", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem 0.18rem 0.75rem;
+  border-radius: 0.35rem;
+  border: 2px solid #0f172a;
+  background: #f6c90e;
+  color: #0f172a;
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 1;
+  box-shadow: none;
+  outline: none;
+}
+
+.license-plate.nl::before {
+  content: 'NL';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.5em;
+  color: #fff;
+  background: #1d4ed8;
+  border-right: 2px solid #0f172a;
+  line-height: 1;
+  pointer-events: none;
+}
