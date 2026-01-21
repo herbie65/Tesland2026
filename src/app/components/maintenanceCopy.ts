@@ -95,6 +95,37 @@ export const copyByLocale: Record<Locale, MaintenanceCopy> = {
       'De XPEL raamfolie zorgt voor extra comfort, privacy en een stijlvolle uitstraling. Bovendien houdt het warmte en UV-straling buiten, waardoor je interieur langer mooi blijft.',
     xpelBodyThree: 'Kies voor de beste bescherming, zonder in te leveren op design.',
     xpelCta: 'Meer over PPF & Ramen tinten',
+    ppfPopupTitle: 'Bescherm je Tesla met PPF',
+    ppfPopupBody:
+      'Met onze XPEL ULTIMATE PLUS en Stealth folies blijft je lak glanzend en beschermd tegen krassen.',
+    ppfPopupCta: 'Plan je PPF afspraak',
+    ppfInfoTitle: 'Wat is PPF (Paint Protection Film)?',
+    ppfInfoBody:
+      'PPF is een transparante zelfherstellende folie die de lak beschermt tegen steenslag, insecten, vogelpoep en meer.',
+    ppfOptionsTitle: 'Onze PPF opties',
+    ppfOptions: [
+      { title: 'Volledige carrosserie', body: 'Maximale bescherming van voor tot achter.' },
+      { title: 'Frontpakket', body: 'Motorkap, voorbumper, voorspatborden en spiegels.' },
+      { title: 'Matte finish (Stealth)', body: 'Sterke bescherming met een unieke matte look.' }
+    ],
+    ppfBenefitsTitle: 'Waarom PPF bij Tesland?',
+    ppfBenefits: [
+      'Officieel XPEL dealer & premium installer',
+      'Professionele montage door gecertificeerde specialisten',
+      'Extra glans en lakbescherming',
+      'Zelfherstellend bij lichte krassen',
+      'Verhoogt de restwaarde'
+    ],
+    ppfWindowTitle: 'XPEL raamfolie',
+    ppfWindowBody:
+      'XPEL raamfolie houdt warmte en UV-straling buiten voor meer comfort en bescherming van het interieur.',
+    ppfWindowBenefits: [
+      'Blokkeert tot 98% infrarood warmte',
+      'UV-bescherming tegen verkleuring',
+      'Meer privacy en comfort',
+      'Strakke montage zonder bubbels'
+    ],
+    ppfClose: 'Sluiten',
     tireHotelTitle: 'Tesland bandenhotel',
     tireHotelBodyOne:
       'Geen ruimte om je banden thuis op te slaan? Tesland biedt de perfecte oplossing met een speciaal ingericht bandenhotel. Jouw banden worden veilig opgeslagen onder ideale omstandigheden, zodat ze langer meegaan en hun prestaties behouden.',
@@ -156,6 +187,37 @@ export const copyByLocale: Record<Locale, MaintenanceCopy> = {
       'XPEL window film adds comfort, privacy and a sleek look. It blocks heat and UV rays, keeping your interior looking new.',
     xpelBodyThree: 'Choose the best protection without compromising design.',
     xpelCta: 'More about PPF & window tint',
+    ppfPopupTitle: 'Protect your Tesla with PPF',
+    ppfPopupBody:
+      'With our XPEL ULTIMATE PLUS and Stealth films, your paint stays glossy and protected from scratches.',
+    ppfPopupCta: 'Schedule your PPF appointment',
+    ppfInfoTitle: 'What is PPF (Paint Protection Film)?',
+    ppfInfoBody:
+      'PPF is a transparent self-healing film that protects paint from stone chips, insects, bird droppings and more.',
+    ppfOptionsTitle: 'Our PPF options',
+    ppfOptions: [
+      { title: 'Full body', body: 'Maximum protection from front to rear.' },
+      { title: 'Front pack', body: 'Hood, front bumper, front fenders and mirrors.' },
+      { title: 'Matte finish (Stealth)', body: 'Strong protection with a unique matte look.' }
+    ],
+    ppfBenefitsTitle: 'Why PPF at Tesland?',
+    ppfBenefits: [
+      'Official XPEL dealer & premium installer',
+      'Professional installation by certified technicians',
+      'Enhanced gloss and paint protection',
+      'Self-healing for light scratches',
+      'Increases resale value'
+    ],
+    ppfWindowTitle: 'XPEL window film',
+    ppfWindowBody:
+      'XPEL window film blocks heat and UV rays for more comfort and interior protection.',
+    ppfWindowBenefits: [
+      'Blocks up to 98% infrared heat',
+      'UV protection against fading',
+      'More privacy and comfort',
+      'Clean installation without bubbles'
+    ],
+    ppfClose: 'Close',
     tireHotelTitle: 'Tesland tire hotel',
     tireHotelBodyOne:
       'No space to store your tires at home? Tesland offers a dedicated tire hotel. Your tires are stored safely under ideal conditions so they last longer and perform better.',
@@ -217,6 +279,37 @@ export const copyByLocale: Record<Locale, MaintenanceCopy> = {
       'XPEL Fensterfolie sorgt für Komfort, Privatsphäre und einen eleganten Look. Sie hält Wärme und UV‑Strahlen draußen, damit der Innenraum länger schön bleibt.',
     xpelBodyThree: 'Wählen Sie besten Schutz ohne Design‑Kompromisse.',
     xpelCta: 'Mehr zu PPF & Scheibentönung',
+    ppfPopupTitle: 'Schützen Sie Ihren Tesla mit PPF',
+    ppfPopupBody:
+      'Mit unseren XPEL ULTIMATE PLUS und Stealth Folien bleibt der Lack glänzend und vor Kratzern geschützt.',
+    ppfPopupCta: 'PPF Termin vereinbaren',
+    ppfInfoTitle: 'Was ist PPF (Paint Protection Film)?',
+    ppfInfoBody:
+      'PPF ist eine transparente, selbstheilende Folie, die den Lack vor Steinschlag, Insekten, Vogelkot und mehr schützt.',
+    ppfOptionsTitle: 'Unsere PPF Optionen',
+    ppfOptions: [
+      { title: 'Komplette Karosserie', body: 'Maximaler Schutz von vorn bis hinten.' },
+      { title: 'Frontpaket', body: 'Motorhaube, Frontstoßfänger, Kotflügel und Spiegel.' },
+      { title: 'Mattes Finish (Stealth)', body: 'Starker Schutz mit einem einzigartigen matten Look.' }
+    ],
+    ppfBenefitsTitle: 'Warum PPF bei Tesland?',
+    ppfBenefits: [
+      'Offizieller XPEL Händler & Premium Installer',
+      'Professionelle Montage durch zertifizierte Techniker',
+      'Mehr Glanz und Lackschutz',
+      'Selbstheilend bei leichten Kratzern',
+      'Steigert den Wiederverkaufswert'
+    ],
+    ppfWindowTitle: 'XPEL Fensterfolie',
+    ppfWindowBody:
+      'XPEL Fensterfolie hält Wärme und UV‑Strahlung draußen und schützt so den Innenraum.',
+    ppfWindowBenefits: [
+      'Blockiert bis zu 98% Infrarotwärme',
+      'UV‑Schutz gegen Ausbleichen',
+      'Mehr Privatsphäre und Komfort',
+      'Saubere Montage ohne Blasen'
+    ],
+    ppfClose: 'Schließen',
     tireHotelTitle: 'Tesland Reifenhotel',
     tireHotelBodyOne:
       'Kein Platz für die Reifen zu Hause? Tesland bietet ein spezielles Reifenhotel. Ihre Reifen werden sicher unter idealen Bedingungen gelagert, damit sie länger halten.',
