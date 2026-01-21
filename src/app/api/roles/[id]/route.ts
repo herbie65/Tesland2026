@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 
 type RouteContext = {
-  params: { id: string }
+  params: { id: string } | Promise<{ id: string }>
 }
 
-export async function PATCH(request: NextRequest, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    const params = await context.params
     const roleId =
       params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!roleId) {
@@ -35,8 +36,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
+    const params = await context.params
     const roleId =
       params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!roleId) {

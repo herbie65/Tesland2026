@@ -10,17 +10,24 @@ const ensureFirestore = () => {
   return adminFirestore
 }
 
-const getIdFromRequest = (request: NextRequest, context: { params: { id?: string } }) => {
-  const directId = context.params?.id
+const getIdFromRequest = async (
+  request: NextRequest,
+  context: { params: { id?: string } } | { params: Promise<{ id?: string }> }
+) => {
+  const params = await context.params
+  const directId = params?.id
   if (directId) return directId
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
 }
 
-export async function GET(request: NextRequest, context: { params: { id?: string } }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: { id?: string } } | { params: Promise<{ id?: string }> }
+) {
   try {
     await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
@@ -38,10 +45,13 @@ export async function GET(request: NextRequest, context: { params: { id?: string
   }
 }
 
-export async function PATCH(request: NextRequest, context: { params: { id?: string } }) {
+export async function PATCH(
+  request: NextRequest,
+  context: { params: { id?: string } } | { params: Promise<{ id?: string }> }
+) {
   try {
     const user = await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }

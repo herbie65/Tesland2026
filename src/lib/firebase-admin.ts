@@ -33,17 +33,22 @@ function initializeAdminApp(): admin.app.App {
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY
   if (serviceAccountJson) {
     try {
-      const serviceAccount = JSON.parse(serviceAccountJson) as admin.ServiceAccount
-      if (!serviceAccount.private_key || !serviceAccount.client_email || !serviceAccount.project_id) {
+      const raw = JSON.parse(serviceAccountJson) as Record<string, any>
+      const serviceAccount = {
+        projectId: raw.project_id || raw.projectId || projectId,
+        clientEmail: raw.client_email || raw.clientEmail,
+        privateKey: String(raw.private_key || raw.privateKey || '').replace(/\\n/g, '\n')
+      }
+      if (!serviceAccount.privateKey || !serviceAccount.clientEmail || !serviceAccount.projectId) {
         throw new Error(
           'FIREBASE_SERVICE_ACCOUNT_KEY is missing required fields (private_key, client_email, or project_id)'
         )
       }
 
       const app = admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
         storageBucket,
-        projectId: serviceAccount.project_id || projectId
+        projectId: serviceAccount.projectId || projectId
       })
       global.__FIREBASE_ADMIN__ = app
       console.log('✅ Firebase Admin initialized from FIREBASE_SERVICE_ACCOUNT_KEY')

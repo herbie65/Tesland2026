@@ -39,7 +39,7 @@ export default function SettingsClient() {
       if (!response.ok || !data.success) {
         throw new Error(data.error || "Failed to load settings")
       }
-      const merged = { ...SETTINGS_DEFAULTS }
+      const merged: Record<string, any> = { ...SETTINGS_DEFAULTS }
       ;(data.items || []).forEach((item: SettingsGroup) => {
         merged[item.id] = { ...merged[item.id], ...(item.data || {}) }
       })

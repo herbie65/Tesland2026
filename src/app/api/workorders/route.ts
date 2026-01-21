@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const firestore = ensureFirestore()
     const includeMissing = request.nextUrl.searchParams.get('includeMissing') === '1'
 
-    let query = firestore.collection('workOrders')
+    let query: FirebaseFirestore.Query = firestore.collection('workOrders')
     if (user.role === 'MONTEUR') {
       query = query.where('assigneeId', '==', user.uid)
     }
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest) {
           variables: {
             klantNaam: customerData?.name || customerName || '',
             kenteken: licensePlate || vehiclePlate || '',
-            workorderId
+            workOrderId
           }
         })
       }

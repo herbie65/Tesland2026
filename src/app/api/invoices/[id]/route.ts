@@ -4,11 +4,12 @@ import { requireRole } from '@/lib/auth'
 import { getSalesStatusSettings } from '@/lib/settings'
 
 type RouteContext = {
-  params: { id?: string }
+  params: { id?: string } | Promise<{ id?: string }>
 }
 
-const getIdFromRequest = (request: NextRequest, context: RouteContext) => {
-  const directId = context.params?.id
+const getIdFromRequest = async (request: NextRequest, context: RouteContext) => {
+  const params = await context.params
+  const directId = params?.id
   if (directId) return directId
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
@@ -25,7 +26,7 @@ const ensureFirestore = () => {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole(request, ['MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
@@ -71,7 +72,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }

@@ -3,11 +3,12 @@ import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { requireRole } from '@/lib/auth'
 
 type RouteContext = {
-  params: { group?: string }
+  params: { group?: string } | Promise<{ group?: string }>
 }
 
-const getGroupFromRequest = (request: NextRequest, context: RouteContext) => {
-  const direct = context.params?.group
+const getGroupFromRequest = async (request: NextRequest, context: RouteContext) => {
+  const params = await context.params
+  const direct = params?.group
   if (direct) return direct
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
@@ -15,7 +16,7 @@ const getGroupFromRequest = (request: NextRequest, context: RouteContext) => {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const group = getGroupFromRequest(request, context)
+    const group = await getGroupFromRequest(request, context)
     if (!group) {
       return NextResponse.json(
         { success: false, error: 'group is required' },
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const group = getGroupFromRequest(request, context)
+    const group = await getGroupFromRequest(request, context)
     if (!group) {
       return NextResponse.json(
         { success: false, error: 'group is required' },

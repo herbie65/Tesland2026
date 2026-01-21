@@ -9,16 +9,23 @@ const ensureFirestore = () => {
   return adminFirestore
 }
 
-const getSlugFromRequest = (request: NextRequest, context: { params: { slug?: string } }) => {
-  const directSlug = context.params?.slug
+const getSlugFromRequest = async (
+  request: NextRequest,
+  context: { params: { slug?: string } } | { params: Promise<{ slug?: string }> }
+) => {
+  const params = await context.params
+  const directSlug = params?.slug
   if (directSlug) return directSlug
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
 }
 
-export async function GET(request: NextRequest, context: { params: { slug?: string } }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: { slug?: string } } | { params: Promise<{ slug?: string }> }
+) {
   try {
-    const slug = getSlugFromRequest(request, context)
+    const slug = await getSlugFromRequest(request, context)
     if (!slug) {
       return NextResponse.json({ success: false, error: 'Missing slug' }, { status: 400 })
     }

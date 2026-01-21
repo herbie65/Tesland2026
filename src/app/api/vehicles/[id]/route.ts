@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { FirebaseAdminService } from '@/lib/firebase-admin-service'
 
 type RouteContext = {
-  params: { id: string }
+  params: { id: string } | Promise<{ id: string }>
 }
 
-const getIdFromRequest = (request: NextRequest, context: RouteContext) => {
-  const directId = context.params?.id
+const getIdFromRequest = async (request: NextRequest, context: RouteContext) => {
+  const params = await context.params
+  const directId = params?.id
   if (directId) return directId
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
@@ -14,7 +15,7 @@ const getIdFromRequest = (request: NextRequest, context: RouteContext) => {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
@@ -40,7 +41,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     let updated = null
 
     if (transferToCustomerId) {
-      const existing = await FirebaseAdminService.getCollectionItem('vehicles', id)
+      const existing = (await FirebaseAdminService.getCollectionItem('vehicles', id)) as any
       if (!existing) {
         return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
       }
@@ -73,7 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }

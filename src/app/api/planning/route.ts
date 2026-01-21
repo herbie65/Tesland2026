@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
     const firestore = ensureFirestore()
-    let query = firestore.collection('planningItems')
+    let query: FirebaseFirestore.Query = firestore.collection('planningItems')
     if (user.role === 'MONTEUR') {
       query = query.where('assigneeId', '==', user.uid)
     }

@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
-  params: { id: string }
+  params: { id: string } | Promise<{ id: string }>
 }
 
 const ROLE_OPTIONS = new Set([
@@ -15,11 +15,12 @@ const ROLE_OPTIONS = new Set([
   'CONTENT_EDITOR'
 ])
 
-export async function PATCH(request: NextRequest, { params }: RouteContext) {
+export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const actor = await requireRole(request, ['SYSTEM_ADMIN'])
     const body = await request.json()
     const { name, email, role, roleId, active, color, planningHoursPerDay, workingDays } = body || {}
+    const params = await context.params
     const userId = params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!userId) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 })
@@ -69,9 +70,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['SYSTEM_ADMIN'])
+    const params = await context.params
     const userId = params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!userId) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 })

@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
-  params: { id?: string }
+  params: { id?: string } | Promise<{ id?: string }>
 }
 
 const ensureFirestore = () => {
@@ -15,8 +15,9 @@ const ensureFirestore = () => {
   return adminFirestore
 }
 
-const getIdFromRequest = (request: NextRequest, context: RouteContext) => {
-  const directId = context.params?.id
+const getIdFromRequest = async (request: NextRequest, context: RouteContext) => {
+  const params = await context.params
+  const directId = params?.id
   if (directId) return directId
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 2] || ''
@@ -25,7 +26,7 @@ const getIdFromRequest = (request: NextRequest, context: RouteContext) => {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole(request, ['MAGAZIJN', 'MANAGEMENT'])
-    const id = getIdFromRequest(request, context)
+    const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
