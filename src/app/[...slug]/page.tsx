@@ -1,6 +1,11 @@
+import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import SiteHeader from '../components/SiteHeader'
 import SiteFooter from '../components/SiteFooter'
+import HomepageSections, {
+  getHomepageMeta,
+  type SupportedLocale
+} from '../components/HomepageSections'
 
 type PageBlock =
   | {
@@ -30,6 +35,7 @@ type PageDoc = {
   seo?: {
     metaTitle?: string
     metaDescription?: string
+    metaKeywords?: string
   }
   blocks?: PageBlock[]
 }
@@ -46,6 +52,10 @@ const localeMessages = {
   de: {
     title: 'Seite im Aufbau',
     body: 'Diese Seite wird noch aufgebaut. Schauen Sie bald wieder vorbei.'
+  },
+  fr: {
+    title: 'Page en construction',
+    body: 'Nous construisons encore cette page. Revenez bientôt pour plus d’informations.'
   }
 }
 
@@ -57,7 +67,7 @@ const renderParagraphs = (value: string) =>
 
 const getLocale = (segments: string[]) => {
   const candidate = segments[0]?.toLowerCase()
-  if (candidate === 'nl' || candidate === 'en' || candidate === 'de') {
+  if (candidate === 'nl' || candidate === 'en' || candidate === 'de' || candidate === 'fr') {
     return candidate
   }
   return 'nl'
@@ -78,11 +88,69 @@ const fetchPage = async (slug: string) => {
   return data.item as PageDoc
 }
 
+const parseKeywords = (value?: string | null, fallback?: string[]) => {
+  if (!value) return fallback || []
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+export async function generateMetadata({
+  params
+}: {
+  params: { slug: string[] }
+}): Promise<Metadata> {
+  const segments = Array.isArray(params.slug) ? params.slug : []
+  const path = `/${segments.join('/')}`
+  const locale = getLocale(segments) as SupportedLocale
+  const messages = localeMessages[locale] || localeMessages.nl
+  const slugCandidate = segments[segments.length - 1]
+
+  if (segments.length === 1 && ['nl', 'en', 'de', 'fr'].includes(locale)) {
+    const defaults = getHomepageMeta(locale)
+    return {
+      title: defaults.title,
+      description: defaults.description,
+      keywords: defaults.keywords,
+      alternates: {
+        canonical: `/${locale}`
+      }
+    }
+  }
+
+  const page = slugCandidate ? await fetchPage(slugCandidate) : null
+  const title = page?.seo?.metaTitle || page?.title || messages.title
+  const description = page?.seo?.metaDescription || messages.body
+  const keywords = parseKeywords(page?.seo?.metaKeywords, getHomepageMeta(locale).keywords)
+
+  return {
+    title,
+    description,
+    keywords,
+    alternates: {
+      canonical: path
+    }
+  }
+}
+
 export default async function PublicPage({ params }: { params: { slug: string[] } }) {
   const segments = Array.isArray(params.slug) ? params.slug : []
   const path = `/${segments.join('/')}`
-  const locale = getLocale(segments)
+  const locale = getLocale(segments) as SupportedLocale
   const messages = localeMessages[locale] || localeMessages.nl
+
+  if (segments.length === 1 && ['nl', 'en', 'de', 'fr'].includes(locale)) {
+    return (
+      <div className="public-site min-h-screen bg-[#111] text-slate-900">
+        <SiteHeader />
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-6 py-16">
+          <HomepageSections locale={locale} />
+        </main>
+        <SiteFooter />
+      </div>
+    )
+  }
 
   const slugCandidate = segments[segments.length - 1]
   const page = slugCandidate ? await fetchPage(slugCandidate) : null

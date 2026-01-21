@@ -1,12 +1,149 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import { ClockIcon, EnvelopeIcon, MapPinIcon, PhoneIcon } from '@heroicons/react/24/outline'
 
 const OPEN_TIME_MINUTES = 8 * 60 + 30
 const CLOSE_TIME_MINUTES = 17 * 60
 
-const getOpeningTooltip = () => {
+type SupportedLocale = 'nl' | 'en' | 'de' | 'fr'
+
+const footerText: Record<
+  SupportedLocale,
+  {
+    companyInfo: string
+    account: string
+    loginRequired: string
+    myAccount: string
+    wishlist: string
+    orders: string
+    about: string
+    jobs: string
+    contact: string
+    aboutLink: string
+    terms: string
+    privacy: string
+    returns: string
+    follow: string
+    openingHours: string
+    disclaimer: string
+    openNowPrefix: string
+    openNowSuffix: string
+    closedNowPrefix: string
+    hours: string
+    minutes: string
+  }
+> = {
+  nl: {
+    companyInfo: 'Bedrijfsinfo',
+    account: 'Account',
+    loginRequired: '(Inloggen vereist)',
+    myAccount: 'Mijn rekening',
+    wishlist: 'Mijn verlanglijst',
+    orders: 'Bestellingen',
+    about: 'Over Ons',
+    jobs: 'Vacatures',
+    contact: 'Contact',
+    aboutLink: 'Over Ons',
+    terms: 'Algemene voorwaarden',
+    privacy: 'Privacybeleid',
+    returns: 'Retourneren',
+    follow: 'Volg Ons',
+    openingHours: '8:30 – 17:00 (Ma. – Vrij.)',
+    disclaimer:
+      'DISCLAIMER: Alle andere bedrijven, producten of namen waarnaar op deze website wordt verwezen, worden alleen gebruikt voor identificatiedoeleinden en zijn mogelijk handelsmerken van hun respectieve eigenaren. Er wordt niet geconcludeerd of gesuggereerd dat enig item dat door Tesland wordt verkocht, een product is dat is geautoriseerd door of op enigerlei wijze is verbonden met Tesla Inc. Tesland en zijn websitepublicaties zijn niet gelieerd aan of goedgekeurd door Tesla Inc. Tesla Model S, Tesla Model X, Tesla Model Y, Tesla Model 3 en Tesla Roadster zijn handelsmerken van Tesla Inc.',
+    openNowPrefix: 'Nu open – nog ',
+    openNowSuffix: 'tot sluitingstijd',
+    closedNowPrefix: 'Nu gesloten – opent over ',
+    hours: 'uur',
+    minutes: 'min'
+  },
+  en: {
+    companyInfo: 'Company info',
+    account: 'Account',
+    loginRequired: '(Login required)',
+    myAccount: 'My account',
+    wishlist: 'My wishlist',
+    orders: 'Orders',
+    about: 'About Us',
+    jobs: 'Jobs',
+    contact: 'Contact',
+    aboutLink: 'About us',
+    terms: 'Terms & conditions',
+    privacy: 'Privacy policy',
+    returns: 'Returns',
+    follow: 'Follow us',
+    openingHours: '8:30 – 17:00 (Mon – Fri)',
+    disclaimer:
+      'DISCLAIMER: Any other companies, products or names referenced on this website are used for identification purposes only and may be trademarks of their respective owners. No conclusion or suggestion is made that any item sold by Tesland is authorized by or affiliated with Tesla, Inc. Tesland and its publications are not affiliated with or endorsed by Tesla, Inc. Tesla Model S, Tesla Model X, Tesla Model Y, Tesla Model 3 and Tesla Roadster are trademarks of Tesla, Inc.',
+    openNowPrefix: 'Open now – ',
+    openNowSuffix: 'until closing',
+    closedNowPrefix: 'Closed now – opens in ',
+    hours: 'hr',
+    minutes: 'min'
+  },
+  de: {
+    companyInfo: 'Unternehmensinfo',
+    account: 'Konto',
+    loginRequired: '(Anmeldung erforderlich)',
+    myAccount: 'Mein Konto',
+    wishlist: 'Meine Wunschliste',
+    orders: 'Bestellungen',
+    about: 'Über uns',
+    jobs: 'Stellenangebote',
+    contact: 'Kontakt',
+    aboutLink: 'Über uns',
+    terms: 'Allgemeine Bedingungen',
+    privacy: 'Datenschutz',
+    returns: 'Rücksendungen',
+    follow: 'Folgen Sie uns',
+    openingHours: '8:30 – 17:00 (Mo. – Fr.)',
+    disclaimer:
+      'HAFTUNGSAUSSCHLUSS: Alle anderen Unternehmen, Produkte oder Namen, auf die auf dieser Website verwiesen wird, dienen nur Identifikationszwecken und können Marken ihrer jeweiligen Inhaber sein. Es wird nicht behauptet oder suggeriert, dass ein von Tesland verkauftes Produkt von Tesla, Inc. autorisiert ist oder mit Tesla, Inc. verbunden ist. Tesland und seine Veröffentlichungen sind nicht mit Tesla, Inc. verbunden oder von Tesla, Inc. genehmigt. Tesla Model S, Tesla Model X, Tesla Model Y, Tesla Model 3 und Tesla Roadster sind Marken der Tesla, Inc.',
+    openNowPrefix: 'Jetzt geöffnet – noch ',
+    openNowSuffix: 'bis zur Schließung',
+    closedNowPrefix: 'Jetzt geschlossen – öffnet in ',
+    hours: 'Std',
+    minutes: 'Min'
+  },
+  fr: {
+    companyInfo: 'Infos société',
+    account: 'Compte',
+    loginRequired: '(Connexion requise)',
+    myAccount: 'Mon compte',
+    wishlist: 'Ma liste d’envies',
+    orders: 'Commandes',
+    about: 'À propos',
+    jobs: 'Emplois',
+    contact: 'Contact',
+    aboutLink: 'À propos',
+    terms: 'Conditions générales',
+    privacy: 'Politique de confidentialité',
+    returns: 'Retours',
+    follow: 'Suivez-nous',
+    openingHours: '8:30 – 17:00 (Lun – Ven)',
+    disclaimer:
+      'AVERTISSEMENT : Toute autre entreprise, produit ou nom référencé sur ce site est utilisé uniquement à des fins d’identification et peut être une marque de son propriétaire respectif. Il n’est pas conclu ni suggéré qu’un article vendu par Tesland soit autorisé par Tesla, Inc. ou lié à Tesla, Inc. Tesland et ses publications ne sont pas affiliés à Tesla, Inc. et ne sont pas approuvés par Tesla, Inc. Tesla Model S, Tesla Model X, Tesla Model Y, Tesla Model 3 et Tesla Roadster sont des marques de Tesla, Inc.',
+    openNowPrefix: 'Ouvert – ',
+    openNowSuffix: 'avant la fermeture',
+    closedNowPrefix: 'Fermé – ouvre dans ',
+    hours: 'h',
+    minutes: 'min'
+  }
+}
+
+const getLocaleFromPath = (path: string | null): SupportedLocale => {
+  if (!path) return 'nl'
+  if (path === '/en' || path.startsWith('/en/')) return 'en'
+  if (path === '/de' || path.startsWith('/de/')) return 'de'
+  if (path === '/fr' || path.startsWith('/fr/')) return 'fr'
+  if (path === '/nl' || path.startsWith('/nl/')) return 'nl'
+  return 'nl'
+}
+
+const getOpeningTooltip = (locale: SupportedLocale) => {
+  const copy = footerText[locale]
   const now = new Date()
   const day = now.getDay()
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
@@ -16,7 +153,8 @@ const getOpeningTooltip = () => {
     const minsLeft = CLOSE_TIME_MINUTES - currentMinutes
     const hrs = Math.floor(minsLeft / 60)
     const mins = minsLeft % 60
-    return `Nu open – nog ${hrs > 0 ? `${hrs} uur ` : ''}${mins} min tot sluitingstijd`
+    const timeLeft = `${hrs > 0 ? `${hrs} ${copy.hours} ` : ''}${mins} ${copy.minutes}`
+    return `${copy.openNowPrefix}${timeLeft} ${copy.openNowSuffix}`
   }
 
   let nextOpenDay = day
@@ -34,24 +172,28 @@ const getOpeningTooltip = () => {
   const hrs = Math.floor(diffMin / 60)
   const mins = diffMin % 60
 
-  return `Nu gesloten – opent over ${hrs > 0 ? `${hrs} uur ` : ''}${mins} min`
+  const timeLeft = `${hrs > 0 ? `${hrs} ${copy.hours} ` : ''}${mins} ${copy.minutes}`
+  return `${copy.closedNowPrefix}${timeLeft}`
 }
 
 export default function SiteFooter() {
+  const pathname = usePathname()
+  const locale = useMemo(() => getLocaleFromPath(pathname), [pathname])
+  const copy = footerText[locale]
   const [tooltipText, setTooltipText] = useState('...')
 
   useEffect(() => {
-    const update = () => setTooltipText(getOpeningTooltip())
+    const update = () => setTooltipText(getOpeningTooltip(locale))
     update()
     const interval = setInterval(update, 60000)
     return () => clearInterval(interval)
-  }, [])
+  }, [locale])
 
   return (
     <footer className="bg-[#2c303f] text-white">
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-8 px-6 py-10 sm:grid-cols-2 lg:grid-cols-3">
         <div className="footer-links space-y-4">
-          <h6 className="text-lg font-semibold">Bedrijfsinfo</h6>
+          <h6 className="text-lg font-semibold">{copy.companyInfo}</h6>
           <div className="space-y-3 text-sm">
             <a
               href="https://www.google.com/maps/place/Kweekgrasstraat+36,+1313+BX+Almere"
@@ -68,7 +210,7 @@ export default function SiteFooter() {
             <div className="opening-status-container text-sm">
               <div className="grid grid-cols-[16px_1fr] items-center gap-2">
                 <ClockIcon className="h-4 w-4 text-[#8bc342]" />
-                <p className="opening-status leading-5">8:30 – 17:00 (Ma. – Vrij.)</p>
+                <p className="opening-status leading-5">{copy.openingHours}</p>
               </div>
               <div className="opening-tooltip">{tooltipText}</div>
             </div>
@@ -83,40 +225,40 @@ export default function SiteFooter() {
           </div>
         </div>
         <div className="footer-links space-y-3">
-          <h6 className="text-lg font-semibold">Account</h6>
-          <p className="text-[10px] text-white/70">(Inloggen vereist)</p>
+          <h6 className="text-lg font-semibold">{copy.account}</h6>
+          <p className="text-[10px] text-white/70">{copy.loginRequired}</p>
           <ul className="space-y-2 text-sm">
             <li>
-              <a href="/customer/account">Mijn rekening</a>
+              <a href="/customer/account">{copy.myAccount}</a>
             </li>
             <li>
-              <a href="/wishlist">Mijn verlanglijst</a>
+              <a href="/wishlist">{copy.wishlist}</a>
             </li>
             <li>
-              <a href="/sales/order/history">Bestellingen</a>
+              <a href="/sales/order/history">{copy.orders}</a>
             </li>
           </ul>
         </div>
         <div className="footer-links space-y-3">
-          <h6 className="text-lg font-semibold">Over Ons</h6>
+          <h6 className="text-lg font-semibold">{copy.about}</h6>
           <ul className="space-y-2 text-sm">
             <li>
-              <a href="/vacatures">Vacatures</a>
+              <a href="/vacatures">{copy.jobs}</a>
             </li>
             <li>
-              <a href="/contact">Contact</a>
+              <a href="/contact">{copy.contact}</a>
             </li>
             <li>
-              <a href="/over-ons">Over Ons</a>
+              <a href="/over-ons">{copy.aboutLink}</a>
             </li>
             <li>
-              <a href="/algemene-voorwaarden">Algemene voorwaarden</a>
+              <a href="/algemene-voorwaarden">{copy.terms}</a>
             </li>
             <li>
-              <a href="/privacy-policy-cookie-restriction-mode">Privacybeleid</a>
+              <a href="/privacy-policy-cookie-restriction-mode">{copy.privacy}</a>
             </li>
             <li>
-              <a href="/retourzendingen">Retourneren</a>
+              <a href="/retourzendingen">{copy.returns}</a>
             </li>
           </ul>
         </div>
@@ -155,7 +297,7 @@ export default function SiteFooter() {
           </a>
         </div>
 
-        <h6 className="text-lg font-semibold text-white">Volg Ons</h6>
+        <h6 className="text-lg font-semibold text-white">{copy.follow}</h6>
         <div className="flex flex-wrap items-center justify-center gap-4">
           <a
             className="footer-social"
@@ -209,13 +351,7 @@ export default function SiteFooter() {
           </a>
         </div>
         <p className="max-w-[800px] text-center text-[11px] leading-relaxed text-[#ccc]">
-          DISCLAIMER: Alle andere bedrijven, producten of namen waarnaar op deze website wordt
-          verwezen, worden alleen gebruikt voor identificatiedoeleinden en zijn mogelijk
-          handelsmerken van hun respectieve eigenaren. Er wordt niet geconcludeerd of gesuggereerd
-          dat enig item dat door Tesland wordt verkocht, een product is dat is geautoriseerd door of
-          op enigerlei wijze is verbonden met Tesla Inc. Tesland en zijn websitepublicaties zijn niet
-          gelieerd aan of goedgekeurd door Tesla Inc. Tesla Model S, Tesla Model X, Tesla Model Y,
-          Tesla Model 3 en Tesla Roadster zijn handelsmerken van Tesla Inc.
+          {copy.disclaimer}
         </p>
       </div>
     </footer>

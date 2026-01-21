@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { addMonths, addDays, endOfMonth, endOfWeek, format, startOfMonth, startOfWeek } from 'date-fns'
-import { nl } from 'date-fns/locale'
+import type { Locale } from 'date-fns'
+import { nl, enUS, de, fr } from 'date-fns/locale'
 
 type PlanningType = {
   id: string
@@ -38,7 +39,273 @@ type LookupResult = {
   }
 }
 
-export default function AppointmentClient() {
+type SupportedLocale = 'nl' | 'en' | 'de' | 'fr'
+
+type TranslationCopy = {
+  title: string
+  subtitle: string
+  availabilityLoading: string
+  availabilityLegend: string
+  dateLabel: string
+  timeLabel: string
+  timePlaceholder: string
+  timeSuffix: string
+  planningTypeLabel: string
+  planningTypePlaceholder: string
+  notesLabel: string
+  requestButton: string
+  modalTitle: string
+  close: string
+  vehicleLabel: string
+  colorLabel: string
+  plateLabel: string
+  next: string
+  checking: string
+  rdwFetch: string
+  rdwFetching: string
+  emailLabel: string
+  companyLabel: string
+  nameLabel: string
+  addressLabel: string
+  postalCodeLabel: string
+  cityLabel: string
+  phoneLabel: string
+  submitAppointment: string
+  successTitle: string
+  successBody: string
+  lookupPlateFound: string
+  lookupPlateUnknown: string
+  lookupEmailMatch: string
+  lookupEmailMismatch: string
+  errorPlateCheck: string
+  errorEmailCheck: string
+  errorAvailability: string
+  errorSlots: string
+  errorPlanningTypes: string
+  errorRdw: string
+  errorSelectDateTime: string
+  errorMissingEmail: string
+  errorMissingContact: string
+  errorMissingAddress: string
+  errorSubmit: string
+  daysShort: string[]
+}
+
+const copyByLocale: Record<SupportedLocale, TranslationCopy> = {
+  nl: {
+    title: 'Planning',
+    subtitle: 'Kies een datum en tijd om een afspraak aan te vragen.',
+    availabilityLoading: 'Beschikbaarheid laden...',
+    availabilityLegend: 'Groen = plek, oranje = beperkt, rood = vol, grijs = gesloten.',
+    dateLabel: 'Datum',
+    timeLabel: 'Hoe laat wilt u uw voertuig brengen?',
+    timePlaceholder: 'Kies tijd',
+    timeSuffix: 'uur',
+    planningTypeLabel: 'Wat moet er gebeuren?',
+    planningTypePlaceholder: 'Kies type',
+    notesLabel: 'Verdere opmerkingen',
+    requestButton: 'Planning aanvragen',
+    modalTitle: 'Planning aanvragen',
+    close: 'Sluiten',
+    vehicleLabel: 'Voertuig',
+    colorLabel: 'Kleur',
+    plateLabel: 'Uw kenteken',
+    next: 'Verder',
+    checking: 'Controleren...',
+    rdwFetch: 'RDW ophalen',
+    rdwFetching: 'RDW ophalen...',
+    emailLabel: 'E-mailadres',
+    companyLabel: 'Bedrijfsnaam (optioneel)',
+    nameLabel: 'Naam',
+    addressLabel: 'Adres',
+    postalCodeLabel: 'Postcode',
+    cityLabel: 'Plaats',
+    phoneLabel: 'Telefoon',
+    submitAppointment: 'Afspraak aanvragen',
+    successTitle: 'Afspraak aangevraagd',
+    successBody:
+      'Uw afspraak is aangevraagd. Let op: deze is pas bevestigd als u van ons een bevestigingsmail heeft ontvangen.',
+    lookupPlateFound: 'Kenteken gevonden. Vul het e-mailadres in dat bij ons bekend is.',
+    lookupPlateUnknown: 'Kenteken niet bekend bij ons. Voer uw gegevens in.',
+    lookupEmailMatch: 'E-mailadres klopt. U kunt de afspraak aanvragen.',
+    lookupEmailMismatch: 'Wij herkennen dit e-mailadres niet bij dit voertuig. Voer uw gegevens in.',
+    errorPlateCheck: 'We kunnen het kenteken nu niet controleren. Probeer het later opnieuw.',
+    errorEmailCheck: 'We kunnen het e-mailadres nu niet controleren. Probeer het later opnieuw.',
+    errorAvailability: 'Beschikbaarheid laden mislukt',
+    errorSlots: 'Tijden laden mislukt',
+    errorPlanningTypes: 'Planningstypes laden mislukt',
+    errorRdw: 'RDW lookup mislukt',
+    errorSelectDateTime: 'Kies eerst een datum en tijd.',
+    errorMissingEmail: 'Vul uw e-mailadres in.',
+    errorMissingContact: 'Vul uw naam, e-mailadres en telefoonnummer in.',
+    errorMissingAddress: 'Vul uw adresgegevens volledig in.',
+    errorSubmit: 'Aanvraag mislukt. Probeer het later opnieuw.',
+    daysShort: ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
+  },
+  en: {
+    title: 'Planning',
+    subtitle: 'Select a date and time to request an appointment.',
+    availabilityLoading: 'Loading availability...',
+    availabilityLegend: 'Green = available, orange = limited, red = full, grey = closed.',
+    dateLabel: 'Date',
+    timeLabel: 'What time will you bring your vehicle?',
+    timePlaceholder: 'Select time',
+    timeSuffix: 'h',
+    planningTypeLabel: 'What needs to be done?',
+    planningTypePlaceholder: 'Select type',
+    notesLabel: 'Additional notes',
+    requestButton: 'Request appointment',
+    modalTitle: 'Request appointment',
+    close: 'Close',
+    vehicleLabel: 'Vehicle',
+    colorLabel: 'Color',
+    plateLabel: 'License plate',
+    next: 'Next',
+    checking: 'Checking...',
+    rdwFetch: 'Fetch RDW',
+    rdwFetching: 'Fetching RDW...',
+    emailLabel: 'Email address',
+    companyLabel: 'Company name (optional)',
+    nameLabel: 'Name',
+    addressLabel: 'Address',
+    postalCodeLabel: 'Postal code',
+    cityLabel: 'City',
+    phoneLabel: 'Phone',
+    submitAppointment: 'Request appointment',
+    successTitle: 'Appointment requested',
+    successBody:
+      'Your appointment request has been sent. Note: it is only confirmed after you receive a confirmation email from us.',
+    lookupPlateFound: 'License plate found. Enter the email address we have on file.',
+    lookupPlateUnknown: 'License plate not found. Please enter your details.',
+    lookupEmailMatch: 'Email matches. You can request the appointment.',
+    lookupEmailMismatch: 'We do not recognize this email for this vehicle. Please enter your details.',
+    errorPlateCheck: 'We cannot check the license plate right now. Please try again later.',
+    errorEmailCheck: 'We cannot verify the email right now. Please try again later.',
+    errorAvailability: 'Failed to load availability',
+    errorSlots: 'Failed to load times',
+    errorPlanningTypes: 'Failed to load planning types',
+    errorRdw: 'RDW lookup failed',
+    errorSelectDateTime: 'Please select a date and time first.',
+    errorMissingEmail: 'Please enter your email address.',
+    errorMissingContact: 'Please enter your name, email and phone number.',
+    errorMissingAddress: 'Please complete your address details.',
+    errorSubmit: 'Request failed. Please try again later.',
+    daysShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  },
+  de: {
+    title: 'Planung',
+    subtitle: 'Wählen Sie Datum und Uhrzeit für eine Terminanfrage.',
+    availabilityLoading: 'Verfügbarkeit wird geladen...',
+    availabilityLegend: 'Grün = frei, orange = begrenzt, rot = voll, grau = geschlossen.',
+    dateLabel: 'Datum',
+    timeLabel: 'Wann möchten Sie Ihr Fahrzeug bringen?',
+    timePlaceholder: 'Zeit wählen',
+    timeSuffix: 'Uhr',
+    planningTypeLabel: 'Was soll erledigt werden?',
+    planningTypePlaceholder: 'Typ wählen',
+    notesLabel: 'Weitere Hinweise',
+    requestButton: 'Termin anfragen',
+    modalTitle: 'Termin anfragen',
+    close: 'Schließen',
+    vehicleLabel: 'Fahrzeug',
+    colorLabel: 'Farbe',
+    plateLabel: 'Kennzeichen',
+    next: 'Weiter',
+    checking: 'Prüfen...',
+    rdwFetch: 'RDW abrufen',
+    rdwFetching: 'RDW wird abgerufen...',
+    emailLabel: 'E-Mail-Adresse',
+    companyLabel: 'Firmenname (optional)',
+    nameLabel: 'Name',
+    addressLabel: 'Adresse',
+    postalCodeLabel: 'Postleitzahl',
+    cityLabel: 'Ort',
+    phoneLabel: 'Telefon',
+    submitAppointment: 'Termin anfragen',
+    successTitle: 'Termin angefragt',
+    successBody:
+      'Ihre Terminanfrage wurde gesendet. Hinweis: Der Termin ist erst bestätigt, wenn Sie eine Bestätigungs‑E‑Mail erhalten.',
+    lookupPlateFound: 'Kennzeichen gefunden. Bitte die bei uns bekannte E-Mail-Adresse eingeben.',
+    lookupPlateUnknown: 'Kennzeichen nicht gefunden. Bitte Ihre Daten eingeben.',
+    lookupEmailMatch: 'E-Mail stimmt. Sie können den Termin anfragen.',
+    lookupEmailMismatch:
+      'Wir erkennen diese E-Mail für dieses Fahrzeug nicht. Bitte geben Sie Ihre Daten ein.',
+    errorPlateCheck: 'Wir können das Kennzeichen derzeit nicht prüfen. Bitte später erneut versuchen.',
+    errorEmailCheck: 'Wir können die E-Mail derzeit nicht prüfen. Bitte später erneut versuchen.',
+    errorAvailability: 'Verfügbarkeit konnte nicht geladen werden',
+    errorSlots: 'Zeiten konnten nicht geladen werden',
+    errorPlanningTypes: 'Planungstypen konnten nicht geladen werden',
+    errorRdw: 'RDW-Abfrage fehlgeschlagen',
+    errorSelectDateTime: 'Bitte zuerst Datum und Uhrzeit auswählen.',
+    errorMissingEmail: 'Bitte E-Mail-Adresse eingeben.',
+    errorMissingContact: 'Bitte Name, E-Mail und Telefonnummer eingeben.',
+    errorMissingAddress: 'Bitte Adresse vollständig ausfüllen.',
+    errorSubmit: 'Anfrage fehlgeschlagen. Bitte später erneut versuchen.',
+    daysShort: ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+  },
+  fr: {
+    title: 'Planning',
+    subtitle: 'Choisissez une date et une heure pour demander un rendez-vous.',
+    availabilityLoading: 'Chargement des disponibilités...',
+    availabilityLegend: 'Vert = disponible, orange = limité, rouge = complet, gris = fermé.',
+    dateLabel: 'Date',
+    timeLabel: 'À quelle heure souhaitez-vous déposer votre véhicule ?',
+    timePlaceholder: 'Choisir une heure',
+    timeSuffix: 'h',
+    planningTypeLabel: 'Que faut-il faire ?',
+    planningTypePlaceholder: 'Choisir un type',
+    notesLabel: 'Remarques supplémentaires',
+    requestButton: 'Demander un rendez-vous',
+    modalTitle: 'Demander un rendez-vous',
+    close: 'Fermer',
+    vehicleLabel: 'Véhicule',
+    colorLabel: 'Couleur',
+    plateLabel: 'Plaque',
+    next: 'Suivant',
+    checking: 'Vérification...',
+    rdwFetch: 'Récupérer RDW',
+    rdwFetching: 'RDW en cours...',
+    emailLabel: 'Adresse e‑mail',
+    companyLabel: 'Société (optionnel)',
+    nameLabel: 'Nom',
+    addressLabel: 'Adresse',
+    postalCodeLabel: 'Code postal',
+    cityLabel: 'Ville',
+    phoneLabel: 'Téléphone',
+    submitAppointment: 'Demander un rendez-vous',
+    successTitle: 'Rendez-vous demandé',
+    successBody:
+      'Votre demande a été envoyée. Attention : elle n’est confirmée qu’après réception d’un e‑mail de confirmation.',
+    lookupPlateFound: 'Plaque trouvée. Entrez l’adresse e‑mail connue chez nous.',
+    lookupPlateUnknown: 'Plaque inconnue. Veuillez saisir vos informations.',
+    lookupEmailMatch: 'E‑mail correct. Vous pouvez demander le rendez-vous.',
+    lookupEmailMismatch:
+      'Nous ne reconnaissons pas cet e‑mail pour ce véhicule. Veuillez saisir vos informations.',
+    errorPlateCheck: 'Impossible de vérifier la plaque pour le moment. Réessayez plus tard.',
+    errorEmailCheck: 'Impossible de vérifier l’e‑mail pour le moment. Réessayez plus tard.',
+    errorAvailability: 'Impossible de charger les disponibilités',
+    errorSlots: 'Impossible de charger les horaires',
+    errorPlanningTypes: 'Impossible de charger les types de planning',
+    errorRdw: 'Échec de la recherche RDW',
+    errorSelectDateTime: 'Veuillez d’abord choisir une date et une heure.',
+    errorMissingEmail: 'Veuillez saisir votre adresse e‑mail.',
+    errorMissingContact: 'Veuillez saisir votre nom, e‑mail et téléphone.',
+    errorMissingAddress: 'Veuillez compléter votre adresse.',
+    errorSubmit: 'Échec de la demande. Réessayez plus tard.',
+    daysShort: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+  }
+}
+
+const localeMap: Record<SupportedLocale, Locale> = {
+  nl,
+  en: enUS,
+  de,
+  fr
+}
+
+export default function AppointmentClient({ locale = 'nl' }: { locale?: SupportedLocale }) {
+  const copy = copyByLocale[locale]
+  const dateLocale = localeMap[locale] || nl
   const [currentMonth, setCurrentMonth] = useState(() => new Date())
   const [availability, setAvailability] = useState<DayAvailability[]>([])
   const [slots, setSlots] = useState<SlotOption[]>([])
@@ -102,7 +369,7 @@ export default function AppointmentClient() {
       const response = await fetch(`/api/public/appointments/availability?month=${monthKey}`)
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Beschikbaarheid laden mislukt')
+        throw new Error(data.error || copy.errorAvailability)
       }
       setAvailability(data.days || [])
       setPlanningSettings({
@@ -121,7 +388,7 @@ export default function AppointmentClient() {
       const response = await fetch(`/api/public/appointments/availability?date=${date}`)
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Tijden laden mislukt')
+        throw new Error(data.error || copy.errorSlots)
       }
       setSlots(data.slots || [])
       setPlanningSettings({
@@ -139,7 +406,7 @@ export default function AppointmentClient() {
       const response = await fetch('/api/planning-types')
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Planningstypes laden mislukt')
+        throw new Error(data.error || copy.errorPlanningTypes)
       }
       setPlanningTypes(data.items || [])
     } catch (err: any) {
@@ -174,24 +441,24 @@ export default function AppointmentClient() {
       })
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error('Kenteken controleren mislukt.')
+        throw new Error(copy.errorPlateCheck)
       }
       const result = data as LookupResult
       if (result.plateExists) {
         setVehicleId(result.vehicle?.id || null)
         setLookupStep('email')
         setLookupVehicle(result.vehicle || null)
-        setLookupMessage('Kenteken gevonden. Vul het e-mailadres in dat bij ons bekend is.')
+        setLookupMessage(copy.lookupPlateFound)
       } else {
         setLookupVehicle(null)
-        setLookupMessage('Kenteken niet bekend bij ons. Voer uw gegevens in.')
+        setLookupMessage(copy.lookupPlateUnknown)
         setLookupStep('details')
         setAutoFilled(false)
         setCustomerId(null)
         await handleRdwLookup()
       }
     } catch (err: any) {
-      setError('We kunnen het kenteken nu niet controleren. Probeer het later opnieuw.')
+      setError(copy.errorPlateCheck)
     } finally {
       setLookupLoading(false)
     }
@@ -209,7 +476,7 @@ export default function AppointmentClient() {
       })
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error('E-mailadres controleren mislukt.')
+        throw new Error(copy.errorEmailCheck)
       }
       const result = data as LookupResult
       if (result.match && result.customer) {
@@ -220,18 +487,16 @@ export default function AppointmentClient() {
         setAutoFilled(true)
         setLookupVehicle(result.vehicle || null)
         setLookupStep('confirm')
-        setLookupMessage('E-mailadres klopt. U kunt de afspraak aanvragen.')
+        setLookupMessage(copy.lookupEmailMatch)
       } else {
         setAutoFilled(false)
         setCustomerId(null)
         setLookupStep('details')
         setLookupVehicle(result.vehicle || null)
-        setLookupMessage(
-          'Wij herkennen dit e-mailadres niet bij dit voertuig. Voer uw gegevens in.'
-        )
+        setLookupMessage(copy.lookupEmailMismatch)
       }
     } catch (err: any) {
-      setError('We kunnen het e-mailadres nu niet controleren. Probeer het later opnieuw.')
+      setError(copy.errorEmailCheck)
     } finally {
       setLookupLoading(false)
     }
@@ -249,13 +514,13 @@ export default function AppointmentClient() {
       })
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'RDW lookup failed')
+        throw new Error(data.error || copy.errorRdw)
       }
       if (data.vehicle) {
         setLookupVehicle(data.vehicle)
       }
     } catch (err: any) {
-      setRdwLookupError(err.message || 'RDW lookup mislukt')
+      setRdwLookupError(err.message || copy.errorRdw)
     } finally {
       setRdwLookupLoading(false)
     }
@@ -282,16 +547,16 @@ export default function AppointmentClient() {
     try {
       setError(null)
       if (!selectedDate || !selectedTime) {
-        throw new Error('Kies eerst een datum en tijd.')
+        throw new Error(copy.errorSelectDateTime)
       }
       if (licensePlate && !email) {
-        throw new Error('Vul uw e-mailadres in.')
+        throw new Error(copy.errorMissingEmail)
       }
       if (!name || !email || (!autoFilled && !phone)) {
-        throw new Error('Vul uw naam, e-mailadres en telefoonnummer in.')
+        throw new Error(copy.errorMissingContact)
       }
       if (lookupStep === 'details' && (!address || !postalCode || !city)) {
-        throw new Error('Vul uw adresgegevens volledig in.')
+        throw new Error(copy.errorMissingAddress)
       }
       const type = planningTypes.find((item) => item.id === planningTypeId)
       const payload = {
@@ -319,7 +584,7 @@ export default function AppointmentClient() {
       })
       const data = await response.json()
       if (!response.ok || !data.success) {
-        throw new Error('Aanvraag mislukt. Probeer het later opnieuw.')
+        throw new Error(copy.errorSubmit)
       }
       setSuccessOpen(true)
       setSelectedTime('')
@@ -334,9 +599,9 @@ export default function AppointmentClient() {
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold">Planning</h2>
+        <h2 className="text-2xl font-semibold">{copy.title}</h2>
         <p className="mt-2 text-sm text-slate-600">
-          Kies een datum en tijd om een afspraak aan te vragen.
+          {copy.subtitle}
         </p>
         {error ? (
           <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -355,7 +620,7 @@ export default function AppointmentClient() {
                 &lt;
               </button>
               <h3 className="text-sm font-semibold text-slate-700">
-                {format(currentMonth, 'MMMM yyyy', { locale: nl })}
+                {format(currentMonth, 'MMMM yyyy', { locale: dateLocale })}
               </h3>
               <button
                 className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-white"
@@ -366,7 +631,7 @@ export default function AppointmentClient() {
               </button>
             </div>
             <div className="mt-5 grid grid-cols-7 gap-2 justify-items-center text-xs text-slate-500">
-              {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map((label) => (
+              {copy.daysShort.map((label) => (
                 <div key={label} className="text-center font-semibold">
                   {label}
                 </div>
@@ -416,17 +681,17 @@ export default function AppointmentClient() {
               })}
             </div>
             {loading ? (
-              <p className="mt-4 text-xs text-slate-500">Beschikbaarheid laden...</p>
+              <p className="mt-4 text-xs text-slate-500">{copy.availabilityLoading}</p>
             ) : (
               <p className="mt-4 text-xs text-slate-500">
-                Groen = plek, oranje = beperkt, rood = vol, grijs = gesloten.
+                {copy.availabilityLegend}
               </p>
             )}
           </div>
 
           <div className="space-y-4">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Datum
+              {copy.dateLabel}
               <input
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
                 value={selectedDate}
@@ -434,23 +699,23 @@ export default function AppointmentClient() {
               />
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Hoe laat wilt u uw voertuig brengen?
+              {copy.timeLabel}
               <select
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
                 value={selectedTime}
                 onChange={(event) => setSelectedTime(event.target.value)}
                 disabled={!selectedDate}
               >
-                <option value="">Kies tijd</option>
+                <option value="">{copy.timePlaceholder}</option>
                 {slots.map((slot) => (
                   <option key={slot.value} value={slot.value}>
-                    {slot.value} uur
+                    {slot.value} {copy.timeSuffix}
                   </option>
                 ))}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Wat moet er gebeuren?
+              {copy.planningTypeLabel}
               <select
                 className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
                 value={planningTypeId}
@@ -459,7 +724,7 @@ export default function AppointmentClient() {
                   setPlanningTypeLabel('')
                 }}
               >
-                <option value="none">Kies type</option>
+                <option value="none">{copy.planningTypePlaceholder}</option>
                 {planningTypes.map((type) => (
                   <option key={type.id} value={type.id}>
                     {type.name || type.id}
@@ -468,7 +733,7 @@ export default function AppointmentClient() {
               </select>
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Verdere opmerkingen
+              {copy.notesLabel}
               <textarea
                 className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
                 value={notes}
@@ -486,7 +751,7 @@ export default function AppointmentClient() {
           onClick={openRequestModal}
           disabled={!selectedDate || !selectedTime}
         >
-          Planning aanvragen
+          {copy.requestButton}
         </button>
       </div>
 
@@ -500,13 +765,13 @@ export default function AppointmentClient() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-4">
-              <h3 className="text-lg font-semibold">Planning aanvragen</h3>
+              <h3 className="text-lg font-semibold">{copy.modalTitle}</h3>
               <button
                 className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50"
                 type="button"
                 onClick={() => setRequestOpen(false)}
               >
-                Sluiten
+                {copy.close}
               </button>
             </div>
 
@@ -518,18 +783,20 @@ export default function AppointmentClient() {
 
             {lookupVehicle ? (
               <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                <p className="text-xs font-semibold uppercase text-slate-500">Voertuig</p>
+                <p className="text-xs font-semibold uppercase text-slate-500">{copy.vehicleLabel}</p>
                 <p>
                   {lookupVehicle.brand || '-'} {lookupVehicle.model || ''}
                 </p>
-                <p>Kleur: {lookupVehicle.color || '-'}</p>
+                <p>
+                  {copy.colorLabel}: {lookupVehicle.color || '-'}
+                </p>
               </div>
             ) : null}
 
             {lookupStep === 'plate' ? (
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  Uw kenteken
+                  {copy.plateLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={licensePlate}
@@ -542,7 +809,7 @@ export default function AppointmentClient() {
                   onClick={handlePlateCheck}
                   disabled={!licensePlate.trim() || lookupLoading}
                 >
-                  {lookupLoading ? 'Controleren...' : 'Verder'}
+                  {lookupLoading ? copy.checking : copy.next}
                 </button>
                 <button
                   className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -550,7 +817,7 @@ export default function AppointmentClient() {
                   onClick={handleRdwLookup}
                   disabled={!licensePlate.trim() || rdwLookupLoading}
                 >
-                  {rdwLookupLoading ? 'RDW ophalen...' : 'RDW ophalen'}
+                  {rdwLookupLoading ? copy.rdwFetching : copy.rdwFetch}
                 </button>
                 {rdwLookupError ? (
                   <p className="text-xs text-red-600">{rdwLookupError}</p>
@@ -561,7 +828,7 @@ export default function AppointmentClient() {
             {lookupStep === 'email' ? (
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  E-mailadres
+                  {copy.emailLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={email}
@@ -574,7 +841,7 @@ export default function AppointmentClient() {
                   onClick={handleEmailCheck}
                   disabled={!email.trim() || lookupLoading}
                 >
-                  {lookupLoading ? 'Controleren...' : 'Verder'}
+                  {lookupLoading ? copy.checking : copy.next}
                 </button>
               </div>
             ) : null}
@@ -582,7 +849,7 @@ export default function AppointmentClient() {
             {lookupStep === 'details' ? (
               <div className="mt-4 grid gap-3">
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  Bedrijfsnaam (optioneel)
+                  {copy.companyLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={company}
@@ -590,7 +857,7 @@ export default function AppointmentClient() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  Naam
+                  {copy.nameLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={name}
@@ -598,7 +865,7 @@ export default function AppointmentClient() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  Adres
+                  {copy.addressLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={address}
@@ -607,7 +874,7 @@ export default function AppointmentClient() {
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-2 text-sm font-medium text-slate-700">
-                    Postcode
+                    {copy.postalCodeLabel}
                     <input
                       className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                       value={postalCode}
@@ -615,7 +882,7 @@ export default function AppointmentClient() {
                     />
                   </label>
                   <label className="grid gap-2 text-sm font-medium text-slate-700">
-                    Plaats
+                    {copy.cityLabel}
                     <input
                       className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                       value={city}
@@ -624,7 +891,7 @@ export default function AppointmentClient() {
                   </label>
                 </div>
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  E-mailadres
+                  {copy.emailLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={email}
@@ -632,7 +899,7 @@ export default function AppointmentClient() {
                   />
                 </label>
                 <label className="grid gap-2 text-sm font-medium text-slate-700">
-                  Telefoon
+                  {copy.phoneLabel}
                   <input
                     className="rounded-lg border border-slate-200 px-3 py-2 text-base"
                     value={phone}
@@ -644,7 +911,7 @@ export default function AppointmentClient() {
                   type="button"
                   onClick={handleSubmit}
                 >
-                  Afspraak aanvragen
+                  {copy.submitAppointment}
                 </button>
               </div>
             ) : null}
@@ -659,7 +926,7 @@ export default function AppointmentClient() {
                   type="button"
                   onClick={handleSubmit}
                 >
-                  Afspraak aanvragen
+                  {copy.submitAppointment}
                 </button>
               </div>
             ) : null}
@@ -676,17 +943,16 @@ export default function AppointmentClient() {
             className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold">Afspraak aangevraagd</h3>
+            <h3 className="text-lg font-semibold">{copy.successTitle}</h3>
             <p className="mt-3 text-sm text-slate-600">
-              Uw afspraak is aangevraagd. Let op: deze is pas bevestigd als u van ons een
-              bevestigingsmail heeft ontvangen.
+              {copy.successBody}
             </p>
             <button
               className="mt-6 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
               type="button"
               onClick={() => setSuccessOpen(false)}
             >
-              Sluiten
+              {copy.close}
             </button>
           </div>
         </div>

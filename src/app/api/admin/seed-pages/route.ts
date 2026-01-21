@@ -56,7 +56,9 @@ export async function POST(request: NextRequest) {
       status: 'PUBLISHED',
       seo: {
         metaTitle: 'Tesland',
-        metaDescription: 'Werkplaatssoftware voor planning, magazijn en werkorders.'
+        metaDescription: 'Werkplaatssoftware voor planning, magazijn en werkorders.',
+        metaKeywords:
+          'tesla onderhoud, tesla accessoires, tesla service, tesla specialist, tesla onderdelen'
       },
       blocks: [
         {
@@ -84,7 +86,9 @@ export async function POST(request: NextRequest) {
       draftTitle: 'Tesland',
       draftSeo: {
         metaTitle: 'Tesland',
-        metaDescription: 'Werkplaatssoftware voor planning, magazijn en werkorders.'
+        metaDescription: 'Werkplaatssoftware voor planning, magazijn en werkorders.',
+        metaKeywords:
+          'tesla onderhoud, tesla accessoires, tesla service, tesla specialist, tesla onderdelen'
       },
       draftBlocks: [
         {

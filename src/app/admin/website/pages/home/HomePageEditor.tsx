@@ -34,12 +34,14 @@ type PageDoc = {
   seo: {
     metaTitle: string
     metaDescription: string
+    metaKeywords?: string
   }
   blocks: Array<HeroBlock | IntroBlock | CtaBlock>
   draftTitle?: string
   draftSeo?: {
     metaTitle: string
     metaDescription: string
+    metaKeywords?: string
   }
   draftBlocks?: Array<HeroBlock | IntroBlock | CtaBlock>
 }
@@ -80,6 +82,7 @@ export default function HomePageEditor() {
   const [status, setStatus] = useState<'PUBLISHED' | 'DRAFT'>('PUBLISHED')
   const [metaTitle, setMetaTitle] = useState('Tesland')
   const [metaDescription, setMetaDescription] = useState('')
+  const [metaKeywords, setMetaKeywords] = useState('')
 
   const [hero, setHero] = useState<HeroBlock>(defaultHero)
   const [intro, setIntro] = useState<IntroBlock>(defaultIntro)
@@ -118,6 +121,7 @@ export default function HomePageEditor() {
       setStatus((page.status as 'PUBLISHED' | 'DRAFT') || 'DRAFT')
       setMetaTitle(page.draftSeo?.metaTitle || page.seo?.metaTitle || '')
       setMetaDescription(page.draftSeo?.metaDescription || page.seo?.metaDescription || '')
+      setMetaKeywords(page.draftSeo?.metaKeywords || page.seo?.metaKeywords || '')
 
       const blocksFromDoc = Array.isArray(page.draftBlocks) ? page.draftBlocks : page.blocks || []
       const heroBlock = blocksFromDoc.find((b) => b.type === 'hero') as HeroBlock | undefined
@@ -152,7 +156,8 @@ export default function HomePageEditor() {
           draftTitle: title,
           draftSeo: {
             metaTitle,
-            metaDescription
+            metaDescription,
+            metaKeywords
           },
           draftBlocks: blocks
         })
@@ -278,6 +283,15 @@ export default function HomePageEditor() {
               className="min-h-[80px] rounded-lg border border-slate-200 px-3 py-2 text-base"
               value={metaDescription}
               onChange={(event) => setMetaDescription(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+            Meta keywords (komma-gescheiden)
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              value={metaKeywords}
+              onChange={(event) => setMetaKeywords(event.target.value)}
+              placeholder="tesla onderhoud, tesla accessoires, tesla service"
             />
           </label>
         </div>

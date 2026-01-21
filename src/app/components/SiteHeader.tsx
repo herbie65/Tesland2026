@@ -1,5 +1,9 @@
-import { headers } from 'next/headers'
+'use client'
+
+import { useEffect, useState } from 'react'
 import { MagnifyingGlassIcon, ShoppingCartIcon, UserCircleIcon } from '@heroicons/react/24/outline'
+import HeaderMenu from './HeaderMenu'
+import LanguagePicker from './LanguagePicker'
 
 type HeaderItem = {
   label: string
@@ -19,25 +23,41 @@ type HeaderSettings = {
   }
 }
 
-export default async function SiteHeader() {
-  const headerList = await headers()
-  const host = headerList.get('host') || 'localhost:3000'
-  const protocol = host.includes('localhost') ? 'http' : 'https'
-  const response = await fetch(`${protocol}://${host}/api/public/site-header`, { cache: 'no-store' })
-  const data = await response.json().catch(() => null)
-  const settings: HeaderSettings = data?.success ? data.item?.data || data.item || {} : {}
+export default function SiteHeader() {
+  const [settings, setSettings] = useState<HeaderSettings>({})
+
+  useEffect(() => {
+    let isMounted = true
+    const loadHeader = async () => {
+      const response = await fetch('/api/public/site-header', { cache: 'no-store' })
+      const data = await response.json().catch(() => null)
+      if (!isMounted) return
+      setSettings(data?.success ? data.item?.data || data.item || {} : {})
+    }
+
+    loadHeader()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const menuItems = Array.isArray(settings.menuItems) ? settings.menuItems : []
   const actions = settings.actions || {}
   const cartCount = typeof actions.cartCount === 'number' ? actions.cartCount : 0
 
+  const logoSrc =
+    settings.logoUrl && !settings.logoUrl.startsWith('http') && !settings.logoUrl.startsWith('/')
+      ? `/${settings.logoUrl}`
+      : settings.logoUrl
+
   return (
     <header className="border-b border-slate-200 bg-slate-900 text-white">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <a className="flex items-center gap-3" href="/">
-          {settings.logoUrl ? (
+          {logoSrc ? (
             <img
-              src={settings.logoUrl}
+              src={logoSrc}
               alt={settings.logoAlt || 'Tesland'}
               className="h-10 w-auto"
             />
@@ -46,18 +66,10 @@ export default async function SiteHeader() {
           )}
         </a>
         <nav className="hidden items-center gap-6 text-sm font-semibold lg:flex">
-          {menuItems.map((item) => (
-            <a
-              key={`${item.label}-${item.href}`}
-              className="nav-link flex items-center gap-1"
-              href={item.href}
-            >
-              {item.label}
-              {item.hasDropdown ? <span className="accent-text">▾</span> : null}
-            </a>
-          ))}
+          <HeaderMenu items={menuItems} />
         </nav>
         <div className="flex items-center gap-4">
+          <LanguagePicker />
           {actions.showSearch ? (
             <button className="rounded-full p-2 text-white hover:bg-white/10" type="button">
               <MagnifyingGlassIcon className="h-5 w-5" />
