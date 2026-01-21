@@ -31,7 +31,15 @@ type NavItem = NavLink | NavGroup
 
 const NAV_ITEMS: NavItem[] = [
   { type: 'link', name: 'Dashboard', href: '/admin', icon: ChartBarIcon },
-  { type: 'link', name: 'Website', href: '/admin/website/pages/home', icon: DocumentTextIcon },
+  {
+    type: 'group',
+    name: 'Website',
+    icon: DocumentTextIcon,
+    children: [
+      { type: 'link', name: 'Homepage', href: '/admin/website/pages/home', icon: DocumentTextIcon },
+      { type: 'link', name: 'Header', href: '/admin/website/header', icon: DocumentTextIcon }
+    ]
+  },
   { type: 'link', name: 'Planning', href: '/admin/planning', icon: CalendarIcon },
   { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },

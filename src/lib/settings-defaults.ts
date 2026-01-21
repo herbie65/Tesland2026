@@ -44,6 +44,24 @@ export const SETTINGS_DEFAULTS = {
     certificaatReferentie: "",
     enabled: false
   },
+  siteHeader: {
+    logoUrl: "",
+    logoAlt: "Tesland",
+    menuItems: [
+      { label: "Onderhoud", href: "/onderhoud", hasDropdown: true },
+      { label: "Reparaties", href: "/reparaties", hasDropdown: true },
+      { label: "Accessoires", href: "/accessoires", hasDropdown: true },
+      { label: "Onderdelen", href: "/onderdelen", hasDropdown: true },
+      { label: "Winterwielen", href: "/winterwielen", hasDropdown: false },
+      { label: "Fan-Shop", href: "/fan-shop", hasDropdown: false }
+    ],
+    actions: {
+      showSearch: true,
+      showAccount: true,
+      showCart: true,
+      cartCount: 0
+    }
+  },
   integrations: {
     webhookUrl: "",
     externalSystem: ""
