@@ -41,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
     ]
   },
   { type: 'link', name: 'Planning', href: '/admin/planning', icon: CalendarIcon },
+  { type: 'link', name: 'Werkoverzicht', href: '/admin/workoverzicht', icon: ChartBarIcon },
   { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },
   { type: 'link', name: 'Voertuigen', href: '/admin/vehicles', icon: TruckIcon },

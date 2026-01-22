@@ -14,7 +14,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'id is required' }, { status: 400 })
     }
     const body = await request.json()
-    const { name, description, permissions, includeInPlanning } = body || {}
+    const { name, description, includeInPlanning, isSystemAdmin } = body || {}
 
     ensureAdmin()
     if (!adminFirestore) {
@@ -24,8 +24,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const payload = {
       ...(name ? { name } : {}),
       ...(description !== undefined ? { description } : {}),
-      ...(Array.isArray(permissions) ? { permissions } : {}),
       ...(includeInPlanning !== undefined ? { includeInPlanning } : {}),
+      ...(isSystemAdmin !== undefined ? { isSystemAdmin: Boolean(isSystemAdmin) } : {}),
       updated_at: new Date().toISOString()
     }
     await adminFirestore.collection('roles').doc(roleId).set(payload, { merge: true })

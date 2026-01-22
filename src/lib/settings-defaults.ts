@@ -11,8 +11,20 @@ export const SETTINGS_DEFAULTS = {
     dayStart: "08:00",
     dayEnd: "17:00",
     slotMinutes: 60,
+    dayViewDays: 3,
     selectableSaturday: false,
-    selectableSunday: false
+    selectableSunday: false,
+    breaks: []
+  },
+  workoverview: {
+    columns: [
+      "Afspraak",
+      "Wachten",
+      "Diagnose",
+      "Wachten op toestemming",
+      "Onder handen",
+      "Gereed"
+    ]
   },
   notifications: {
     senderEmail: "",

@@ -8,6 +8,7 @@ type Role = {
   description?: string | null
   permissions?: string[]
   includeInPlanning?: boolean
+  isSystemAdmin?: boolean
 }
 
 export default function RolesClient() {
@@ -16,13 +17,13 @@ export default function RolesClient() {
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [permissionsRaw, setPermissionsRaw] = useState("")
   const [includeInPlanning, setIncludeInPlanning] = useState(true)
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
-  const [editPermissionsRaw, setEditPermissionsRaw] = useState("")
   const [editIncludeInPlanning, setEditIncludeInPlanning] = useState(true)
+  const [editIsSystemAdmin, setEditIsSystemAdmin] = useState(false)
 
   const loadItems = async () => {
     try {
@@ -49,14 +50,10 @@ export default function RolesClient() {
     event.preventDefault()
     try {
       setError(null)
-      const permissions = permissionsRaw
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean)
       const response = await fetch("/api/roles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description, permissions, includeInPlanning })
+        body: JSON.stringify({ name, description, includeInPlanning, isSystemAdmin })
       })
       const data = await response.json()
       if (!response.ok || !data.success) {
@@ -64,8 +61,8 @@ export default function RolesClient() {
       }
       setName("")
       setDescription("")
-      setPermissionsRaw("")
       setIncludeInPlanning(true)
+      setIsSystemAdmin(false)
       await loadItems()
     } catch (err: any) {
       setError(err.message)
@@ -94,34 +91,30 @@ export default function RolesClient() {
     setEditingId(item.id)
     setEditName(item.name)
     setEditDescription(item.description || "")
-    setEditPermissionsRaw(item.permissions?.join(", ") || "")
     setEditIncludeInPlanning(Boolean(item.includeInPlanning))
+    setEditIsSystemAdmin(Boolean(item.isSystemAdmin))
   }
 
   const cancelEdit = () => {
     setEditingId(null)
     setEditName("")
     setEditDescription("")
-    setEditPermissionsRaw("")
     setEditIncludeInPlanning(true)
+    setEditIsSystemAdmin(false)
   }
 
   const saveEdit = async () => {
     try {
       if (!editingId) return
       setError(null)
-      const permissions = editPermissionsRaw
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean)
       const response = await fetch(`/api/roles/${editingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: editName,
           description: editDescription,
-          permissions,
-          includeInPlanning: editIncludeInPlanning
+          includeInPlanning: editIncludeInPlanning,
+          isSystemAdmin: editIsSystemAdmin
         })
       })
       const data = await response.json()
@@ -158,22 +151,33 @@ export default function RolesClient() {
               placeholder="Optioneel"
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-            Permissions (comma-separated)
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={permissionsRaw}
-              onChange={(event) => setPermissionsRaw(event.target.value)}
-              placeholder="bijv. planning.read, planning.write"
-            />
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+            <span>Opnemen in planning</span>
+            <span className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={includeInPlanning}
+                onChange={(event) => setIncludeInPlanning(event.target.checked)}
+              />
+              <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+              </span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={includeInPlanning}
-              onChange={(event) => setIncludeInPlanning(event.target.checked)}
-            />
-            Opnemen in planning
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+            <span>Is admin</span>
+            <span className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={isSystemAdmin}
+                onChange={(event) => setIsSystemAdmin(event.target.checked)}
+              />
+              <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+              </span>
+            </span>
           </label>
           <div className="flex items-end">
             <button
@@ -236,21 +240,33 @@ export default function RolesClient() {
                           />
                         </label>
                       </div>
-                      <label className="grid gap-2 text-sm font-medium text-slate-700">
-                        Permissions
-                        <input
-                          className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                          value={editPermissionsRaw}
-                          onChange={(event) => setEditPermissionsRaw(event.target.value)}
-                        />
+                      <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                        <span>Opnemen in planning</span>
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="peer sr-only"
+                            checked={editIncludeInPlanning}
+                            onChange={(event) => setEditIncludeInPlanning(event.target.checked)}
+                          />
+                          <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+                            <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+                          </span>
+                        </span>
                       </label>
-                      <label className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={editIncludeInPlanning}
-                          onChange={(event) => setEditIncludeInPlanning(event.target.checked)}
-                        />
-                        Opnemen in planning
+                      <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                        <span>Is admin</span>
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="peer sr-only"
+                            checked={editIsSystemAdmin}
+                            onChange={(event) => setEditIsSystemAdmin(event.target.checked)}
+                          />
+                          <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+                            <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+                          </span>
+                        </span>
                       </label>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -277,10 +293,10 @@ export default function RolesClient() {
                           {item.description || "Geen omschrijving"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {item.permissions?.length ? item.permissions.join(", ") : "Geen permissions"}
+                          Is admin: {item.isSystemAdmin ? "Ja" : "Nee"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {item.includeInPlanning ? "In planning" : "Niet in planning"}
+                          Opnemen in planning: {item.includeInPlanning ? "Ja" : "Nee"}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">

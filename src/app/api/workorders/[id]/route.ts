@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { requireRole } from '@/lib/auth'
-import { getNotificationSettings, getWorkOrderDefaults } from '@/lib/settings'
+import { getNotificationSettings, getPricingModes, getWorkOrderDefaults } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
 
 type RouteContext = {
@@ -120,6 +120,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    if (body.pricingMode) {
+      const pricingModes = await getPricingModes()
+      if (!pricingModes.some((mode) => mode.code === String(body.pricingMode))) {
+        return NextResponse.json(
+          { success: false, error: `Unknown pricingMode "${body.pricingMode}"` },
+          { status: 400 }
+        )
+      }
+    }
+
     const nowIso = new Date().toISOString()
     const payload = {
       title: body.title ?? null,
@@ -136,6 +146,49 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       vehiclePlate: body.vehiclePlate ?? null,
       vehicleLabel: body.vehicleLabel ?? null,
       partsRequired: typeof body.partsRequired === 'boolean' ? body.partsRequired : null,
+      pricingMode: body.pricingMode ?? null,
+      estimatedAmount: Number.isFinite(Number(body.estimatedAmount)) ? Number(body.estimatedAmount) : null,
+      priceAmount: Number.isFinite(Number(body.priceAmount)) ? Number(body.priceAmount) : null,
+      customerApproved: typeof body.customerApproved === 'boolean' ? body.customerApproved : null,
+      agreementNotes: body.agreementNotes ?? null,
+      customerNumber: body.customerNumber ?? null,
+      customerAddress: body.customerAddress ?? null,
+      customerCity: body.customerCity ?? null,
+      customerMobile: body.customerMobile ?? null,
+      driverName: body.driverName ?? null,
+      workDescription: body.workDescription ?? null,
+      orderNumber: body.orderNumber ?? null,
+      orderDate: body.orderDate ?? null,
+      vehicleBrand: body.vehicleBrand ?? null,
+      vehicleModel: body.vehicleModel ?? null,
+      vehicleBuildYear: body.vehicleBuildYear ?? null,
+      chassisNumber: body.chassisNumber ?? null,
+      currentMileage: body.currentMileage ?? null,
+      lastApkMileage: body.lastApkMileage ?? null,
+      apkDueDate: body.apkDueDate ?? null,
+      lastServiceDate: body.lastServiceDate ?? null,
+      lastAircoServiceDate: body.lastAircoServiceDate ?? null,
+      callPreference: typeof body.callPreference === 'boolean' ? body.callPreference : null,
+      smsPreference: typeof body.smsPreference === 'boolean' ? body.smsPreference : null,
+      alwaysCall: typeof body.alwaysCall === 'boolean' ? body.alwaysCall : null,
+      approvalLimitAmount: Number.isFinite(Number(body.approvalLimitAmount))
+        ? Number(body.approvalLimitAmount)
+        : null,
+      carWashed: typeof body.carWashed === 'boolean' ? body.carWashed : null,
+      carVacuumed: typeof body.carVacuumed === 'boolean' ? body.carVacuumed : null,
+      carCharged: typeof body.carCharged === 'boolean' ? body.carCharged : null,
+      jobLines: Array.isArray(body.jobLines) ? body.jobLines : null,
+      tireSize: body.tireSize ?? null,
+      tireBrand: body.tireBrand ?? null,
+      tireType: body.tireType ?? null,
+      tireTreadFrontLeft: body.tireTreadFrontLeft ?? null,
+      tireTreadFrontRight: body.tireTreadFrontRight ?? null,
+      tireTreadRearLeft: body.tireTreadRearLeft ?? null,
+      tireTreadRearRight: body.tireTreadRearRight ?? null,
+      readyToInvoice: typeof body.readyToInvoice === 'boolean' ? body.readyToInvoice : null,
+      followUpAppointment: typeof body.followUpAppointment === 'boolean' ? body.followUpAppointment : null,
+      signatureInName: body.signatureInName ?? null,
+      signatureOutName: body.signatureOutName ?? null,
       updated_at: nowIso,
       updated_by: user.uid
     }
@@ -267,7 +320,30 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
     const firestore = ensureFirestore()
-    await firestore.collection('workOrders').doc(id).delete()
+    const deletePlanningParam = request.nextUrl.searchParams.get('deletePlanning') || ''
+    const deletePlanning = ['1', 'true', 'yes'].includes(deletePlanningParam.toLowerCase())
+    const workOrderRef = firestore.collection('workOrders').doc(id)
+    const batch = firestore.batch()
+
+    if (deletePlanning) {
+      const planningSnap = await firestore
+        .collection('planningItems')
+        .where('workOrderId', '==', id)
+        .get()
+      const planningIds = new Set<string>()
+      planningSnap.docs.forEach((doc) => {
+        planningIds.add(doc.id)
+        batch.delete(doc.ref)
+      })
+      const directPlanningRef = firestore.collection('planningItems').doc(id)
+      const directPlanningSnap = await directPlanningRef.get()
+      if (directPlanningSnap.exists && !planningIds.has(id)) {
+        batch.delete(directPlanningRef)
+      }
+    }
+
+    batch.delete(workOrderRef)
+    await batch.commit()
     return NextResponse.json({ success: true })
   } catch (error: any) {
     const status = error.status || 500

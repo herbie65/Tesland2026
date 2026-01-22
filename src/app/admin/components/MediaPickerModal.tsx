@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import { apiFetch } from '@/lib/api'
 
 interface MediaItem {
@@ -143,11 +142,9 @@ export default function MediaPickerModal({
                       </div>
                     </div>
                   ) : (
-                    <Image
+                    <img
                       src={f.url}
                       alt={f.name}
-                      width={200}
-                      height={112}
                       className="w-full h-28 object-cover rounded"
                       loading="lazy"
                     />

@@ -41,3 +41,20 @@ export const generateSalesNumber = async (key: NumberingKey) => {
 
   return `${prefix}-${year}${pad(nextNumber, numbering.sequenceLength)}`
 }
+
+export const generateWorkOrderNumber = async (date = new Date()) => {
+  const firestore = ensureFirestore()
+  const now = date
+  const year = String(now.getFullYear()).slice(-2)
+  const counterRef = firestore.collection('counters').doc('workorders')
+  const nextNumber = await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(counterRef)
+    const data = snap.data() || {}
+    const storedYear = String(data.year || '')
+    const currentSeq = Number(data.seq || 0)
+    const nextSeq = storedYear === year ? currentSeq + 1 : 1
+    tx.set(counterRef, { year, seq: nextSeq, updated_at: now.toISOString() }, { merge: true })
+    return nextSeq
+  })
+  return `WO${year}-${pad(nextNumber, 5)}`
+}

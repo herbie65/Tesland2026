@@ -20,13 +20,20 @@ const getPlanningSettings = async () => {
   const defaultDurationMinutes = Number(data?.defaultDurationMinutes || 60)
   const selectableSaturday = Boolean(data?.selectableSaturday)
   const selectableSunday = Boolean(data?.selectableSunday)
+  const breaks = Array.isArray(data?.breaks)
+    ? data.breaks.map((entry: any) => ({
+        start: String(entry?.start || ''),
+        end: String(entry?.end || '')
+      }))
+    : []
   return {
     dayStart,
     dayEnd,
     slotMinutes,
     defaultDurationMinutes,
     selectableSaturday,
-    selectableSunday
+    selectableSunday,
+    breaks
   }
 }
 
@@ -45,6 +52,21 @@ const buildSlots = (dayStart: string, dayEnd: string, slotMinutes: number) => {
   return slots
 }
 
+const slotOverlapsBreak = (
+  slot: number,
+  slotMinutes: number,
+  breaks: Array<{ start: string; end: string }>
+) => {
+  return breaks.some((entry) => {
+    const breakStart = parseTime(entry.start || '')
+    const breakEnd = parseTime(entry.end || '')
+    if (!Number.isFinite(breakStart) || !Number.isFinite(breakEnd)) return false
+    if (breakEnd <= breakStart) return false
+    const slotEnd = slot + slotMinutes
+    return slot < breakEnd && slotEnd > breakStart
+  })
+}
+
 const slotToLabel = (minutes: number) => {
   const hrs = Math.floor(minutes / 60)
   const mins = minutes % 60
@@ -60,7 +82,9 @@ export async function GET(request: NextRequest) {
     const firestore = ensureFirestore()
     const planningSettings = await getPlanningSettings()
     const slotMinutes = planningSettings.slotMinutes > 0 ? planningSettings.slotMinutes : 30
-    const slots = buildSlots(planningSettings.dayStart, planningSettings.dayEnd, slotMinutes)
+    const slots = buildSlots(planningSettings.dayStart, planningSettings.dayEnd, slotMinutes).filter(
+      (slot) => !slotOverlapsBreak(slot, slotMinutes, planningSettings.breaks || [])
+    )
 
     const snapshot = await firestore.collection('planningItems').get()
     const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[]

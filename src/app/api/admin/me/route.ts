@@ -8,7 +8,11 @@ export async function GET(request: NextRequest) {
       success: true,
       user: {
         uid: user.uid,
-        role: user.role,
+        role: user.role || null,
+        roleId: user.roleId || null,
+        roleName: user.roleName || null,
+        permissions: user.permissions || [],
+        isSystemAdmin: user.isSystemAdmin,
         name: user.name || null,
         email: user.email || null
       }

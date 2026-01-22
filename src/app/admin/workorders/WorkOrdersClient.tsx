@@ -14,6 +14,17 @@ type WorkOrder = {
   licensePlate?: string | null
   notes?: string | null
   createdAt?: string | null
+  customerName?: string | null
+  vehicleLabel?: string | null
+  assigneeName?: string | null
+  partsSummaryStatus?: string | null
+  partsRequired?: boolean | null
+  customerApproved?: boolean | null
+  pricingMode?: string | null
+  priceAmount?: number | null
+  estimatedAmount?: number | null
+  planningTypeName?: string | null
+  planningTypeColor?: string | null
 }
 
 type StatusEntry = {
@@ -121,6 +132,7 @@ export default function WorkOrdersClient() {
     statuses.find((entry) => entry.code === code)?.label || code || '-'
 
   const sortedItems = useMemo(() => items, [items])
+  const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleString() : '-')
 
   return (
     <div className="space-y-6">
@@ -168,9 +180,13 @@ export default function WorkOrdersClient() {
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-2 text-left">Datum</th>
+                  <th className="px-4 py-2 text-left">Planning</th>
                   <th className="px-4 py-2 text-left">Kenteken</th>
                   <th className="px-4 py-2 text-left">Titel</th>
+                  <th className="px-4 py-2 text-left">Klant</th>
+                  <th className="px-4 py-2 text-left">Voertuig</th>
+                  <th className="px-4 py-2 text-left">Monteur</th>
+                  <th className="px-4 py-2 text-left">Planningtype</th>
                   <th className="px-4 py-2 text-left">Status</th>
                 </tr>
               </thead>
@@ -178,11 +194,7 @@ export default function WorkOrdersClient() {
                 {sortedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-700">
-                      {item.createdAt
-                        ? new Date(item.createdAt).toLocaleString()
-                        : item.scheduledAt
-                          ? new Date(item.scheduledAt).toLocaleString()
-                          : '-'}
+                      {formatDate(item.scheduledAt || item.createdAt)}
                     </td>
                     <td className="px-4 py-2 text-slate-700">
                       {item.licensePlate ? (
@@ -201,6 +213,26 @@ export default function WorkOrdersClient() {
                       <Link className="text-slate-900 hover:underline" href={`/admin/workorders/${item.id}`}>
                         {item.title}
                       </Link>
+                    </td>
+                    <td className="px-4 py-2 text-slate-700">{item.customerName || '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">{item.vehicleLabel || '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">{item.assigneeName || '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">
+                      {item.planningTypeName ? (
+                        <span
+                          className="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
+                          style={{
+                            backgroundColor: item.planningTypeColor
+                              ? `${item.planningTypeColor}26`
+                              : 'rgba(148, 163, 184, 0.2)',
+                            color: item.planningTypeColor || '#475569'
+                          }}
+                        >
+                          {item.planningTypeName}
+                        </span>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td className="px-4 py-2 text-slate-700">{statusLabel(item.workOrderStatus)}</td>
                   </tr>

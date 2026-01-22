@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, description, permissions, includeInPlanning } = body || {}
+    const { name, description, includeInPlanning, isSystemAdmin } = body || {}
     if (!name) {
       return NextResponse.json({ success: false, error: 'name is required' }, { status: 400 })
     }
@@ -30,11 +30,13 @@ export async function POST(request: NextRequest) {
     }
 
     const nowIso = new Date().toISOString()
+    const systemAdmin = isSystemAdmin === true
     const payload = {
       name,
       description: description || null,
-      permissions: Array.isArray(permissions) ? permissions : [],
+      permissions: [],
       includeInPlanning: includeInPlanning === true,
+      isSystemAdmin: systemAdmin,
       updated_at: nowIso,
       created_at: nowIso
     }

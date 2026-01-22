@@ -15,6 +15,19 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth(request)
     const firestore = ensureFirestore()
 
+    const rolesSnap = await firestore.collection('roles').orderBy('name').get()
+    if (rolesSnap.empty) {
+      return NextResponse.json(
+        { success: false, error: 'Geen rollen gevonden. Maak eerst een rol aan.' },
+        { status: 400 }
+      )
+    }
+    const roleDoc =
+      rolesSnap.docs.find((doc) => {
+        const data = doc.data() || {}
+        return data.isSystemAdmin === true
+      }) || rolesSnap.docs[0]
+
     const existing = await firestore.collection('users').limit(1).get()
     if (!existing.empty) {
       return NextResponse.json(
@@ -25,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const nowIso = new Date().toISOString()
     const payload = {
-      role: 'SYSTEM_ADMIN',
+      roleId: roleDoc.id,
       name: user.name || null,
       email: user.email || null,
       active: true,

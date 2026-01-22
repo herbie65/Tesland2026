@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
-import { requireRole } from '@/lib/auth'
-
-const ROLE_OPTIONS = new Set([
-  'SYSTEM_ADMIN',
-  'MANAGEMENT',
-  'MAGAZIJN',
-  'MONTEUR',
-  'CONTENT_EDITOR'
-])
+import { requireAuth } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT'])
+    await requireAuth(request)
     ensureAdmin()
     if (!adminFirestore) {
       return NextResponse.json({ success: false, error: 'Firebase Admin not initialized' }, { status: 500 })
@@ -28,9 +20,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(request, ['SYSTEM_ADMIN'])
+    await requireAuth(request)
     const body = await request.json()
-    const { name, email, role, roleId, active, color, planningHoursPerDay, workingDays } = body || {}
+    const { name, email, roleId, active, color, planningHoursPerDay, workingDays, photoUrl } =
+      body || {}
     if (!name || !email) {
       return NextResponse.json(
         { success: false, error: 'name and email are required' },
@@ -47,8 +40,8 @@ export async function POST(request: NextRequest) {
     const payload = {
       name,
       email,
-      role: role && ROLE_OPTIONS.has(String(role)) ? String(role) : null,
       roleId: roleId || null,
+      photoUrl: photoUrl || null,
       color: color || null,
       planningHoursPerDay: Number.isFinite(Number(planningHoursPerDay))
         ? Number(planningHoursPerDay)

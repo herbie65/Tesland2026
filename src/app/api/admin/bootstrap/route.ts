@@ -20,8 +20,21 @@ export async function POST(request: NextRequest) {
       bootstrapped: false
     }
 
+    const rolesSnap = await firestore.collection('roles').orderBy('name').get()
+    if (rolesSnap.empty) {
+      return NextResponse.json(
+        { success: false, error: 'Geen rollen gevonden. Maak eerst een rol aan.' },
+        { status: 400 }
+      )
+    }
+    const roleDoc =
+      rolesSnap.docs.find((doc) => {
+        const data = doc.data() || {}
+        return data.isSystemAdmin === true
+      }) || rolesSnap.docs[0]
+
     await firestore.runTransaction(async (tx) => {
-      const adminSnap = await tx.get(usersRef.where('role', '==', 'SYSTEM_ADMIN').limit(1))
+      const adminSnap = await tx.get(usersRef.where('roleId', '==', roleDoc.id).limit(1))
       if (!adminSnap.empty) {
         result = { bootstrapped: false }
         return
@@ -34,7 +47,7 @@ export async function POST(request: NextRequest) {
       tx.set(
         userRef,
         {
-          role: 'SYSTEM_ADMIN',
+          roleId: roleDoc.id,
           name: existing.name ?? user.name ?? null,
           email: existing.email ?? user.email ?? null,
           active: existing.active !== false,
@@ -43,7 +56,7 @@ export async function POST(request: NextRequest) {
         },
         { merge: true }
       )
-      result = { bootstrapped: true, beforeRole: existing.role ?? null }
+      result = { bootstrapped: true, beforeRole: existing.roleId ?? existing.role ?? null }
     })
 
     if (result.bootstrapped) {
@@ -55,7 +68,7 @@ export async function POST(request: NextRequest) {
           targetUid: user.uid,
           targetEmail: user.email,
           beforeRole: result.beforeRole ?? null,
-          afterRole: 'SYSTEM_ADMIN'
+          afterRole: roleDoc.id
         },
         request
       )

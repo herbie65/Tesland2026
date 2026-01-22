@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 const cards = [
   { title: 'Planning', href: '/admin/planning', description: 'Plan afspraken en werkbonnen.' },
+  { title: 'Werkoverzicht', href: '/admin/workoverzicht', description: 'Statusoverzicht per kolom.' },
   { title: 'Klanten', href: '/admin/customers', description: 'Beheer klantgegevens.' },
   { title: 'Voertuigen', href: '/admin/vehicles', description: 'Koppel voertuigen en eigenaars.' },
   { title: 'Producten', href: '/admin/products', description: 'Beheer het assortiment.' },

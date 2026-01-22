@@ -438,10 +438,12 @@ export default function WorkOrderDetailClient() {
   const handleDelete = async () => {
     if (!workOrderId) return
     if (!confirm('Werkorder verwijderen? Dit kan niet ongedaan worden.')) return
+    const deletePlanning = confirm('Planning ook verwijderen?')
     try {
       setDeleting(true)
       setError(null)
-      const response = await apiFetch(`/api/workorders/${workOrderId}`, {
+      const query = deletePlanning ? '?deletePlanning=1' : ''
+      const response = await apiFetch(`/api/workorders/${workOrderId}${query}`, {
         method: 'DELETE'
       })
       const data = await response.json()
@@ -476,7 +478,14 @@ export default function WorkOrderDetailClient() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+              className="glass-button rounded-lg px-3 py-2 text-sm font-medium"
+              type="button"
+              onClick={() => router.back()}
+            >
+              Terug
+            </button>
+            <button
+              className="glass-button rounded-lg px-3 py-2 text-sm font-medium text-red-600 disabled:opacity-60"
               type="button"
               onClick={handleDelete}
               disabled={deleting}
@@ -484,7 +493,7 @@ export default function WorkOrderDetailClient() {
               {deleting ? 'Verwijderen...' : 'Verwijderen'}
             </button>
             <button
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
+              className="glass-button rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
               type="button"
               onClick={handleSave}
               disabled={saving || !statusesReady}

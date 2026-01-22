@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
-import { requireRole } from '@/lib/auth'
+import { requireAuth } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
   params: { id: string } | Promise<{ id: string }>
 }
 
-const ROLE_OPTIONS = new Set([
-  'SYSTEM_ADMIN',
-  'MANAGEMENT',
-  'MAGAZIJN',
-  'MONTEUR',
-  'CONTENT_EDITOR'
-])
-
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const actor = await requireRole(request, ['SYSTEM_ADMIN'])
+    const actor = await requireAuth(request)
     const body = await request.json()
-    const { name, email, role, roleId, active, color, planningHoursPerDay, workingDays } = body || {}
+    const { name, email, roleId, active, color, planningHoursPerDay, workingDays, photoUrl } =
+      body || {}
     const params = await context.params
     const userId = params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!userId) {
@@ -37,8 +30,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const payload = {
       ...(name ? { name } : {}),
       ...(email ? { email } : {}),
-      ...(role !== undefined ? { role: ROLE_OPTIONS.has(String(role)) ? String(role) : null } : {}),
       ...(roleId !== undefined ? { roleId } : {}),
+      ...(photoUrl !== undefined ? { photoUrl } : {}),
       ...(active !== undefined ? { active } : {}),
       ...(color !== undefined ? { color } : {}),
       ...(planningHoursPerDay !== undefined
@@ -49,7 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     await adminFirestore.collection('users').doc(userId).set(payload, { merge: true })
 
-    if (role !== undefined && role !== existing.role) {
+    if (roleId !== undefined && roleId !== existing.roleId) {
       await logAudit(
         {
           action: 'USER_ROLE_CHANGED',
@@ -57,8 +50,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           actorEmail: actor.email,
           targetUid: userId,
           targetEmail: existing.email || null,
-          beforeRole: existing.role || null,
-          afterRole: role || null
+          beforeRole: existing.roleId || existing.role || null,
+          afterRole: roleId || null
         },
         request
       )
@@ -72,7 +65,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    await requireRole(request, ['SYSTEM_ADMIN'])
+    await requireAuth(request)
     const params = await context.params
     const userId = params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
     if (!userId) {

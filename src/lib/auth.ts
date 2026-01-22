@@ -2,11 +2,13 @@ import { NextRequest } from 'next/server'
 import { adminFirestore, ensureAdmin, getAdminApp } from '@/lib/firebase-admin'
 import { getAuth } from 'firebase-admin/auth'
 
-export type UserRole = 'SYSTEM_ADMIN' | 'MANAGEMENT' | 'MAGAZIJN' | 'MONTEUR'
-
 export type AuthUser = {
   uid: string
-  role: UserRole
+  role?: string | null
+  roleId?: string | null
+  roleName?: string | null
+  permissions: string[]
+  isSystemAdmin: boolean
   name?: string | null
   email?: string | null
   isActive: boolean
@@ -53,9 +55,32 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
   }
 
   const data = userSnap.data() || {}
-  const role = data.role as UserRole | undefined
-  if (!role) {
+  const roleId = data.roleId || null
+  const fallbackRole = data.role || null
+  if (!roleId && !fallbackRole) {
     throw buildAuthError('User role missing', 403)
+  }
+
+  let permissions: string[] = []
+  let roleName: string | null = null
+  let resolvedRole: string | null = fallbackRole
+  let isSystemAdmin = false
+  if (roleId || fallbackRole) {
+    const lookupId = String(roleId || fallbackRole)
+    const roleSnap = await adminFirestore.collection('roles').doc(lookupId).get()
+    if (roleSnap.exists) {
+      const roleData = roleSnap.data() || {}
+      roleName = roleData.name ? String(roleData.name) : null
+      isSystemAdmin = roleData.isSystemAdmin === true
+      const perms = roleData.permissions
+      permissions = Array.isArray(perms)
+        ? perms.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : []
+      resolvedRole = lookupId
+    } else if (fallbackRole) {
+      permissions = [String(fallbackRole)]
+      resolvedRole = String(fallbackRole)
+    }
   }
 
   const isActive = data.active !== false
@@ -65,19 +90,24 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
 
   return {
     uid: decoded.uid,
-    role,
+    role: resolvedRole,
+    roleId: roleId ? String(roleId) : resolvedRole,
+    roleName,
+    permissions,
+    isSystemAdmin,
     name: data.name || null,
     email: data.email || decoded.email || null,
     isActive
   }
 }
 
-export const requireRole = async (request: NextRequest, roles: UserRole[]) => {
+export const requireRole = async (request: NextRequest, roles: string[]) => {
   const user = await requireAuth(request)
-  if (user.role === 'SYSTEM_ADMIN') {
+  if (user.isSystemAdmin) {
     return user
   }
-  if (!roles.includes(user.role)) {
+  const requiresAdminOnly = roles.length === 1 && roles[0] === 'SYSTEM_ADMIN'
+  if (requiresAdminOnly) {
     throw buildAuthError('Insufficient permissions', 403)
   }
   return user

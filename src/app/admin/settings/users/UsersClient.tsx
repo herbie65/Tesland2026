@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { apiFetch } from "@/lib/api"
+import MediaPickerModal from "../../components/MediaPickerModal"
 
 type User = {
   id: string
@@ -9,6 +10,7 @@ type User = {
   email: string
   role?: string | null
   roleId?: string | null
+  photoUrl?: string | null
   active?: boolean
   color?: string | null
   planningHoursPerDay?: number | null
@@ -16,21 +18,21 @@ type User = {
   lastLoginAt?: string | null
 }
 
-const SYSTEM_ROLES = [
-  { value: "SYSTEM_ADMIN", label: "System admin" },
-  { value: "MANAGEMENT", label: "Management" },
-  { value: "MAGAZIJN", label: "Magazijn" },
-  { value: "MONTEUR", label: "Monteur" },
-  { value: "CONTENT_EDITOR", label: "Content editor" }
-]
+type PlanningRole = {
+  id: string
+  name: string
+  isSystemAdmin?: boolean
+}
 
 export default function UsersClient() {
   const [items, setItems] = useState<User[]>([])
+  const [roles, setRoles] = useState<PlanningRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
-  const [role, setRole] = useState("MANAGEMENT")
+  const [photoUrl, setPhotoUrl] = useState("")
+  const [roleId, setRoleId] = useState("none")
   const [active, setActive] = useState(true)
   const [color, setColor] = useState("#4f46e5")
   const [planningHoursPerDay, setPlanningHoursPerDay] = useState(8)
@@ -38,12 +40,14 @@ export default function UsersClient() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editEmail, setEditEmail] = useState("")
-  const [editRole, setEditRole] = useState("MANAGEMENT")
+  const [editPhotoUrl, setEditPhotoUrl] = useState("")
+  const [editRoleId, setEditRoleId] = useState("none")
   const [editActive, setEditActive] = useState(true)
   const [editColor, setEditColor] = useState("#4f46e5")
   const [editPlanningHoursPerDay, setEditPlanningHoursPerDay] = useState(8)
   const [editWorkingDays, setEditWorkingDays] = useState<string[]>(["mon", "tue", "wed", "thu", "fri"])
-  const [canEditRoles, setCanEditRoles] = useState(false)
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false)
+  const [showEditPhotoPicker, setShowEditPhotoPicker] = useState(false)
 
   const dayLabels: Record<string, string> = {
     mon: "Ma",
@@ -72,33 +76,46 @@ export default function UsersClient() {
     }
   }
 
-  const loadCurrentRole = async () => {
+  const loadRoles = async () => {
     try {
-      const response = await apiFetch("/api/admin/me")
+      const response = await apiFetch("/api/roles")
       const data = await response.json()
       if (response.ok && data.success) {
-        setCanEditRoles(data.user?.role === "SYSTEM_ADMIN")
+        setRoles(data.items || [])
+      } else {
+        setRoles([])
       }
-    } catch (err) {
-      setCanEditRoles(false)
+    } catch {
+      setRoles([])
     }
   }
 
   useEffect(() => {
     loadItems()
-    loadCurrentRole()
+    loadRoles()
   }, [])
+
+  useEffect(() => {
+    if (roleId !== "none") return
+    if (roles.length === 0) return
+    setRoleId(roles[0].id)
+  }, [roles, roleId])
 
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     try {
       setError(null)
+      if (roleId === "none") {
+        setError("Selecteer een rol.")
+        return
+      }
       const response = await apiFetch("/api/users", {
         method: "POST",
         body: JSON.stringify({
           name,
           email,
-          role,
+          photoUrl: photoUrl || null,
+          roleId: roleId === "none" ? null : roleId,
           active,
           color,
           planningHoursPerDay,
@@ -111,7 +128,8 @@ export default function UsersClient() {
       }
       setName("")
       setEmail("")
-      setRole("MANAGEMENT")
+      setPhotoUrl("")
+      setRoleId("none")
       setActive(true)
       setColor("#4f46e5")
       setPlanningHoursPerDay(8)
@@ -168,7 +186,12 @@ export default function UsersClient() {
     setEditingId(item.id)
     setEditName(item.name)
     setEditEmail(item.email)
-    setEditRole(item.role || "MANAGEMENT")
+    setEditPhotoUrl(item.photoUrl || "")
+    const mappedRoleId =
+      item.roleId ||
+      (item.role ? roles.find((entry) => entry.name === item.role || entry.id === item.role)?.id : undefined) ||
+      "none"
+    setEditRoleId(mappedRoleId)
     setEditActive(item.active !== false)
     setEditColor(item.color || "#4f46e5")
     setEditPlanningHoursPerDay(item.planningHoursPerDay || 8)
@@ -179,7 +202,8 @@ export default function UsersClient() {
     setEditingId(null)
     setEditName("")
     setEditEmail("")
-    setEditRole("MANAGEMENT")
+    setEditPhotoUrl("")
+    setEditRoleId("none")
     setEditActive(true)
     setEditColor("#4f46e5")
     setEditPlanningHoursPerDay(8)
@@ -190,12 +214,17 @@ export default function UsersClient() {
     try {
       if (!editingId) return
       setError(null)
+      if (editRoleId === "none") {
+        setError("Selecteer een rol.")
+        return
+      }
       const response = await apiFetch(`/api/users/${editingId}`, {
         method: "PATCH",
         body: JSON.stringify({
           name: editName,
           email: editEmail,
-          role: editRole,
+          photoUrl: editPhotoUrl || null,
+          roleId: editRoleId === "none" ? null : editRoleId,
           active: editActive,
           color: editColor,
           planningHoursPerDay: editPlanningHoursPerDay,
@@ -213,20 +242,51 @@ export default function UsersClient() {
     }
   }
 
-  const roleLabel = (item: User) => {
-    if (!item.role) return "Geen rol"
-    return SYSTEM_ROLES.find((entry) => entry.value === item.role)?.label || item.role
+  const planningRoleLabel = (item: User) => {
+    if (!item.roleId) return "Geen rol"
+    return roles.find((entry) => entry.id === item.roleId)?.name || item.roleId
   }
+
+  const getInitials = (value: string) =>
+    value
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("") || "?"
+
+  const renderUserAvatar = (item: User) => {
+    if (item.photoUrl) {
+      return (
+        <img
+          src={item.photoUrl}
+          alt={item.name}
+          className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+        />
+      )
+    }
+    return (
+      <div
+        className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
+        style={{ backgroundColor: item.color || "#94a3b8" }}
+        aria-label={item.name}
+      >
+        {getInitials(item.name)}
+      </div>
+    )
+  }
+
+  const adminRole = roles.find((entry) => entry.isSystemAdmin)
+  const defaultRole = roles.find((entry) => !entry.isSystemAdmin) || roles[0]
+  const isAdminSelected =
+    roleId !== "none" && roles.find((entry) => entry.id === roleId)?.isSystemAdmin === true
+  const isEditAdminSelected =
+    editRoleId !== "none" && roles.find((entry) => entry.id === editRoleId)?.isSystemAdmin === true
 
   return (
     <div className="space-y-8">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold">Nieuwe gebruiker</h2>
-        {!canEditRoles ? (
-          <p className="mt-2 text-sm text-amber-700">
-            Alleen system admins kunnen gebruikers en rollen aanpassen.
-          </p>
-        ) : null}
         <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Naam
@@ -247,21 +307,63 @@ export default function UsersClient() {
               required
             />
           </label>
+          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+            Profielfoto URL
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              value={photoUrl}
+              onChange={(event) => setPhotoUrl(event.target.value)}
+              placeholder="https://"
+            />
+            <button
+              className="glass-button w-fit rounded-lg px-3 py-1 text-xs"
+              type="button"
+              onClick={() => setShowPhotoPicker(true)}
+            >
+              Media kiezen
+            </button>
+          </label>
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Rol
             <select
               className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={role}
-              onChange={(event) => setRole(event.target.value)}
-              disabled={!canEditRoles}
+              value={roleId}
+              onChange={(event) => setRoleId(event.target.value)}
             >
-              {SYSTEM_ROLES.map((roleEntry) => (
-                <option key={roleEntry.value} value={roleEntry.value}>
-                  {roleEntry.label}
+              <option value="none">Geen rol</option>
+              {roles.map((roleEntry) => (
+                <option key={roleEntry.id} value={roleEntry.id}>
+                  {roleEntry.name}
                 </option>
               ))}
             </select>
           </label>
+          <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+            <span>Is admin</span>
+            <span className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                className="peer sr-only"
+                checked={isAdminSelected}
+                disabled={!adminRole}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    setRoleId(adminRole?.id || "none")
+                  } else if (roleId === adminRole?.id) {
+                    setRoleId(defaultRole?.id || "none")
+                  }
+                }}
+              />
+              <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500 peer-disabled:bg-slate-100">
+                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+              </span>
+            </span>
+          </label>
+          {!adminRole ? (
+            <p className="text-xs text-slate-500 sm:col-span-2">
+              Maak in Rollen eerst een rol met “Is admin” aan.
+            </p>
+          ) : null}
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Kleur
             <input
@@ -312,9 +414,8 @@ export default function UsersClient() {
           </label>
           <div className="flex items-end">
             <button
-              className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
               type="submit"
-              disabled={!canEditRoles}
             >
               Opslaan
             </button>
@@ -371,21 +472,63 @@ export default function UsersClient() {
                             onChange={(event) => setEditEmail(event.target.value)}
                           />
                         </label>
+                        <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+                          Profielfoto URL
+                          <input
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                            value={editPhotoUrl}
+                            onChange={(event) => setEditPhotoUrl(event.target.value)}
+                            placeholder="https://"
+                          />
+                          <button
+                            className="glass-button w-fit rounded-lg px-3 py-1 text-xs"
+                            type="button"
+                            onClick={() => setShowEditPhotoPicker(true)}
+                          >
+                            Media kiezen
+                          </button>
+                        </label>
                         <label className="grid gap-2 text-sm font-medium text-slate-700">
                           Rol
                           <select
                             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-                            value={editRole}
-                            onChange={(event) => setEditRole(event.target.value)}
-                            disabled={!canEditRoles}
+                            value={editRoleId}
+                            onChange={(event) => setEditRoleId(event.target.value)}
                           >
-                            {SYSTEM_ROLES.map((roleEntry) => (
-                              <option key={roleEntry.value} value={roleEntry.value}>
-                                {roleEntry.label}
+                            <option value="none">Geen rol</option>
+                            {roles.map((roleEntry) => (
+                              <option key={roleEntry.id} value={roleEntry.id}>
+                                {roleEntry.name}
                               </option>
                             ))}
                           </select>
                         </label>
+                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>Is admin</span>
+                          <span className="inline-flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="peer sr-only"
+                              checked={isEditAdminSelected}
+                              disabled={!adminRole}
+                              onChange={(event) => {
+                                if (event.target.checked) {
+                                  setEditRoleId(adminRole?.id || "none")
+                                } else if (editRoleId === adminRole?.id) {
+                                  setEditRoleId(defaultRole?.id || "none")
+                                }
+                              }}
+                            />
+                            <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500 peer-disabled:bg-slate-100">
+                              <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
+                            </span>
+                          </span>
+                        </label>
+                        {!adminRole ? (
+                          <p className="text-xs text-slate-500 sm:col-span-2">
+                            Maak in Rollen eerst een rol met “Is admin” aan.
+                          </p>
+                        ) : null}
                         <label className="grid gap-2 text-sm font-medium text-slate-700">
                           Kleur
                           <input
@@ -439,10 +582,9 @@ export default function UsersClient() {
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
                           type="button"
                           onClick={saveEdit}
-                          disabled={!canEditRoles}
                         >
                           Opslaan
                         </button>
@@ -457,10 +599,14 @@ export default function UsersClient() {
                     </div>
                   ) : (
                     <>
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900">{item.name}</h3>
+                      <div className="flex items-start gap-3">
+                        {renderUserAvatar(item)}
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-900">{item.name}</h3>
                         <p className="text-sm text-slate-600">{item.email}</p>
-                        <p className="mt-1 text-xs text-slate-500">{roleLabel(item)}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Planning rol: {planningRoleLabel(item)}
+                        </p>
                         <p className="mt-1 text-xs text-slate-500">
                           Laatste login: {item.lastLoginAt || "Onbekend"}
                         </p>
@@ -473,6 +619,7 @@ export default function UsersClient() {
                         <p className="mt-1 text-xs text-slate-500">
                           {item.workingDays?.length ? item.workingDays.map((day) => dayLabels[day]).join(", ") : "Geen werkdagen"}
                         </p>
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -486,18 +633,16 @@ export default function UsersClient() {
                           />
                         </label>
                         <button
-                          className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
                           type="button"
                           onClick={() => startEdit(item)}
-                          disabled={!canEditRoles}
                         >
                           Bewerken
                         </button>
                         <button
-                          className="rounded-lg border border-red-200 px-3 py-1 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg border border-red-200 px-3 py-1 text-sm text-red-600 hover:bg-red-50"
                           type="button"
                           onClick={() => handleDelete(item)}
-                          disabled={!canEditRoles}
                         >
                           Verwijderen
                         </button>
@@ -510,6 +655,22 @@ export default function UsersClient() {
           </div>
         )}
       </section>
+
+      <MediaPickerModal
+        isOpen={showPhotoPicker}
+        onClose={() => setShowPhotoPicker(false)}
+        onSelect={(url) => setPhotoUrl(url)}
+        title="Kies profielfoto"
+        category="profile"
+      />
+
+      <MediaPickerModal
+        isOpen={showEditPhotoPicker}
+        onClose={() => setShowEditPhotoPicker(false)}
+        onSelect={(url) => setEditPhotoUrl(url)}
+        title="Kies profielfoto"
+        category="profile"
+      />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import {
   getWorkOrderDefaults,
   assertStatusExists
 } from '@/lib/settings'
+import { generateWorkOrderNumber } from '@/lib/numbering'
 import { resolveExecutionStatus } from '@/lib/workorders'
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
@@ -143,8 +144,10 @@ export async function POST(request: NextRequest) {
       nextStatus === 'GEPLAND' &&
       !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus)
 
+    const orderNumber = await generateWorkOrderNumber()
     const payload = {
       title,
+      orderNumber,
       licensePlate: licensePlate || vehiclePlate || null,
       scheduledAt: scheduledAt || null,
       assigneeId: assigneeId || null,

@@ -78,6 +78,7 @@ type User = {
   name: string
   active?: boolean
   color?: string | null
+  photoUrl?: string | null
   planningHoursPerDay?: number | null
   workingDays?: string[]
   roleId?: string | null
@@ -88,8 +89,10 @@ type PlanningSettings = {
   dayStart: string
   dayEnd: string
   slotMinutes: number
+  dayViewDays?: number
   selectableSaturday?: boolean
   selectableSunday?: boolean
+  breaks?: Array<{ start: string; end: string }>
 }
 
 type PlanningType = {
@@ -142,7 +145,9 @@ export default function PlanningClient() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [planningTypes, setPlanningTypes] = useState<PlanningType[]>([])
-  const [roles, setRoles] = useState<Array<{ id: string; includeInPlanning?: boolean }>>([])
+  const [roles, setRoles] = useState<
+    Array<{ id: string; name?: string; includeInPlanning?: boolean }>
+  >([])
   const [workOrderStatuses, setWorkOrderStatuses] = useState<StatusEntry[]>([])
   const [statusSelection, setStatusSelection] = useState('')
   const [statusLoadError, setStatusLoadError] = useState<string | null>(null)
@@ -158,6 +163,7 @@ export default function PlanningClient() {
     dayStart: '08:00',
     dayEnd: '17:00',
     slotMinutes: 60,
+    dayViewDays: 3,
     selectableSaturday: false,
     selectableSunday: false
   })
@@ -173,12 +179,20 @@ export default function PlanningClient() {
   const [priority, setPriority] = useState('medium')
   const [durationMinutes, setDurationMinutes] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [viewMode, setViewMode] = useState<ViewMode>('week')
+  const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [now, setNow] = useState<Date>(new Date())
   const [visibleDays, setVisibleDays] = useState(7)
+  const [dayZoom, setDayZoom] = useState(3)
+  const [dayScrollWidth, setDayScrollWidth] = useState(0)
+  const [dayViewStartDate, setDayViewStartDate] = useState<Date>(new Date())
   const weekContainerRef = useRef<HTMLDivElement | null>(null)
+  const dayScrollRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
   const selectedUser = users.find((item) => item.id === assigneeId)
+  const roleNameMap = useMemo(() => {
+    return new Map(roles.map((role) => [role.id, role.name || '']))
+  }, [roles])
   const [dateWarning, setDateWarning] = useState<string | null>(null)
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<PlanningItem | null>(null)
@@ -190,6 +204,13 @@ export default function PlanningClient() {
   const [agreementNotes, setAgreementNotes] = useState('')
   const [activeTab, setActiveTab] = useState<ModalTab>('opdracht')
   const [approving, setApproving] = useState(false)
+  const [hoveredPopover, setHoveredPopover] = useState<{
+    id: string
+    placement: 'down-left' | 'down-right' | 'up-left' | 'up-right'
+  } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOffsetX, setDragOffsetX] = useState(0)
+  const [dragOffsetY, setDragOffsetY] = useState(0)
 
   const raiseError = (message: string) => {
     setError(message)
@@ -202,6 +223,257 @@ export default function PlanningClient() {
     statusOptions.find((item) => item.code === code)?.label || code || '-'
   const warehouseLabel = (code?: string | null) =>
     warehouseStatuses.find((item) => item.code === code)?.label || code || '-'
+  const getInitials = (value: string) =>
+    value
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('') || '?'
+  const truncateText = (value: string, maxLength: number) => {
+    const trimmed = value.trim()
+    if (trimmed.length <= maxLength) return trimmed
+    return `${trimmed.slice(0, Math.max(1, maxLength - 1))}…`
+  }
+  const getPopoverPlacement = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const popoverWidth = 280
+    const popoverHeight = 220
+    const wouldOverflowRight = rect.left + popoverWidth > window.innerWidth
+    const wouldOverflowBottom = rect.bottom + popoverHeight > window.innerHeight
+    return `${wouldOverflowBottom ? 'up' : 'down'}-${wouldOverflowRight ? 'right' : 'left'}` as
+      | 'down-left'
+      | 'down-right'
+      | 'up-left'
+      | 'up-right'
+  }
+  const renderDayPopover = (item: PlanningItem) => {
+    const scheduled = item.scheduledAt ? new Date(item.scheduledAt) : null
+    const duration = Number(item.durationMinutes)
+    const hasDuration = Number.isFinite(duration) && duration > 0
+    const approvalEntry = getIndicatorEntry('approval', getApprovalCode(item))
+    const partsEntry = getIndicatorEntry('partsReadiness', getPartsReadinessCode(item))
+    const complaint = item.assignmentText || item.notes || ''
+    return (
+      <div className="planning-day-popover">
+        {item.isRequest ? (
+          <span className="planning-day-popover-badge">Nieuw</span>
+        ) : null}
+        {item.vehiclePlate ? (
+          <div className="planning-day-popover-row">
+            <span
+              className={`license-plate text-[0.7rem] ${
+                item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+              }`}
+            >
+              {normalizeLicensePlate(item.vehiclePlate)}
+            </span>
+          </div>
+        ) : null}
+        {item.title ? <div className="planning-day-popover-title">{item.title}</div> : null}
+        {item.customerName ? (
+          <div className="planning-day-popover-row">{item.customerName}</div>
+        ) : null}
+        {scheduled ? (
+          <div className="planning-day-popover-row">
+            {format(scheduled, 'dd-MM HH:mm', { locale: nl })}
+            {hasDuration ? ` · ${duration} min` : ''}
+          </div>
+        ) : null}
+        {item.planningTypeName ? (
+          <div className="planning-day-popover-row">Type: {item.planningTypeName}</div>
+        ) : null}
+        {item.assigneeName ? (
+          <div className="planning-day-popover-row">Monteur: {item.assigneeName}</div>
+        ) : null}
+        <div className="planning-day-popover-chips">
+          {approvalEntry ? (
+            <span className="planning-day-popover-chip">{approvalEntry.label}</span>
+          ) : null}
+          {partsEntry ? (
+            <span className="planning-day-popover-chip">{partsEntry.label}</span>
+          ) : null}
+        </div>
+        {item.partsRequired === true ? (
+          <div className="planning-day-popover-row">
+            <span
+              className="inline-flex h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
+            />
+            Onderdelen nodig
+          </div>
+        ) : null}
+        {item.warehouseStatus || item.warehouseEtaDate || item.warehouseLocation ? (
+          <div className="planning-day-popover-row">
+            Magazijn: {warehouseLabel(item.warehouseStatus)}
+            {item.warehouseEtaDate ? ` · ETA ${formatWarehouseEta(item.warehouseEtaDate)}` : ''}
+            {item.warehouseLocation ? ` · Locatie ${item.warehouseLocation}` : ''}
+          </div>
+        ) : null}
+        {complaint ? (
+          <div className="planning-day-popover-row">
+            {truncateText(complaint, 160)}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+  const renderAvatar = (name: string, photoUrl?: string | null, color?: string | null) => {
+    if (photoUrl) {
+      return (
+        <img
+          src={photoUrl}
+          alt={name}
+          className="h-9 w-9 rounded-full border border-slate-200 object-cover"
+        />
+      )
+    }
+    return (
+      <div
+        className="flex h-9 w-9 items-center justify-center rounded-full text-[0.75rem] font-semibold text-white"
+        style={{ backgroundColor: color || '#94a3b8' }}
+        aria-label={name}
+      >
+        {getInitials(name)}
+      </div>
+    )
+  }
+  const renderAssignee = (item: {
+    assigneeId?: string | null
+    assigneeName?: string | null
+    assigneeColor?: string | null
+  }) => {
+    const user = users.find((entry) => entry.id === item.assigneeId)
+    const name = item.assigneeName || user?.name || 'Onbekend'
+    const photoUrl = user?.photoUrl || null
+    const color = user?.color || item.assigneeColor || null
+    return (
+      <span className="inline-flex items-center gap-2">
+        {renderAvatar(name, photoUrl, color)}
+        <span>{name}</span>
+      </span>
+    )
+  }
+
+  const dragRef = useRef<{
+    itemId: string
+    dragged: boolean
+    startX: number
+    startY: number
+    pointerId: number
+    lastDeltaX: number
+    lastDeltaY: number
+    axisLeft: number
+    axisWidth: number
+    startOffsetX: number
+  } | null>(null)
+  const lastDragAtRef = useRef<number>(0)
+  const dragRafRef = useRef<number | null>(null)
+
+  const getAxisFromPoint = (x: number, y: number) => {
+    const element = document.elementFromPoint(x, y) as HTMLElement | null
+    return element?.closest('[data-planning-axis="1"]') as HTMLElement | null
+  }
+
+  const getScheduledDateFromAxis = (axis: HTMLElement, x: number) => {
+    const dayKey = axis.dataset.day
+    if (!dayKey) return null
+    const rect = axis.getBoundingClientRect()
+    const ratio = Math.min(Math.max((x - rect.left) / rect.width, 0), 1)
+    const rawTotal = viewStartMinutes + ratio * viewTotalMinutes
+    const snapMinutes = 15
+    const total = Math.round(rawTotal / snapMinutes) * snapMinutes
+    const hours = Math.floor(total / 60)
+    const minutes = total % 60
+    const date = new Date(`${dayKey}T00:00:00`)
+    date.setHours(hours, minutes, 0, 0)
+    return date
+  }
+
+  const applyDrop = async (item: PlanningItem, axis: HTMLElement, x: number) => {
+    const scheduledDate = getScheduledDateFromAxis(axis, x)
+    if (!scheduledDate) return
+    const targetUserId = axis.dataset.userId || null
+    const targetUser = users.find((user) => user.id === targetUserId)
+    await apiFetch(`/api/planning/${item.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        scheduledAt: scheduledDate.toISOString(),
+        assigneeId: targetUserId || null,
+        assigneeName: targetUser?.name || null,
+        assigneeColor: targetUser?.color || null
+      })
+    })
+    await loadItems()
+  }
+
+  const handleBlockPointerDown = (event: React.PointerEvent<HTMLDivElement>, item: PlanningItem) => {
+    if (viewMode !== 'day') return
+    event.preventDefault()
+    const axis = (event.currentTarget.closest('[data-planning-axis="1"]') as HTMLElement | null)
+    if (!axis) return
+    const rect = axis.getBoundingClientRect()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      itemId: item.id,
+      dragged: false,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerId: event.pointerId,
+      lastDeltaX: 0,
+      lastDeltaY: 0,
+      axisLeft: rect.left,
+      axisWidth: rect.width,
+      startOffsetX: event.clientX - rect.left
+    }
+    setDraggingId(item.id)
+    setDragOffsetX(0)
+    setDragOffsetY(0)
+  }
+
+  const handleBlockPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const dragState = dragRef.current
+    if (!dragState) return
+    const dx = Math.abs(event.clientX - dragState.startX)
+    const dy = Math.abs(event.clientY - dragState.startY)
+    if (!dragState.dragged && dx + dy > 6) {
+      dragState.dragged = true
+    }
+    if (dragState.dragged) {
+      const ratio = Math.min(Math.max((event.clientX - dragState.axisLeft) / dragState.axisWidth, 0), 1)
+      const rawMinutes = viewStartMinutes + ratio * viewTotalMinutes
+      const snapMinutes = 15
+      const snappedMinutes = Math.round(rawMinutes / snapMinutes) * snapMinutes
+      const snappedOffset =
+        ((snappedMinutes - viewStartMinutes) / viewTotalMinutes) * dragState.axisWidth
+      dragState.lastDeltaX = snappedOffset - dragState.startOffsetX
+      dragState.lastDeltaY = event.clientY - dragState.startY
+      if (dragRafRef.current === null) {
+        dragRafRef.current = window.requestAnimationFrame(() => {
+          dragRafRef.current = null
+          setDragOffsetX(dragState.lastDeltaX)
+          setDragOffsetY(dragState.lastDeltaY)
+        })
+      }
+    }
+  }
+
+  const handleBlockPointerUp = async (event: React.PointerEvent<HTMLDivElement>, item: PlanningItem) => {
+    const dragState = dragRef.current
+    if (!dragState) return
+    if (event.currentTarget.hasPointerCapture(dragState.pointerId)) {
+      event.currentTarget.releasePointerCapture(dragState.pointerId)
+    }
+    dragRef.current = null
+    setDraggingId(null)
+    setDragOffsetX(0)
+    setDragOffsetY(0)
+    if (!dragState.dragged) return
+    lastDragAtRef.current = Date.now()
+    const axis = getAxisFromPoint(event.clientX, event.clientY)
+    if (!axis) return
+    await applyDrop(item, axis, event.clientX)
+  }
   const formatWarehouseEta = (value: any) => {
     if (!value) return null
     if (value.seconds) {
@@ -347,6 +619,30 @@ export default function PlanningClient() {
   const formatDuration = (minutes?: number | null) => {
     const value = Number(minutes)
     if (!Number.isFinite(value) || value <= 0) return '-'
+    const hrs = Math.floor(value / 60)
+    const mins = Math.round(value % 60)
+    return `${hrs}:${String(mins).padStart(2, '0')}`
+  }
+
+  const parseDurationMinutes = (raw: string) => {
+    const trimmed = String(raw || '').trim()
+    if (!trimmed) return null
+    if (trimmed.includes(':')) {
+      const [hrsRaw, minsRaw] = trimmed.split(':')
+      const hrs = Number(hrsRaw)
+      const mins = Number(minsRaw)
+      if (!Number.isFinite(hrs) || !Number.isFinite(mins)) return null
+      if (hrs < 0 || mins < 0 || mins >= 60) return null
+      return hrs * 60 + mins
+    }
+    const asNumber = Number(trimmed)
+    if (!Number.isFinite(asNumber) || asNumber <= 0) return null
+    return Math.round(asNumber)
+  }
+
+  const formatDurationInput = (minutes?: number | null) => {
+    const value = Number(minutes)
+    if (!Number.isFinite(value) || value <= 0) return ''
     const hrs = Math.floor(value / 60)
     const mins = Math.round(value % 60)
     return `${hrs}:${String(mins).padStart(2, '0')}`
@@ -552,10 +848,18 @@ export default function PlanningClient() {
         dayStart: data.item?.data?.dayStart || '08:00',
         dayEnd: data.item?.data?.dayEnd || '17:00',
         slotMinutes: Number(data.item?.data?.slotMinutes ?? 60),
+        dayViewDays: Number(data.item?.data?.dayViewDays ?? 3),
         selectableSaturday: Boolean(data.item?.data?.selectableSaturday),
-        selectableSunday: Boolean(data.item?.data?.selectableSunday)
+        selectableSunday: Boolean(data.item?.data?.selectableSunday),
+        breaks: Array.isArray(data.item?.data?.breaks)
+          ? data.item.data.breaks.map((entry: any) => ({
+              start: String(entry?.start || ''),
+              end: String(entry?.end || '')
+            }))
+          : []
       }
       setPlanningSettings(next)
+      setDayZoom(Math.max(1, Math.min(5, Number(next.dayViewDays || 3))))
     } catch (err) {
       console.error('Failed to load planning settings:', err)
       setSettingsWarning('Planning instellingen niet beschikbaar.')
@@ -628,6 +932,52 @@ export default function PlanningClient() {
     }
   }, [viewMode])
 
+  useEffect(() => {
+    if (viewMode !== 'day') return
+    const node = dayScrollRef.current
+    if (!node) return
+
+    const update = () => {
+      setDayScrollWidth(node.clientWidth)
+    }
+
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(node)
+    window.addEventListener('resize', update)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', update)
+    }
+  }, [viewMode])
+
+  useEffect(() => {
+    if (viewMode !== 'day') return
+    const tick = () => setNow(new Date())
+    const interval = setInterval(tick, 60000)
+    return () => clearInterval(interval)
+  }, [viewMode])
+
+  const handleDayScroll = () => {
+    const node = dayScrollRef.current
+    if (!node) return
+    const totalWidth = dayColumnWidth * dayViewWindowDays
+    const maxScrollLeft = Math.max(0, totalWidth - node.clientWidth)
+    if (maxScrollLeft <= 0) return
+    const threshold = dayColumnWidth * 2
+    if (node.scrollLeft < threshold) {
+      const shiftDays = Math.floor(dayViewWindowDays / 3)
+      setDayViewStartDate((prev) => addDays(prev, -shiftDays))
+      node.scrollLeft += dayColumnWidth * shiftDays
+      setCurrentDate((prev) => addDays(prev, -shiftDays))
+    } else if (node.scrollLeft > maxScrollLeft - threshold) {
+      const shiftDays = Math.floor(dayViewWindowDays / 3)
+      setDayViewStartDate((prev) => addDays(prev, shiftDays))
+      node.scrollLeft -= dayColumnWidth * shiftDays
+      setCurrentDate((prev) => addDays(prev, shiftDays))
+    }
+  }
+
   const getDateTimeFromClick = (
     day: Date,
     event: React.MouseEvent<HTMLDivElement>
@@ -636,8 +986,8 @@ export default function PlanningClient() {
     const rawY = event.clientY - rect.top
     const clampedY = Math.min(Math.max(rawY, 0), rect.height)
     const minutesFromStart =
-      Math.round((clampedY / rect.height) * totalMinutes / slotMinutes) * slotMinutes
-    const total = dayStartMinutes + minutesFromStart
+      Math.round((clampedY / rect.height) * viewTotalMinutes / slotMinutes) * slotMinutes
+    const total = viewStartMinutes + minutesFromStart
     const hours = Math.floor(total / 60)
     const minutes = total % 60
     const date = new Date(day)
@@ -669,7 +1019,7 @@ export default function PlanningClient() {
     )
     setAgreementNotes(item.agreementNotes || '')
     setPriority(item.priority || 'medium')
-    setDurationMinutes(item.durationMinutes ? String(item.durationMinutes) : '')
+    setDurationMinutes(formatDurationInput(item.durationMinutes))
     setStatusSelection(item.workOrderStatus || item.status || '')
     setCreateWorkOrder(Boolean(item.workOrderId))
     setPartsRequired(item.partsRequired === true)
@@ -734,8 +1084,34 @@ export default function PlanningClient() {
 
   const dayStartMinutes = toMinutes(planningSettings.dayStart)
   const dayEndMinutes = toMinutes(planningSettings.dayEnd)
+  const viewStartMinutes = Math.min(dayStartMinutes, 8 * 60)
+  const viewTotalMinutes = Math.max(dayEndMinutes - viewStartMinutes, 60)
   const totalMinutes = Math.max(dayEndMinutes - dayStartMinutes, 60)
   const slotMinutes = Math.max(planningSettings.slotMinutes || 60, 15)
+  const dayViewDays = Math.max(0.5, Math.min(5, Number(dayZoom || 1)))
+  const dayViewWindowDays = Math.max(10, Math.ceil(dayViewDays * 10))
+  const dayViewDates = Array.from({ length: dayViewWindowDays }).map((_, index) =>
+    addDays(dayViewStartDate, index)
+  )
+  const dayColumnWidth =
+    dayScrollWidth > 0 ? Math.max(320, dayScrollWidth / dayViewDays) : 520
+  const showAllHours = dayColumnWidth >= 520
+  const getNowPercentForDay = (day: Date) => {
+    if (!isSameDay(day, now)) return null
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    if (nowMinutes < viewStartMinutes || nowMinutes > viewStartMinutes + viewTotalMinutes) return null
+    return ((nowMinutes - viewStartMinutes) / viewTotalMinutes) * 100
+  }
+  useEffect(() => {
+    if (viewMode !== 'day') return
+    const node = dayScrollRef.current
+    if (!node) return
+    const midIndex = Math.floor(dayViewWindowDays / 2)
+    setDayViewStartDate(addDays(currentDate, -midIndex))
+    requestAnimationFrame(() => {
+      node.scrollLeft = dayColumnWidth * midIndex
+    })
+  }, [viewMode, currentDate, dayViewWindowDays, dayColumnWidth])
   const rowHeight = 48
   const pxPerMinute = rowHeight / slotMinutes
   const gridHeight = (totalMinutes / slotMinutes) * rowHeight
@@ -743,6 +1119,116 @@ export default function PlanningClient() {
   const timeSlots = Array.from({ length: Math.ceil(totalMinutes / slotMinutes) + 1 }).map(
     (_, index) => addMinutes(new Date(0, 0, 0, 0, 0, 0), dayStartMinutes + index * slotMinutes)
   )
+
+  const getBreakSegments = () => {
+    return (planningSettings.breaks || [])
+      .map((entry) => {
+        const startMinutes = toMinutes(entry.start)
+        const endMinutes = toMinutes(entry.end)
+        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return null
+        if (endMinutes <= startMinutes) return null
+        const clampedStart = Math.max(startMinutes, dayStartMinutes)
+        const clampedEnd = Math.min(endMinutes, dayEndMinutes)
+        if (clampedEnd <= clampedStart) return null
+        return { start: clampedStart, end: clampedEnd }
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a?.start ?? 0) - (b?.start ?? 0)) as Array<{
+      start: number
+      end: number
+    }>
+  }
+
+  const addWorkMinutes = (start: Date, minutes: number) => {
+    let remaining = Math.max(0, Math.round(minutes))
+    let cursor = new Date(start)
+    const breaks = getBreakSegments()
+
+    while (remaining > 0) {
+      let minuteOfDay = cursor.getHours() * 60 + cursor.getMinutes()
+
+      if (minuteOfDay < dayStartMinutes) {
+        cursor.setHours(Math.floor(dayStartMinutes / 60), dayStartMinutes % 60, 0, 0)
+        minuteOfDay = dayStartMinutes
+      }
+
+      if (minuteOfDay >= dayEndMinutes) {
+        cursor.setDate(cursor.getDate() + 1)
+        cursor.setHours(Math.floor(dayStartMinutes / 60), dayStartMinutes % 60, 0, 0)
+        continue
+      }
+
+      const activeBreak = breaks.find((segment) => minuteOfDay >= segment.start && minuteOfDay < segment.end)
+      if (activeBreak) {
+        cursor.setHours(Math.floor(activeBreak.end / 60), activeBreak.end % 60, 0, 0)
+        continue
+      }
+
+      const nextBreak = breaks.find((segment) => segment.start > minuteOfDay)
+      const nextStop = Math.min(nextBreak?.start ?? dayEndMinutes, dayEndMinutes)
+      const available = nextStop - minuteOfDay
+      if (available <= 0) {
+        cursor.setMinutes(cursor.getMinutes() + 1)
+        continue
+      }
+
+      const used = Math.min(available, remaining)
+      cursor = new Date(cursor.getTime() + used * 60 * 1000)
+      remaining -= used
+    }
+
+    return cursor
+  }
+
+  const getDailyWorkIntervals = () => {
+    const breaks = getBreakSegments()
+    if (dayEndMinutes <= dayStartMinutes) return []
+    if (breaks.length === 0) {
+      return [{ start: dayStartMinutes, end: dayEndMinutes }]
+    }
+    const intervals: Array<{ start: number; end: number }> = []
+    let cursor = dayStartMinutes
+    for (const entry of breaks) {
+      if (entry.start > cursor) {
+        intervals.push({ start: cursor, end: entry.start })
+      }
+      cursor = Math.max(cursor, entry.end)
+    }
+    if (cursor < dayEndMinutes) {
+      intervals.push({ start: cursor, end: dayEndMinutes })
+    }
+    return intervals.filter((interval) => interval.end > interval.start)
+  }
+
+  const buildSegmentsByDay = (start: Date, minutes: number) => {
+    const totalMinutes = Math.max(0, Math.round(minutes))
+    const result = new Map<string, Array<{ start: number; end: number }>>()
+    if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return result
+    const end = addWorkMinutes(start, totalMinutes)
+    let cursor = new Date(start)
+    cursor.setHours(0, 0, 0, 0)
+
+    while (cursor <= end) {
+      const dayKey = format(cursor, 'yyyy-MM-dd')
+      const dayStart = new Date(cursor)
+      dayStart.setHours(Math.floor(dayStartMinutes / 60), dayStartMinutes % 60, 0, 0)
+      const dayEnd = new Date(cursor)
+      dayEnd.setHours(Math.floor(dayEndMinutes / 60), dayEndMinutes % 60, 0, 0)
+
+      const segmentStart = cursor.toDateString() === start.toDateString() ? start : dayStart
+      const segmentEnd = cursor.toDateString() === end.toDateString() ? end : dayEnd
+
+      if (segmentEnd > segmentStart) {
+        const startMinute = segmentStart.getHours() * 60 + segmentStart.getMinutes()
+        const endMinute = segmentEnd.getHours() * 60 + segmentEnd.getMinutes()
+        result.set(dayKey, [{ start: startMinute, end: endMinute }])
+      }
+
+      cursor.setDate(cursor.getDate() + 1)
+    }
+
+    return result
+  }
 
   const getItemsForDay = (day: Date) =>
     filteredItems.filter((item) => isSameDay(new Date(item.scheduledAt), day))
@@ -756,6 +1242,15 @@ export default function PlanningClient() {
       if (!Number.isFinite(hours) || hours <= 0) return total
       return total + hours * 60
     }, 0)
+  }
+
+  const isUserAssignableForDay = (user: User, day: Date) => {
+    if (user.active === false) return false
+    const dayKey = DAY_KEYS[day.getDay()]
+    if (user.workingDays?.length && !user.workingDays.includes(dayKey)) return false
+    const hours = Number(user.planningHoursPerDay)
+    if (!Number.isFinite(hours) || hours <= 0) return false
+    return true
   }
 
   const getPlannedMinutesForDay = (day: Date) =>
@@ -947,108 +1442,197 @@ export default function PlanningClient() {
     )
   }
 
-  const renderDaySchedule = () => {
-    const day = currentDate
-    const totalMinutesRange = Math.max(dayEndMinutes - dayStartMinutes, 60)
+  const renderDaySchedule = (
+    day: Date,
+    options: { showAllHours: boolean }
+  ) => {
+    const totalMinutesRange = viewTotalMinutes
     const hourSlots = Array.from({
       length: Math.floor(totalMinutesRange / 60) + 1
     }).map((_, index) =>
-      addMinutes(new Date(0, 0, 0, 0, 0, 0), dayStartMinutes + index * 60)
+      addMinutes(new Date(0, 0, 0, 0, 0, 0), viewStartMinutes + index * 60)
     )
+    const gridSlots = hourSlots.slice(0, -1)
+    const timelineMinutes = totalMinutesRange
 
-    const dayItems = getItemsForDay(day)
+    const dayItems = filteredItems.filter((item) => Boolean(item.scheduledAt))
     const getRowItems = (userId: string) =>
       dayItems.filter((item) => item.assigneeId === userId)
     const unassignedItems = dayItems.filter((item) => !item.assigneeId)
+    const availabilityMinutes = Math.max(dayEndMinutes - dayStartMinutes, 0)
+    const availabilityLeft = ((dayStartMinutes - viewStartMinutes) / timelineMinutes) * 100
+    const availabilityWidth =
+      availabilityMinutes > 0 ? (availabilityMinutes / timelineMinutes) * 100 : 0
+    const breakSegments = (planningSettings.breaks || [])
+      .map((entry) => {
+        const startMinutes = toMinutes(entry.start)
+        const endMinutes = toMinutes(entry.end)
+        if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) return null
+        if (endMinutes <= startMinutes) return null
+        const clampedStart = Math.max(startMinutes, dayStartMinutes)
+        const clampedEnd = Math.min(endMinutes, dayEndMinutes)
+        if (clampedEnd <= clampedStart) return null
+        return {
+          left:
+            availabilityMinutes > 0
+              ? ((clampedStart - dayStartMinutes) / availabilityMinutes) * 100
+              : 0,
+          width:
+            availabilityMinutes > 0
+              ? ((clampedEnd - clampedStart) / availabilityMinutes) * 100
+              : 0
+        }
+      })
+      .filter(Boolean) as Array<{ left: number; width: number }>
+
+    const labelEvery = showAllHours ? 1 : 2
 
     return (
-      <div className="planning-day-schedule">
+      <div className="planning-day-schedule planning-day-compact">
         <div className="planning-day-header">
           <div className="planning-day-label">Werknemer</div>
-          <div className="planning-day-axis">
-            {hourSlots.map((slot) => (
-              <div key={slot.toISOString()} className="planning-day-axis-slot">
-                {format(slot, 'HH:mm')}
-              </div>
-            ))}
+          <div
+            className="planning-day-axis"
+            style={{ gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))` }}
+          >
+            {gridSlots.map((slot, index) => {
+              const minutes = slot.getMinutes()
+              const labelTime =
+                minutes === 0 ? slot : addMinutes(slot, 60 - minutes)
+              return (
+                <div key={slot.toISOString()} className="planning-day-axis-slot">
+                  {index % labelEvery === 0 ? format(labelTime, 'HH:mm') : ''}
+                </div>
+              )
+            })}
+            <div className="planning-day-axis-endlabel">
+              {format(hourSlots[hourSlots.length - 1], 'HH:mm')}
+            </div>
           </div>
         </div>
         <div className="planning-day-rows">
           {users.map((user) => (
             <div key={user.id} className="planning-day-row">
-              <div className="planning-day-label">{user.name}</div>
+              <div className="planning-day-label">
+                <span className="inline-flex items-center gap-2">
+                  {renderAvatar(user.name, user.photoUrl, user.color)}
+                  <span>{user.name}</span>
+                </span>
+              </div>
               <div
                 className="planning-day-axis"
+                data-planning-axis="1"
+                data-day={format(day, 'yyyy-MM-dd')}
+                data-user-id={user.id}
+                style={{ gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))` }}
                 onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
               >
-                {hourSlots.map((slot) => (
+                {isUserAssignableForDay(user, day) ? (
+                  <div
+                    className="planning-day-availability"
+                    aria-hidden="true"
+                    style={{
+                      left: `${availabilityLeft}%`,
+                      width: `${availabilityWidth}%`
+                    }}
+                  >
+                    {breakSegments.map((segment, index) => (
+                      <div
+                        key={`break-${index}`}
+                        className="planning-day-break"
+                        style={{
+                          left: `${segment.left}%`,
+                          width: `${segment.width}%`
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {gridSlots.map((slot, index) => (
                   <div key={slot.toISOString()} className="planning-day-axis-slot" />
                 ))}
-                {getRowItems(user.id).map((item) => {
+                {getRowItems(user.id).flatMap((item) => {
                   const start = new Date(item.scheduledAt)
-                  const startMinutes = start.getHours() * 60 + start.getMinutes()
                   const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                  const leftPercent = ((startMinutes - dayStartMinutes) / totalMinutesRange) * 100
-                  const widthPercent = (duration / totalMinutesRange) * 100
-                  const borderColor = item.assigneeColor || '#4f46e5'
-                  return (
-                    <div
-                      key={item.id}
-                      className="planning-day-block"
-                      style={{
-                        left: `${leftPercent}%`,
-                        width: `${widthPercent}%`,
-                        borderColor,
-                        background: item.planningTypeColor
-                          ? `${item.planningTypeColor}1A`
-                          : undefined
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handlePlanningClick(item)
-                      }}
-                    >
-                      <div className="mb-1 flex flex-wrap items-center gap-1">
-                        {item.isRequest ? (
-                          <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.55rem] font-semibold uppercase text-emerald-700">
-                            Nieuw
-                          </span>
-                        ) : null}
-                        <span className="inline-flex max-w-full rounded-full bg-slate-100 px-2 py-0.5 text-[0.55rem] font-semibold uppercase text-slate-600">
-                          {statusLabel(item.workOrderStatus || item.status)}
-                        </span>
+                  const segmentsByDay = buildSegmentsByDay(start, duration)
+                  const dayKey = format(day, 'yyyy-MM-dd')
+                  const segments = segmentsByDay.get(dayKey) || []
+                  if (segments.length === 0) return []
+                  const backgroundColor =
+                    item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                  const textColor = getReadableTextColor(backgroundColor)
+                  return segments.map((segment, index) => {
+                    const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
+                    const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
+                    const hoverId = `${item.id}-${dayKey}-${index}-assigned`
+                    const placement =
+                      hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
+                    const showCustomer = widthPercent >= 18
+                    const showPlate = widthPercent >= 10
+                    const plate =
+                      item.vehiclePlate && showPlate
+                        ? normalizeLicensePlate(item.vehiclePlate)
+                        : null
+                    const customer =
+                      item.customerName && showCustomer
+                        ? truncateText(item.customerName, 16)
+                        : null
+                    return (
+                      <div
+                        key={hoverId}
+                        className={`planning-day-block${
+                          placement ? ` planning-day-block--${placement}` : ''
+                        }${draggingId === item.id ? ' planning-day-block--dragging' : ''}`}
+                        style={{
+                          left: `${leftPercent}%`,
+                          width: `${widthPercent}%`,
+                          borderColor: backgroundColor,
+                          background: backgroundColor,
+                          color: textColor,
+                          transform:
+                            draggingId === item.id
+                              ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
+                              : undefined
+                        }}
+                        onPointerDown={(event) => handleBlockPointerDown(event, item)}
+                        onPointerMove={handleBlockPointerMove}
+                        onPointerUp={(event) => handleBlockPointerUp(event, item)}
+                        onMouseEnter={(event) =>
+                          draggingId
+                            ? null
+                            : setHoveredPopover({
+                                id: hoverId,
+                                placement: getPopoverPlacement(event)
+                              })
+                        }
+                        onMouseLeave={() => setHoveredPopover(null)}
+                        onClick={(event) => {
+                          if (Date.now() - lastDragAtRef.current < 200) return
+                          event.stopPropagation()
+                          handlePlanningClick(item)
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
+                          {plate ? (
+                            <span
+                              className={`license-plate text-[0.7rem] ${
+                                item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                              }`}
+                            >
+                              {plate}
+                            </span>
+                          ) : null}
+                          {customer ? (
+                            <span className="min-w-0 truncate font-semibold">{customer}</span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 truncate text-[0.72rem] font-semibold">
+                          {item.title || item.planningTypeName || 'Planning'}
+                        </div>
+                        {renderDayPopover(item)}
                       </div>
-                      <div className="flex flex-wrap items-center gap-1 text-[0.7rem]">
-                        <span
-                          className={`license-plate text-[0.7rem] ${
-                            item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                          }`}
-                        >
-                          {item.vehiclePlate ? normalizeLicensePlate(item.vehiclePlate) : '-'}
-                        </span>
-                        <span className="font-semibold text-slate-900">{item.title}</span>
-                        <span className="text-slate-400">|</span>
-                        {renderIndicatorChip(getIndicatorEntry('approval', getApprovalCode(item)), '—')}
-                        {renderIndicatorChip(getIndicatorEntry('partsReadiness', getPartsReadinessCode(item)), '—')}
-                      </div>
-                      <p className="text-slate-600">
-                        {format(start, 'HH:mm', { locale: nl })} ·{' '}
-                        {item.assigneeName || 'Onbekend'}
-                      </p>
-                      {item.partsRequired === true ? (
-                        <p className="flex items-center gap-2 text-slate-600">
-                          <span
-                            className="inline-flex h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
-                          />
-                          Onderdelen nodig
-                        </p>
-                      ) : null}
-                      {item.planningTypeName ? (
-                        <p className="text-slate-500">Type: {item.planningTypeName}</p>
-                      ) : null}
-                    </div>
-                  )
+                    )
+                  })
                 })}
               </div>
             </div>
@@ -1057,76 +1641,97 @@ export default function PlanningClient() {
             <div className="planning-day-label">Nog niet ingepland</div>
             <div
               className="planning-day-axis"
+              data-planning-axis="1"
+              data-day={format(day, 'yyyy-MM-dd')}
+              data-user-id=""
+              style={{ gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))` }}
               onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
             >
-              {hourSlots.map((slot) => (
+              {gridSlots.map((slot) => (
                 <div key={slot.toISOString()} className="planning-day-axis-slot" />
               ))}
-              {unassignedItems.map((item) => {
+              {unassignedItems.flatMap((item) => {
                 const start = new Date(item.scheduledAt)
-                const startMinutes = start.getHours() * 60 + start.getMinutes()
                 const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                const leftPercent = ((startMinutes - dayStartMinutes) / totalMinutesRange) * 100
-                const widthPercent = (duration / totalMinutesRange) * 100
-                const borderColor = item.assigneeColor || '#0f172a'
-                return (
-                  <div
-                    key={item.id}
-                    className="planning-day-block"
-                    style={{
-                      left: `${leftPercent}%`,
-                      width: `${widthPercent}%`,
-                      borderColor,
-                      background: item.planningTypeColor
-                        ? `${item.planningTypeColor}1A`
-                        : undefined
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handlePlanningClick(item)
-                    }}
-                  >
-                    <div className="mb-1 flex flex-wrap items-center gap-1">
-                      {item.isRequest ? (
-                        <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[0.55rem] font-semibold uppercase text-emerald-700">
-                          Nieuw
-                        </span>
-                      ) : null}
-                      <span className="inline-flex max-w-full rounded-full bg-slate-100 px-2 py-0.5 text-[0.55rem] font-semibold uppercase text-slate-600">
-                        {statusLabel(item.workOrderStatus || item.status)}
-                      </span>
+                const segmentsByDay = buildSegmentsByDay(start, duration)
+                const dayKey = format(day, 'yyyy-MM-dd')
+                const segments = segmentsByDay.get(dayKey) || []
+                if (segments.length === 0) return []
+                const backgroundColor =
+                  item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                const textColor = getReadableTextColor(backgroundColor)
+                return segments.map((segment, index) => {
+                  const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
+                  const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
+                  const hoverId = `${item.id}-${dayKey}-${index}-unassigned`
+                  const placement =
+                    hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
+                  const showCustomer = widthPercent >= 18
+                  const showPlate = widthPercent >= 10
+                  const plate =
+                    item.vehiclePlate && showPlate
+                      ? normalizeLicensePlate(item.vehiclePlate)
+                      : null
+                  const customer =
+                    item.customerName && showCustomer
+                      ? truncateText(item.customerName, 16)
+                      : null
+                  return (
+                    <div
+                      key={hoverId}
+                      className={`planning-day-block${
+                        placement ? ` planning-day-block--${placement}` : ''
+                      }${draggingId === item.id ? ' planning-day-block--dragging' : ''}`}
+                      style={{
+                        left: `${leftPercent}%`,
+                        width: `${widthPercent}%`,
+                        borderColor: backgroundColor,
+                        background: backgroundColor,
+                        color: textColor,
+                        transform:
+                          draggingId === item.id
+                            ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
+                            : undefined
+                      }}
+                      onPointerDown={(event) => handleBlockPointerDown(event, item)}
+                      onPointerMove={handleBlockPointerMove}
+                      onPointerUp={(event) => handleBlockPointerUp(event, item)}
+                      onMouseEnter={(event) =>
+                        draggingId
+                          ? null
+                          : setHoveredPopover({
+                              id: hoverId,
+                              placement: getPopoverPlacement(event)
+                            })
+                      }
+                      onMouseLeave={() => setHoveredPopover(null)}
+                      onClick={(event) => {
+                        if (Date.now() - lastDragAtRef.current < 200) return
+                        event.stopPropagation()
+                        handlePlanningClick(item)
+                      }}
+                    >
+                      <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
+                        {plate ? (
+                          <span
+                            className={`license-plate text-[0.7rem] ${
+                              item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                            }`}
+                          >
+                            {plate}
+                          </span>
+                        ) : null}
+                        {customer ? (
+                          <span className="min-w-0 truncate font-semibold">{customer}</span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 truncate text-[0.72rem] font-semibold">
+                        {item.title || item.planningTypeName || 'Planning'}
+                      </div>
+                      {renderDayPopover(item)}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1 text-[0.7rem]">
-                      <span
-                        className={`license-plate text-[0.7rem] ${
-                          item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                        }`}
-                      >
-                        {item.vehiclePlate ? normalizeLicensePlate(item.vehiclePlate) : '-'}
-                      </span>
-                      <span className="font-semibold text-slate-900">{item.title}</span>
-                      <span className="text-slate-400">|</span>
-                      {renderIndicatorChip(getIndicatorEntry('approval', getApprovalCode(item)), '—')}
-                      {renderIndicatorChip(getIndicatorEntry('partsReadiness', getPartsReadinessCode(item)), '—')}
-                    </div>
-                    <p className="text-slate-600">
-                      {format(start, 'HH:mm', { locale: nl })} ·{' '}
-                      {item.assigneeName || 'Onbekend'}
-                    </p>
-                    {item.partsRequired === true ? (
-                      <p className="flex items-center gap-2 text-slate-600">
-                        <span
-                          className="inline-flex h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
-                        />
-                        Onderdelen nodig
-                      </p>
-                    ) : null}
-                    {item.planningTypeName ? (
-                      <p className="text-slate-500">Type: {item.planningTypeName}</p>
-                    ) : null}
-                  </div>
-                )
+                  )
+                })
               })}
             </div>
           </div>
@@ -1159,16 +1764,18 @@ export default function PlanningClient() {
         throw new Error('Deze werknemer werkt niet op deze dag.')
       }
 
-      const duration =
-        durationMinutes !== '' ? Number(durationMinutes) : planningSettings.defaultDurationMinutes
+      const parsedDuration = parseDurationMinutes(durationMinutes)
+      const duration = parsedDuration ?? planningSettings.defaultDurationMinutes
+      if (!Number.isFinite(duration) || duration <= 0) {
+        throw new Error('Duur moet in het formaat uu:mm zijn.')
+      }
       if (selectedUser.planningHoursPerDay && duration > selectedUser.planningHoursPerDay * 60) {
         throw new Error('Duur is langer dan planbare uren van deze werknemer.')
       }
 
       const startMinutes = scheduledDate.getHours() * 60 + scheduledDate.getMinutes()
-      const endMinutes = startMinutes + duration
-      if (startMinutes < dayStartMinutes || endMinutes > dayEndMinutes) {
-        throw new Error('Planning valt buiten de ingestelde dagtijden.')
+      if (startMinutes < dayStartMinutes || startMinutes >= dayEndMinutes) {
+        throw new Error('Planning start buiten de ingestelde dagtijden.')
       }
       if (overlapWarning) {
         throw new Error(overlapWarning)
@@ -1197,7 +1804,7 @@ export default function PlanningClient() {
         agreementNotes: agreementNotes || null,
         priority,
         partsRequired,
-        durationMinutes: durationMinutes ? Number(durationMinutes) : null,
+        durationMinutes: parsedDuration ?? null,
         createWorkOrder: createWorkOrder
       }
 
@@ -1233,30 +1840,33 @@ export default function PlanningClient() {
       setDateWarning('Deze werknemer werkt niet op de gekozen dag.')
       return
     }
-    const duration =
-      durationMinutes !== '' ? Number(durationMinutes) : planningSettings.defaultDurationMinutes
+    const parsedDuration = parseDurationMinutes(durationMinutes)
+    const duration = parsedDuration ?? planningSettings.defaultDurationMinutes
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setDateWarning('Duur moet in het formaat uu:mm zijn.')
+      setOverlapWarning(null)
+      return
+    }
     if (selectedUser.planningHoursPerDay && duration > selectedUser.planningHoursPerDay * 60) {
       setDateWarning('Duur is langer dan planbare uren van deze werknemer.')
       return
     }
     const startMinutes = scheduledDate.getHours() * 60 + scheduledDate.getMinutes()
-    const endMinutes = startMinutes + duration
-    if (startMinutes < dayStartMinutes || endMinutes > dayEndMinutes) {
-      setDateWarning('Planning valt buiten de ingestelde dagtijden.')
+    if (startMinutes < dayStartMinutes || startMinutes >= dayEndMinutes) {
+      setDateWarning('Planning start buiten de ingestelde dagtijden.')
       setOverlapWarning(null)
       return
     }
     setDateWarning(null)
 
+    const scheduledEnd = addWorkMinutes(scheduledDate, duration)
     const overlap = items.some((item) => {
       if (editingItem && item.id === editingItem.id) return false
       if (item.assigneeId !== assigneeId) return false
       const existingStart = new Date(item.scheduledAt)
-      if (existingStart.toDateString() !== scheduledDate.toDateString()) return false
       const existingDuration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-      const existingStartMinutes = existingStart.getHours() * 60 + existingStart.getMinutes()
-      const existingEndMinutes = existingStartMinutes + existingDuration
-      return startMinutes < existingEndMinutes && endMinutes > existingStartMinutes
+      const existingEnd = addWorkMinutes(existingStart, existingDuration)
+      return scheduledDate < existingEnd && scheduledEnd > existingStart
     })
     if (overlap) {
       setOverlapWarning('Deze werknemer heeft al een afspraak in dit tijdsblok.')
@@ -1335,6 +1945,25 @@ export default function PlanningClient() {
     }
   }
 
+  const planningLegend = (
+    <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
+      {planningTypes.map((type) => (
+        <span key={type.id} className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-flex h-2.5 w-2.5 rounded-full"
+            style={{
+              backgroundColor: type.color,
+              borderColor: type.color,
+              borderWidth: '1px',
+              borderStyle: 'solid'
+            }}
+          />
+          <span>{type.name}</span>
+        </span>
+      ))}
+    </div>
+  )
+
   return (
     <div className="space-y-10">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1361,6 +1990,15 @@ export default function PlanningClient() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-semibold">Notitie</p>
+          <p>
+            Voor demo- of testdata kun je snel afspraken toevoegen met het script
+            <span className="font-medium"> scripts/seed-planning-week.js</span> (8-12 per dag, verdeeld over monteurs).
+            Als dit niet meer nodig is, kan het script later verwijderd worden.
+          </p>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1409,15 +2047,95 @@ export default function PlanningClient() {
         <div className="mt-6">
           {viewMode === 'day' ? (
             <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <div className="mb-3 text-sm font-semibold text-slate-700">
-                {format(currentDate, 'EEEE d MMMM', { locale: nl })}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+                <span>Dag‑overzicht (horizontaal)</span>
+                {planningLegend}
               </div>
-              {renderDaySchedule()}
+              <div className="mb-4 flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
+                <label className="flex items-center gap-2">
+                  Dagen zichtbaar
+                  <input
+                    type="range"
+                    className="planning-range"
+                    min={0.5}
+                    max={5}
+                    step={0.1}
+                    value={dayZoom}
+                    onChange={(event) => setDayZoom(Number(event.target.value))}
+                  />
+                  <span className="text-slate-700">
+                    {dayZoom.toFixed(1)}
+                  </span>
+                </label>
+              </div>
+              <div className="planning-day-wrapper">
+                <div className="planning-day-labels">
+                  <div className="planning-day-title-spacer" />
+                  <div className="planning-day-label-header">Werknemer</div>
+                  {users.map((user) => {
+                    const roleName =
+                      user.roleId && roleNameMap.get(user.roleId)
+                        ? roleNameMap.get(user.roleId)
+                        : ''
+                    return (
+                      <div key={user.id} className="planning-day-label-cell">
+                        <div className="planning-day-label-name">
+                          <span className="inline-flex items-center gap-2">
+                            {renderAvatar(user.name, user.photoUrl, user.color)}
+                            <span>{user.name}</span>
+                          </span>
+                        </div>
+                        {roleName ? (
+                          <div className="planning-day-label-role">{roleName}</div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                  <div className="planning-day-label-cell">Nog niet ingepland</div>
+                </div>
+                <div
+                  ref={dayScrollRef}
+                  className="planning-day-scroll"
+                  onScroll={handleDayScroll}
+                >
+                  <div
+                    className="planning-day-track"
+                    style={{
+                      gridTemplateColumns: `repeat(${dayViewWindowDays}, ${dayColumnWidth}px)`
+                    }}
+                  >
+                    {dayViewDates.map((day) => (
+                      <div key={day.toISOString()} className="planning-day-column">
+                        <div className="planning-day-title">
+                          {format(day, 'EEEE d MMMM', { locale: nl })}
+                        </div>
+                        <div className="planning-day-column-body">
+                          {getNowPercentForDay(day) !== null ? (
+                            <div
+                              className="planning-day-column-nowline"
+                              style={{ left: `${getNowPercentForDay(day)}%` }}
+                            >
+                              <span className="planning-day-column-nowlabel">
+                                {format(now, 'HH:mm', { locale: nl })}
+                              </span>
+                            </div>
+                          ) : null}
+                          {renderDaySchedule(day, { showAllHours })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
 
           {viewMode === 'week' ? (
             <div ref={weekContainerRef} className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+                <span>Week‑overzicht</span>
+                {planningLegend}
+              </div>
               <div
                 className="grid gap-2 text-xs font-semibold text-slate-600"
                 style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(0, 1fr))` }}
@@ -1467,7 +2185,12 @@ export default function PlanningClient() {
           ) : null}
 
           {viewMode === 'month' ? (
-            <div className="grid gap-2 md:grid-cols-7">
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm font-semibold text-slate-700">
+                <span>Maand‑overzicht</span>
+                {planningLegend}
+              </div>
+              <div className="grid gap-2 md:grid-cols-7">
               {Array.from({ length: 7 }).map((_, index) => (
                 <div key={index} className="text-xs font-semibold text-slate-500">
                   {format(addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index), 'EEE', {
@@ -1506,6 +2229,7 @@ export default function PlanningClient() {
                 )
               })
               })()}
+              </div>
             </div>
           ) : null}
         </div>
@@ -1692,14 +2416,13 @@ export default function PlanningClient() {
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Duur (minuten)
+                Duur (uu:mm)
                 <input
                   className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                  type="number"
-                  min="0"
+                  inputMode="numeric"
                   value={durationMinutes}
                   onChange={(event) => setDurationMinutes(event.target.value)}
-                  placeholder="Optioneel"
+                  placeholder="bijv. 1:00"
                 />
               </label>
               <div className="sm:col-span-2">
@@ -1878,154 +2601,7 @@ export default function PlanningClient() {
         </div>
       ) : null}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold">Planning overzicht</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              disabled={!statusesReady}
-            >
-              <option value="all">Alle statussen</option>
-              {statusOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-              type="button"
-              onClick={loadItems}
-            >
-              Verversen
-            </button>
-          </div>
-        </div>
-        {statusLoadError ? (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            Statuslijst ontbreekt: {statusLoadError}
-          </p>
-        ) : null}
-        {uiIndicatorsError ? (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            Indicator instellingen ontbreken: {uiIndicatorsError}
-          </p>
-        ) : null}
-
-        {error ? (
-          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-        {settingsWarning ? (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            {settingsWarning}
-          </p>
-        ) : null}
-        {warning ? (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            {warning} Voeg Firebase env-variabelen toe in `.env.local` om data op te slaan.
-          </p>
-        ) : null}
-
-        {loading ? (
-          <p className="mt-4 text-sm text-slate-500">Laden...</p>
-        ) : items.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">Nog geen planning items.</p>
-        ) : (
-          <div className="mt-4 grid gap-4">
-            {filteredItems
-              .map((item) => (
-              <article
-                key={item.id}
-                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">{item.title}</h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                      {item.workOrderId ? (
-                        <span className="rounded-lg border border-slate-200 bg-white px-2 py-0.5 text-slate-600">
-                          Werkorder
-                        </span>
-                      ) : (
-                        <span className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
-                          Alleen planning
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-slate-600">
-                      {new Date(item.scheduledAt).toLocaleString()} ·{' '}
-                      {item.assigneeName || 'Onbekend'}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {item.customerName ? `Klant: ${item.customerName}` : 'Klant: -'} ·{' '}
-                      {item.vehicleLabel ? `Voertuig: ${item.vehicleLabel}` : 'Voertuig: -'}
-                    </p>
-                    {item.vehiclePlate ? (
-                      <p className="mt-1 text-sm text-slate-600">
-                        Kenteken:{' '}
-                        <span
-                          className={`license-plate text-xs ${
-                            isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                          }`}
-                        >
-                          {normalizeLicensePlate(item.vehiclePlate)}
-                        </span>
-                      </p>
-                    ) : null}
-                    <p className="mt-1 text-sm text-slate-600">
-                      {item.location ? `Locatie: ${item.location}` : 'Locatie: -'}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Prioriteit: {item.priority || 'medium'} · Duur:{' '}
-                      {item.durationMinutes ? `${item.durationMinutes} min` : '-'}
-                    </p>
-                    {item.notes ? (
-                      <p className="mt-2 text-sm text-slate-700">{item.notes}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {!item.workOrderId ? (
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-                        Geen werkorder
-                      </span>
-                    ) : !statusesReady ? (
-                      <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-                        {item.workOrderStatus || item.status || '-'}
-                      </span>
-                    ) : (
-                      <select
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
-                        value={item.workOrderStatus || item.status || ''}
-                        onChange={(event) => handleStatusChange(item, event.target.value)}
-                        disabled={!statusesReady}
-                      >
-                        <option value="">Kies status</option>
-                        {statusOptions.map((option) => (
-                          <option key={option.code} value={option.code}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <button
-                      className="rounded-lg border border-red-200 px-3 py-1 text-sm text-red-600 hover:bg-red-50"
-                      type="button"
-                      onClick={() => handleDelete(item)}
-                    >
-                      Verwijderen
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+      {null}
     </div>
   )
 }
