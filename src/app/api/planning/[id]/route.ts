@@ -157,10 +157,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (cleanedBody.title !== undefined) workOrderUpdateData.title = cleanedBody.title ?? item.title
       if (cleanedBody.notes !== undefined) workOrderUpdateData.notes = cleanedBody.notes ?? item.notes
       if (cleanedBody.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = cleanedBody.scheduledAt ? new Date(String(cleanedBody.scheduledAt)) : item.scheduledAt
-      if (cleanedBody.durationMinutes !== undefined) workOrderUpdateData.durationMinutes = cleanedBody.durationMinutes ?? item.durationMinutes
+      // NOTE: durationMinutes and assigneeColor belong to PlanningItem, not WorkOrder - removed
       if (cleanedBody.assigneeId !== undefined) workOrderUpdateData.assigneeId = cleanedBody.assigneeId ?? item.assigneeId
       if (cleanedBody.assigneeName !== undefined) workOrderUpdateData.assigneeName = cleanedBody.assigneeName ?? item.assigneeName
-      if (cleanedBody.assigneeColor !== undefined) workOrderUpdateData.assigneeColor = cleanedBody.assigneeColor ?? item.assigneeColor
       if (cleanedBody.customerId !== undefined) workOrderUpdateData.customerId = cleanedBody.customerId ?? item.customerId
       if (cleanedBody.customerName !== undefined) workOrderUpdateData.customerName = cleanedBody.customerName ?? item.customerName
       if (cleanedBody.vehicleId !== undefined) workOrderUpdateData.vehicleId = cleanedBody.vehicleId ?? item.vehicleId

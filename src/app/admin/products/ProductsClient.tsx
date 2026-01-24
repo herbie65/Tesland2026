@@ -16,7 +16,9 @@ type Product = {
   shelf_number?: string | null
   bin_number?: string | null
   is_stocked?: boolean
-  is_active?: boolean
+  isActive?: boolean
+  createdAt?: string | Date | null
+  updatedAt?: string | Date | null
 }
 
 const emptyForm = {
@@ -31,7 +33,7 @@ const emptyForm = {
   shelf_number: '',
   bin_number: '',
   is_stocked: true,
-  is_active: true
+  isActive: true
 }
 
 export default function ProductsClient() {
@@ -63,7 +65,7 @@ export default function ProductsClient() {
     { key: 'stock', label: 'Voorraad' },
     { key: 'location', label: 'Locatie' },
     { key: 'active', label: 'Status' },
-    { key: 'created_at', label: 'Aangemaakt' }
+    { key: 'createdAt', label: 'Aangemaakt' }
   ]
 
   useEffect(() => {
@@ -138,7 +140,7 @@ export default function ProductsClient() {
       shelf_number: item.shelf_number || '',
       bin_number: item.bin_number || '',
       is_stocked: item.is_stocked !== false,
-      is_active: item.is_active !== false
+      isActive: item.isActive !== false
     })
     setShowModal(true)
   }
@@ -161,7 +163,7 @@ export default function ProductsClient() {
         shelf_number: formData.shelf_number.trim() || null,
         bin_number: formData.bin_number.trim() || null,
         is_stocked: Boolean(formData.is_stocked),
-        is_active: Boolean(formData.is_active)
+        isActive: Boolean(formData.isActive)
       }
 
       if (!payload.name) {
@@ -252,9 +254,9 @@ export default function ProductsClient() {
           case 'location':
             return `${item.shelf_number || ''} ${item.bin_number || ''}`.trim()
           case 'active':
-            return item.is_active === false ? 'inactief' : 'actief'
-          case 'created_at':
-            return (item as any).created_at ? new Date((item as any).created_at).getTime() : 0
+            return item.isActive === false ? 'inactief' : 'actief'
+          case 'createdAt':
+            return item.createdAt ? new Date(item.createdAt).getTime() : 0
           default:
             return ''
         }
@@ -378,9 +380,9 @@ export default function ProductsClient() {
                       </button>
                     </th>
                   ) : null}
-                  {visibleColumns.includes('created_at') ? (
+                  {visibleColumns.includes('createdAt') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('created_at')}>
+                      <button type="button" onClick={() => updateSort('createdAt')}>
                         Aangemaakt
                       </button>
                     </th>
@@ -432,12 +434,12 @@ export default function ProductsClient() {
                     ) : null}
                     {visibleColumns.includes('active') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {item.is_active === false ? 'Inactief' : 'Actief'}
+                        {item.isActive === false ? 'Inactief' : 'Actief'}
                       </td>
                     ) : null}
-                    {visibleColumns.includes('created_at') ? (
+                    {visibleColumns.includes('createdAt') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {(item as any).created_at ? new Date((item as any).created_at).toLocaleString() : '-'}
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
                     <td className="px-4 py-2 text-right">
@@ -605,9 +607,9 @@ export default function ProductsClient() {
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
                 <input
                   type="checkbox"
-                  checked={formData.is_active}
+                  checked={formData.isActive}
                   onChange={(event) =>
-                    setFormData({ ...formData, is_active: event.target.checked })
+                    setFormData({ ...formData, isActive: event.target.checked })
                   }
                 />
                 Actief in catalogus

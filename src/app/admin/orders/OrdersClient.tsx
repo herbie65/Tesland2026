@@ -32,6 +32,7 @@ type Order = {
   totalAmount?: number | null
   scheduledAt?: string | null
   notes?: string | null
+  createdAt?: string | null
 }
 
 type StatusEntry = {
@@ -69,7 +70,7 @@ export default function OrdersClient() {
   const [notes, setNotes] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState('created_at')
+  const [sortKey, setSortKey] = useState('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'orderNumber',
@@ -96,7 +97,7 @@ export default function OrdersClient() {
       { key: 'shippingMethod', label: 'Verzendmethode' },
       { key: 'totalAmount', label: 'Bedrag' },
       { key: 'scheduledAt', label: 'Planning' },
-      { key: 'created_at', label: 'Aangemaakt' }
+      { key: 'createdAt', label: 'Aangemaakt' }
     ],
     []
   )
@@ -180,7 +181,7 @@ export default function OrdersClient() {
         setShippingMethods([])
       }
       const sorted = [...(ordersData.items || [])].sort((a, b) =>
-        String(a.created_at || '').localeCompare(String(b.created_at || ''))
+        String(a.createdAt || '').localeCompare(String(b.createdAt || ''))
       )
       setItems(sorted)
       setCustomers(customersData.items || [])
@@ -377,8 +378,8 @@ export default function OrdersClient() {
             return Number(item.totalAmount || 0)
           case 'scheduledAt':
             return item.scheduledAt ? new Date(item.scheduledAt).getTime() : 0
-          case 'created_at':
-            return (item as any).created_at ? new Date((item as any).created_at).getTime() : 0
+          case 'createdAt':
+            return item.createdAt ? new Date(item.createdAt).getTime() : 0
           default:
             return ''
         }
@@ -713,9 +714,9 @@ export default function OrdersClient() {
                       </button>
                     </th>
                   ) : null}
-                  {visibleColumns.includes('created_at') ? (
+                  {visibleColumns.includes('createdAt') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('created_at')}>
+                      <button type="button" onClick={() => updateSort('createdAt')}>
                         Aangemaakt
                       </button>
                     </th>
@@ -798,9 +799,9 @@ export default function OrdersClient() {
                         {item.scheduledAt ? new Date(item.scheduledAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
-                    {visibleColumns.includes('created_at') ? (
+                    {visibleColumns.includes('createdAt') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {(item as any).created_at ? new Date((item as any).created_at).toLocaleString() : '-'}
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
                     <td className="px-4 py-2 text-right">

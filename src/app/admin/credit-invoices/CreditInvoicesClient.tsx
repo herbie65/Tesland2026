@@ -10,6 +10,7 @@ type CreditInvoice = {
   customerId?: string | null
   amount?: number | null
   reason?: string | null
+  createdAt?: string | null
 }
 
 export default function CreditInvoicesClient() {
@@ -17,7 +18,7 @@ export default function CreditInvoicesClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState('created_at')
+  const [sortKey, setSortKey] = useState('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'creditNumber',
@@ -25,7 +26,7 @@ export default function CreditInvoicesClient() {
     'customerId',
     'amount',
     'reason',
-    'created_at'
+    'createdAt'
   ])
 
   const columnOptions = [
@@ -34,7 +35,7 @@ export default function CreditInvoicesClient() {
     { key: 'customerId', label: 'Klant' },
     { key: 'amount', label: 'Bedrag' },
     { key: 'reason', label: 'Reden' },
-    { key: 'created_at', label: 'Aangemaakt' }
+    { key: 'createdAt', label: 'Aangemaakt' }
   ]
 
   useEffect(() => {
@@ -121,8 +122,8 @@ export default function CreditInvoicesClient() {
             return Number(item.amount || 0)
           case 'reason':
             return item.reason || ''
-          case 'created_at':
-            return (item as any).created_at ? new Date((item as any).created_at).getTime() : 0
+          case 'createdAt':
+            return item.createdAt ? new Date(item.createdAt).getTime() : 0
           default:
             return ''
         }
@@ -218,9 +219,9 @@ export default function CreditInvoicesClient() {
                     </button>
                   </th>
                 ) : null}
-                {visibleColumns.includes('created_at') ? (
+                {visibleColumns.includes('createdAt') ? (
                   <th className="px-4 py-2 text-left">
-                    <button type="button" onClick={() => updateSort('created_at')}>
+                    <button type="button" onClick={() => updateSort('createdAt')}>
                       Aangemaakt
                     </button>
                   </th>
@@ -247,9 +248,9 @@ export default function CreditInvoicesClient() {
                   {visibleColumns.includes('reason') ? (
                     <td className="px-4 py-2 text-slate-700">{item.reason || '-'}</td>
                   ) : null}
-                  {visibleColumns.includes('created_at') ? (
+                  {visibleColumns.includes('createdAt') ? (
                     <td className="px-4 py-2 text-slate-700">
-                      {(item as any).created_at ? new Date((item as any).created_at).toLocaleString() : '-'}
+                      {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                     </td>
                   ) : null}
                 </tr>

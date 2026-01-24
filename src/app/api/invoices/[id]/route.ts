@@ -59,11 +59,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updateData: any = {}
     if (body.orderId !== undefined) updateData.orderId = body.orderId
     if (body.customerId !== undefined) updateData.customerId = body.customerId
-    if (body.amount !== undefined) updateData.amount = Number(body.amount)
-    if (body.vatAmount !== undefined) updateData.vatAmount = Number(body.vatAmount)
-    if (body.total !== undefined) updateData.total = Number(body.total)
+    if (body.totalAmount !== undefined) updateData.totalAmount = Number(body.totalAmount)
+    if (body.taxAmount !== undefined) updateData.taxAmount = Number(body.taxAmount)
     if (body.paymentStatus !== undefined) updateData.paymentStatus = body.paymentStatus
-    if (body.dueAt !== undefined) updateData.dueAt = body.dueAt ? new Date(body.dueAt) : null
+    if (body.dueDate !== undefined) updateData.dueDate = body.dueDate ? new Date(body.dueDate) : null
 
     const item = await prisma.invoice.update({
       where: { id },

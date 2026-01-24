@@ -49,25 +49,19 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const isPublish = body.status === 'PUBLISHED'
-    const draftTitle = body.draftTitle ?? undefined
-    const draftSeo = body.draftSeo ?? undefined
-    const draftBlocks = Array.isArray(body.draftBlocks) ? body.draftBlocks : undefined
-    const nextStatus = body.status ?? undefined
+    const isPublish = body.isPublished === true
+    const title = body.title ?? undefined
+    const content = body.content ?? undefined
+    const metaDescription = body.metaDescription ?? undefined
+    const metaKeywords = body.metaKeywords ?? undefined
 
     const updateData: any = {}
     if (body.slug !== undefined) updateData.slug = body.slug
-    if (nextStatus !== undefined) updateData.status = nextStatus
-    if (draftTitle !== undefined) updateData.draftTitle = draftTitle
-    if (draftSeo !== undefined) updateData.draftSeo = draftSeo
-    if (draftBlocks !== undefined) updateData.draftBlocks = draftBlocks
-
-    if (isPublish) {
-      if (draftTitle !== undefined) updateData.title = draftTitle
-      if (draftSeo !== undefined) updateData.seo = draftSeo
-      if (draftBlocks !== undefined) updateData.blocks = draftBlocks
-      updateData.publishedAt = new Date()
-    }
+    if (title !== undefined) updateData.title = title
+    if (content !== undefined) updateData.content = content
+    if (metaDescription !== undefined) updateData.metaDescription = metaDescription
+    if (metaKeywords !== undefined) updateData.metaKeywords = metaKeywords
+    if (body.isPublished !== undefined) updateData.isPublished = body.isPublished
 
     const item = await prisma.page.update({
       where: { id },

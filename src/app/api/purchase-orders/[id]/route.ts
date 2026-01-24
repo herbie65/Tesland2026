@@ -45,11 +45,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     
     const body = await request.json()
     const updateData: any = {}
-    if (body.supplierName !== undefined) updateData.supplierName = body.supplierName
-    if (body.items !== undefined) updateData.items = body.items
+    if (body.supplier !== undefined) updateData.supplier = body.supplier
+    // NOTE: 'items' field does not exist in PurchaseOrder schema - removed
     if (body.status !== undefined) updateData.status = body.status
     if (body.notes !== undefined) updateData.notes = body.notes
-    if (body.expectedAt !== undefined) updateData.expectedAt = body.expectedAt ? new Date(body.expectedAt) : null
+    if (body.totalAmount !== undefined) updateData.totalAmount = Number(body.totalAmount)
+    if (body.expectedDate !== undefined) updateData.expectedDate = body.expectedDate ? new Date(body.expectedDate) : null
 
     const item = await prisma.purchaseOrder.update({
       where: { id },

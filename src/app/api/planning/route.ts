@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     // Check for overlapping planning
     if (scheduledAt && assigneeId) {
       const settingsDoc = await prisma.setting.findUnique({
-        where: { id: 'planning' }
+        where: { group: 'planning' }
       })
       const defaultDurationMinutes = Number((settingsDoc?.data as any)?.defaultDurationMinutes ?? 60)
       const duration = Number.isFinite(Number(durationMinutes))

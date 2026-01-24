@@ -22,12 +22,15 @@ export async function GET(request: NextRequest) {
     if (action && ACTIONS.has(action)) {
       where.action = action
     }
-    if (emailQuery) {
-      where.OR = [
-        { actorEmail: { contains: emailQuery, mode: 'insensitive' } },
-        { targetEmail: { contains: emailQuery, mode: 'insensitive' } }
-      ]
-    }
+    // NOTE: actorEmail and targetEmail are not direct fields in AuditLog schema
+    // They might be stored in 'context' or 'changes' JSON fields
+    // Commenting out for now - implement proper JSON search if needed
+    // if (emailQuery) {
+    //   where.OR = [
+    //     { actorEmail: { contains: emailQuery, mode: 'insensitive' } },
+    //     { targetEmail: { contains: emailQuery, mode: 'insensitive' } }
+    //   ]
+    // }
 
     let items = await prisma.auditLog.findMany({
       where,

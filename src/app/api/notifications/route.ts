@@ -53,14 +53,15 @@ export async function PATCH(request: NextRequest) {
       })
       
       for (const notification of notifications) {
-        await prisma.notification.update({
-          where: { id: notification.id },
-          data: {
-            readBy: {
-              push: user.id
+        const currentReadBy = notification.readBy || []
+        if (!currentReadBy.includes(user.id)) {
+          await prisma.notification.update({
+            where: { id: notification.id },
+            data: {
+              readBy: [...currentReadBy, user.id]
             }
-          }
-        })
+          })
+        }
       }
       
       return NextResponse.json({ success: true })
@@ -78,9 +79,7 @@ export async function PATCH(request: NextRequest) {
           await prisma.notification.update({
             where: { id },
             data: {
-              readBy: {
-                push: user.id
-              }
+              readBy: [...readBy, user.id]
             }
           })
         }

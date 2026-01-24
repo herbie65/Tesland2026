@@ -60,7 +60,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.orderId !== undefined) updateData.orderId = body.orderId
     if (body.customerId !== undefined) updateData.customerId = body.customerId
     if (body.status !== undefined) updateData.status = body.status
-    if (body.items !== undefined) updateData.items = body.items
+    // NOTE: 'items' field does not exist in Rma schema - use productSku, productName, quantity instead
+    if (body.productSku !== undefined) updateData.productSku = body.productSku
+    if (body.productName !== undefined) updateData.productName = body.productName
+    if (body.quantity !== undefined) updateData.quantity = body.quantity
+    if (body.reason !== undefined) updateData.reason = body.reason
+    if (body.resolution !== undefined) updateData.resolution = body.resolution
     if (body.notes !== undefined) updateData.notes = body.notes
 
     const item = await prisma.rma.update({

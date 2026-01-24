@@ -99,7 +99,7 @@ export default function VehiclesClient() {
     { key: 'licensePlate', label: 'Kenteken' },
     { key: 'vin', label: 'VIN' },
     { key: 'customer', label: 'Klant' },
-    { key: 'created_at', label: 'Aangemaakt' }
+    { key: 'createdAt', label: 'Aangemaakt' }
   ]
 
   useEffect(() => {
@@ -127,12 +127,12 @@ export default function VehiclesClient() {
     }, {})
   }, [customers])
 
-  const loadItems = async () => {
+const loadItems = async () => {
     try {
       setLoading(true)
       setError(null)
       const [vehiclesResponse, customersResponse] = await Promise.all([
-        fetch('/api/vehicles'),
+        fetch(`/api/vehicles?page=${currentPage}&limit=${itemsPerPage}&search=${searchTerm}`),
         fetch('/api/customers')
       ])
       const vehiclesData = await vehiclesResponse.json()
@@ -143,10 +143,7 @@ export default function VehiclesClient() {
       if (!customersResponse.ok || !customersData.success) {
         throw new Error(customersData.error || 'Failed to load customers')
       }
-      const sorted = [...(vehiclesData.items || [])].sort((a, b) =>
-        String(a.make || '').localeCompare(String(b.make || ''))
-      )
-      setItems(sorted)
+      setItems(vehiclesData.items || [])
       setCustomers(customersData.items || [])
     } catch (err: any) {
       setError(err.message)
@@ -155,9 +152,9 @@ export default function VehiclesClient() {
     }
   }
 
-  useEffect(() => {
+useEffect(() => {
     loadItems()
-  }, [])
+  }, [currentPage, itemsPerPage, searchTerm])
 
   // Debounce column filters
   useEffect(() => {
@@ -365,26 +362,10 @@ export default function VehiclesClient() {
     }
   }
 
-  const filteredItems = useMemo(() => {
+const filteredItems = useMemo(() => {
     let result = items
     
-    // Global search term
-    const term = searchTerm.trim().toLowerCase()
-    if (term) {
-      result = result.filter((item) => {
-        const customerName = item.customerId ? customerLookup[item.customerId] || item.customerId : ''
-        const fields = [
-          item.make,
-          item.model,
-          item.licensePlate,
-          item.vin,
-          customerName
-        ]
-        return fields.some((value) => String(value || '').toLowerCase().includes(term))
-      })
-    }
-    
-    // Column-specific filters (DEBOUNCED)
+    // Column-specific filters (DEBOUNCED) - server already handles searchTerm
     Object.entries(columnFiltersDebounced).forEach(([column, filterValue]) => {
       const filterTerm = filterValue.trim().toLowerCase()
       if (!filterTerm) return
@@ -413,7 +394,7 @@ export default function VehiclesClient() {
     })
     
     return result
-  }, [items, searchTerm, columnFiltersDebounced, customerLookup])
+  }, [items, columnFiltersDebounced, customerLookup])
 
   const sortedItems = useMemo(() => {
     const sorted = [...filteredItems]
@@ -431,8 +412,8 @@ export default function VehiclesClient() {
             return item.vin || ''
           case 'customer':
             return item.customerId ? customerLookup[item.customerId] || item.customerId : ''
-          case 'created_at':
-            return (item as any).created_at ? new Date((item as any).created_at).getTime() : 0
+          case 'createdAt':
+            return item.createdAt ? new Date(item.createdAt).getTime() : 0
           default:
             return ''
         }
@@ -680,15 +661,15 @@ export default function VehiclesClient() {
                       </button>
                     </th>
                   ) : null}
-                  {visibleColumns.includes('created_at') ? (
+                  {visibleColumns.includes('createdAt') ? (
                     <th className="px-4 py-2 text-left">
                       <button 
                         type="button" 
-                        onClick={() => updateSort('created_at')}
+                        onClick={() => updateSort('createdAt')}
                         className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
                       >
                         Aangemaakt
-                        {sortKey === 'created_at' && (
+                        {sortKey === 'createdAt' && (
                           <span className="text-purple-600 text-lg">
                             {sortDir === 'asc' ? '↑' : '↓'}
                           </span>
@@ -769,7 +750,7 @@ export default function VehiclesClient() {
                     <th className="px-4 py-2">
                     </th>
                   ) : null}
-                  {visibleColumns.includes('created_at') ? (
+                  {visibleColumns.includes('createdAt') ? (
                     <th className="px-4 py-2">
                     </th>
                   ) : null}
@@ -823,9 +804,9 @@ export default function VehiclesClient() {
                         -
                       </td>
                     ) : null}
-                    {visibleColumns.includes('created_at') ? (
+                    {visibleColumns.includes('createdAt') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {(item as any).created_at ? new Date((item as any).created_at).toLocaleString() : '-'}
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
                     <td className="px-4 py-2">

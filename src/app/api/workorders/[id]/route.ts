@@ -133,10 +133,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.licensePlate !== undefined) updateData.licensePlate = body.licensePlate
     if (body.notes !== undefined) updateData.notes = body.notes
     if (body.scheduledAt !== undefined) updateData.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
-    if (body.durationMinutes !== undefined) updateData.durationMinutes = body.durationMinutes
+    // NOTE: durationMinutes and assigneeColor belong to PlanningItem, not WorkOrder
     if (body.assigneeId !== undefined) updateData.assigneeId = body.assigneeId
     if (body.assigneeName !== undefined) updateData.assigneeName = body.assigneeName
-    if (body.assigneeColor !== undefined) updateData.assigneeColor = body.assigneeColor
     if (body.customerId !== undefined) updateData.customerId = body.customerId
     if (body.customerName !== undefined) updateData.customerName = body.customerName
     if (body.vehicleId !== undefined) updateData.vehicleId = body.vehicleId
@@ -150,22 +149,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.description !== undefined) updateData.description = body.description
     if (body.internalNotes !== undefined) updateData.internalNotes = body.internalNotes
     
-    // Additional extended fields
-    const extendedFields = [
-      'agreementNotes', 'customerNumber', 'customerAddress', 'customerCity', 'customerMobile',
-      'driverName', 'workDescription', 'orderNumber', 'orderDate', 'vehicleBrand', 'vehicleModel',
-      'vehicleBuildYear', 'chassisNumber', 'currentMileage', 'lastApkMileage', 'apkDueDate',
-      'lastServiceDate', 'lastAircoServiceDate', 'callPreference', 'smsPreference', 'alwaysCall',
-      'approvalLimitAmount', 'carWashed', 'carVacuumed', 'carCharged', 'jobLines', 'tireSize',
-      'tireBrand', 'tireType', 'tireTreadFrontLeft', 'tireTreadFrontRight', 'tireTreadRearLeft',
-      'tireTreadRearRight', 'readyToInvoice', 'followUpAppointment', 'signatureInName', 'signatureOutName'
-    ]
-    
-    extendedFields.forEach(field => {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field]
-      }
-    })
+    // NOTE: Extended fields removed - they don't exist in WorkOrder schema
+    // If these fields are needed, they should be stored in the 'notes' or 'internalNotes' text fields,
+    // or the schema should be updated to add them as actual columns
     
     updateData.createdBy = user.id
 
