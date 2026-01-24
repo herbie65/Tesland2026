@@ -861,12 +861,11 @@ export default function PlanningClient() {
     }
   }
 
-  useEffect(() => {
-    // Check if user is logged in via localStorage
-    const token = localStorage.getItem('token')
-    setHasUser(Boolean(token))
-    setAuthReady(true)
-  }, [])
+    useEffect(() => {
+        // Auth check removed after Prisma migration
+        setHasUser(true)
+        setAuthReady(true)
+      }, [])
 
   useEffect(() => {
     if (!authReady || !hasUser) return
