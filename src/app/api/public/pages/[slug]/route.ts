@@ -23,7 +23,7 @@ export async function GET(
     }
 
     const page = await prisma.page.findUnique({ where: { slug } })
-    if (!page || page.status !== 'PUBLISHED') {
+    if (!page || !page.isPublished) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 
