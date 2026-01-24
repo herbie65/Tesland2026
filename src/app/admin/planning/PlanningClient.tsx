@@ -63,6 +63,7 @@ type PlanningItem = {
 type Customer = {
   id: string
   name: string
+  email?: string | null
 }
 
 type Vehicle = {
@@ -190,6 +191,7 @@ export default function PlanningClient() {
   const dayScrollRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
   const selectedUser = users.find((item) => item.id === assigneeId)
+  const selectedCustomer = customers.find((item) => item.id === customerId)
   const roleNameMap = useMemo(() => {
     return new Map(roles.map((role) => [role.id, role.name || '']))
   }, [roles])
@@ -204,13 +206,26 @@ export default function PlanningClient() {
   const [agreementNotes, setAgreementNotes] = useState('')
   const [activeTab, setActiveTab] = useState<ModalTab>('opdracht')
   const [approving, setApproving] = useState(false)
+  const [sendEmail, setSendEmail] = useState(false)
   const [hoveredPopover, setHoveredPopover] = useState<{
     id: string
     placement: 'down-left' | 'down-right' | 'up-left' | 'up-right'
   } | null>(null)
-  const [draggingId, setDraggingId] = useState<string | null>(null)
-  const [dragOffsetX, setDragOffsetX] = useState(0)
-  const [dragOffsetY, setDragOffsetY] = useState(0)
+// NIEUWE GEOPTIMALISEERDE DRAG STATE
+  const [dragState, setDragState] = useState<{
+    itemId: string
+    element: HTMLElement
+    ghostElement: HTMLElement | null
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+    offsetX: number
+    offsetY: number
+    axisElement: HTMLElement | null
+    axisLeft: number
+    axisWidth: number
+  } | null>(null)
 
   const raiseError = (message: string) => {
     setError(message)
@@ -355,124 +370,158 @@ export default function PlanningClient() {
     )
   }
 
-  const dragRef = useRef<{
-    itemId: string
-    dragged: boolean
-    startX: number
-    startY: number
-    pointerId: number
-    lastDeltaX: number
-    lastDeltaY: number
-    axisLeft: number
-    axisWidth: number
-    startOffsetX: number
-  } | null>(null)
-  const lastDragAtRef = useRef<number>(0)
-  const dragRafRef = useRef<number | null>(null)
-
-  const getAxisFromPoint = (x: number, y: number) => {
-    const element = document.elementFromPoint(x, y) as HTMLElement | null
-    return element?.closest('[data-planning-axis="1"]') as HTMLElement | null
-  }
-
-  const getScheduledDateFromAxis = (axis: HTMLElement, x: number) => {
-    const dayKey = axis.dataset.day
-    if (!dayKey) return null
-    const rect = axis.getBoundingClientRect()
-    const ratio = Math.min(Math.max((x - rect.left) / rect.width, 0), 1)
-    const rawTotal = viewStartMinutes + ratio * viewTotalMinutes
-    const snapMinutes = 15
-    const total = Math.round(rawTotal / snapMinutes) * snapMinutes
-    const hours = Math.floor(total / 60)
-    const minutes = total % 60
-    const date = new Date(`${dayKey}T00:00:00`)
-    date.setHours(hours, minutes, 0, 0)
-    return date
-  }
-
-  const applyDrop = async (item: PlanningItem, axis: HTMLElement, x: number) => {
-    const scheduledDate = getScheduledDateFromAxis(axis, x)
-    if (!scheduledDate) return
-    const targetUserId = axis.dataset.userId || null
-    const targetUser = users.find((user) => user.id === targetUserId)
-    await apiFetch(`/api/planning/${item.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        scheduledAt: scheduledDate.toISOString(),
-        assigneeId: targetUserId || null,
-        assigneeName: targetUser?.name || null,
-        assigneeColor: targetUser?.color || null
-      })
-    })
-    await loadItems()
-  }
-
-  const handleBlockPointerDown = (event: React.PointerEvent<HTMLDivElement>, item: PlanningItem) => {
+  const handleBlockPointerDown = (
+    event: React.PointerEvent<HTMLDivElement>,
+    item: PlanningItem
+  ) => {
     if (viewMode !== 'day') return
     event.preventDefault()
-    const axis = (event.currentTarget.closest('[data-planning-axis="1"]') as HTMLElement | null)
+    event.stopPropagation()
+
+    const target = event.currentTarget
+    const axis = target.closest('[data-planning-axis="1"]') as HTMLElement | null
     if (!axis) return
+
     const rect = axis.getBoundingClientRect()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = {
+    const targetRect = target.getBoundingClientRect()
+
+    const ghost = target.cloneNode(true) as HTMLElement
+    ghost.style.position = 'fixed'
+    ghost.style.pointerEvents = 'none'
+    ghost.style.zIndex = '9999'
+    ghost.style.opacity = '0.8'
+    ghost.style.left = `${targetRect.left}px`
+    ghost.style.top = `${targetRect.top}px`
+    ghost.style.width = `${targetRect.width}px`
+    ghost.style.height = `${targetRect.height}px`
+    ghost.style.transition = 'none'
+    document.body.appendChild(ghost)
+
+    target.style.opacity = '0.3'
+    target.setPointerCapture(event.pointerId)
+
+    setDragState({
       itemId: item.id,
-      dragged: false,
+      element: target,
+      ghostElement: ghost,
       startX: event.clientX,
       startY: event.clientY,
-      pointerId: event.pointerId,
-      lastDeltaX: 0,
-      lastDeltaY: 0,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: event.clientX - targetRect.left,
+      offsetY: event.clientY - targetRect.top,
+      axisElement: axis,
       axisLeft: rect.left,
-      axisWidth: rect.width,
-      startOffsetX: event.clientX - rect.left
-    }
-    setDraggingId(item.id)
-    setDragOffsetX(0)
-    setDragOffsetY(0)
+      axisWidth: rect.width
+    })
   }
 
   const handleBlockPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const dragState = dragRef.current
     if (!dragState) return
-    const dx = Math.abs(event.clientX - dragState.startX)
-    const dy = Math.abs(event.clientY - dragState.startY)
-    if (!dragState.dragged && dx + dy > 6) {
-      dragState.dragged = true
-    }
-    if (dragState.dragged) {
-      const ratio = Math.min(Math.max((event.clientX - dragState.axisLeft) / dragState.axisWidth, 0), 1)
+    event.preventDefault()
+
+    const { ghostElement, offsetX, offsetY, axisLeft, axisWidth } = dragState
+
+    if (ghostElement) {
+      const newTop = event.clientY - offsetY
+      const relativeX = event.clientX - axisLeft
+      const ratio = Math.max(0, Math.min(1, relativeX / axisWidth))
       const rawMinutes = viewStartMinutes + ratio * viewTotalMinutes
-      const snapMinutes = 15
-      const snappedMinutes = Math.round(rawMinutes / snapMinutes) * snapMinutes
-      const snappedOffset =
-        ((snappedMinutes - viewStartMinutes) / viewTotalMinutes) * dragState.axisWidth
-      dragState.lastDeltaX = snappedOffset - dragState.startOffsetX
-      dragState.lastDeltaY = event.clientY - dragState.startY
-      if (dragRafRef.current === null) {
-        dragRafRef.current = window.requestAnimationFrame(() => {
-          dragRafRef.current = null
-          setDragOffsetX(dragState.lastDeltaX)
-          setDragOffsetY(dragState.lastDeltaY)
-        })
-      }
+      const snappedMinutes = Math.round(rawMinutes / 15) * 15
+      const snappedRatio = (snappedMinutes - viewStartMinutes) / viewTotalMinutes
+      const snappedX = axisLeft + snappedRatio * axisWidth - offsetX
+
+      ghostElement.style.left = `${snappedX}px`
+      ghostElement.style.top = `${newTop}px`
     }
+
+    setDragState((prev) =>
+      prev
+        ? {
+            ...prev,
+            currentX: event.clientX,
+            currentY: event.clientY
+          }
+        : null
+    )
   }
 
-  const handleBlockPointerUp = async (event: React.PointerEvent<HTMLDivElement>, item: PlanningItem) => {
-    const dragState = dragRef.current
+  const handleBlockPointerUp = async (
+    event: React.PointerEvent<HTMLDivElement>,
+    item: PlanningItem
+  ) => {
     if (!dragState) return
-    if (event.currentTarget.hasPointerCapture(dragState.pointerId)) {
-      event.currentTarget.releasePointerCapture(dragState.pointerId)
+    event.preventDefault()
+
+    const { element, ghostElement, currentX, currentY, startX, startY, offsetX } = dragState
+
+    // Release pointer capture
+    if (element.hasPointerCapture(event.pointerId)) {
+      element.releasePointerCapture(event.pointerId)
     }
-    dragRef.current = null
-    setDraggingId(null)
-    setDragOffsetX(0)
-    setDragOffsetY(0)
-    if (!dragState.dragged) return
-    lastDragAtRef.current = Date.now()
-    const axis = getAxisFromPoint(event.clientX, event.clientY)
-    if (!axis) return
-    await applyDrop(item, axis, event.clientX)
+
+    // Restore original element
+    element.style.opacity = ''
+
+    // Remove ghost
+    if (ghostElement && ghostElement.parentNode) {
+      ghostElement.parentNode.removeChild(ghostElement)
+    }
+
+    // Check if actually dragged (threshold)
+    const dragDistance = Math.abs(currentX - startX) + Math.abs(currentY - startY)
+    const wasDragged = dragDistance > 5
+
+    setDragState(null)
+
+    if (!wasDragged) {
+      // Just a click
+      handlePlanningClick(item)
+      return
+    }
+
+    // Find target axis
+    const targetAxis = document.elementFromPoint(currentX, currentY)
+      ?.closest('[data-planning-axis="1"]') as HTMLElement | null
+    
+    if (!targetAxis) return
+
+    // Calculate new scheduled time - use block start position (currentX - offsetX) instead of mouse position
+    const dayKey = targetAxis.dataset.day
+    if (!dayKey) return
+
+    const rect = targetAxis.getBoundingClientRect()
+    const blockStartX = currentX - offsetX  // Calculate where the block START is, not where the mouse is
+    const ratio = Math.max(0, Math.min(1, (blockStartX - rect.left) / rect.width))
+    const rawMinutes = viewStartMinutes + ratio * viewTotalMinutes
+    const snappedMinutes = Math.round(rawMinutes / 15) * 15
+    const totalMinutes = Math.max(viewStartMinutes, Math.min(viewStartMinutes + viewTotalMinutes, snappedMinutes))
+    
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    const newDate = new Date(`${dayKey}T00:00:00`)
+    newDate.setHours(hours, minutes, 0, 0)
+
+    // Get new assignee
+    const targetUserId = targetAxis.dataset.userId || null
+    const targetUser = users.find(u => u.id === targetUserId)
+
+    // Update via API
+    try {
+      await apiFetch(`/api/planning/${item.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          scheduledAt: newDate.toISOString(),
+          assigneeId: targetUserId || null,
+          assigneeName: targetUser?.name || null,
+          assigneeColor: targetUser?.color || null
+        })
+      })
+      await loadItems()
+    } catch (err) {
+      console.error('Failed to update planning item:', err)
+      raiseError('Kon planning niet verplaatsen')
+    }
   }
   const formatWarehouseEta = (value: any) => {
     if (!value) return null
@@ -902,10 +951,7 @@ export default function PlanningClient() {
   }
 
   const handlePlanningClick = (item: PlanningItem) => {
-    if (item.workOrderId) {
-      router.push(`/admin/workorders/${item.workOrderId}`)
-      return
-    }
+    // Always open in edit modal, regardless of workOrderId
     startEdit(item)
   }
 
@@ -1045,6 +1091,7 @@ export default function PlanningClient() {
     setStatusSelection('')
     setCreateWorkOrder(true)
     setPartsRequired(false)
+    setSendEmail(false)
     setActiveTab('opdracht')
     setDateWarning(null)
     setOverlapWarning(null)
@@ -1139,12 +1186,30 @@ export default function PlanningClient() {
     }>
   }
 
-  const addWorkMinutes = (start: Date, minutes: number) => {
+  const getDefaultWorkingDays = () => {
+    const days = ['mon', 'tue', 'wed', 'thu', 'fri'] as string[]
+    if (planningSettings.selectableSaturday) days.push('sat')
+    if (planningSettings.selectableSunday) days.push('sun')
+    return days
+  }
+
+  const getWorkingDaysForUser = (user?: User | null) =>
+    user?.workingDays && user.workingDays.length ? user.workingDays : getDefaultWorkingDays()
+
+  const isWorkingDay = (date: Date, workingDays: string[]) =>
+    workingDays.includes(DAY_KEYS[date.getDay()])
+
+  const addWorkMinutes = (start: Date, minutes: number, workingDays: string[]) => {
     let remaining = Math.max(0, Math.round(minutes))
     let cursor = new Date(start)
     const breaks = getBreakSegments()
 
     while (remaining > 0) {
+      if (!isWorkingDay(cursor, workingDays)) {
+        cursor.setDate(cursor.getDate() + 1)
+        cursor.setHours(Math.floor(dayStartMinutes / 60), dayStartMinutes % 60, 0, 0)
+        continue
+      }
       let minuteOfDay = cursor.getHours() * 60 + cursor.getMinutes()
 
       if (minuteOfDay < dayStartMinutes) {
@@ -1200,15 +1265,19 @@ export default function PlanningClient() {
     return intervals.filter((interval) => interval.end > interval.start)
   }
 
-  const buildSegmentsByDay = (start: Date, minutes: number) => {
+  const buildSegmentsByDay = (start: Date, minutes: number, workingDays: string[]) => {
     const totalMinutes = Math.max(0, Math.round(minutes))
     const result = new Map<string, Array<{ start: number; end: number }>>()
     if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return result
-    const end = addWorkMinutes(start, totalMinutes)
+    const end = addWorkMinutes(start, totalMinutes, workingDays)
     let cursor = new Date(start)
     cursor.setHours(0, 0, 0, 0)
 
     while (cursor <= end) {
+      if (!isWorkingDay(cursor, workingDays)) {
+        cursor.setDate(cursor.getDate() + 1)
+        continue
+      }
       const dayKey = format(cursor, 'yyyy-MM-dd')
       const dayStart = new Date(cursor)
       dayStart.setHours(Math.floor(dayStartMinutes / 60), dayStartMinutes % 60, 0, 0)
@@ -1444,7 +1513,7 @@ export default function PlanningClient() {
 
   const renderDaySchedule = (
     day: Date,
-    options: { showAllHours: boolean }
+    options: { showAllHours: boolean; showEndLabel: boolean }
   ) => {
     const totalMinutesRange = viewTotalMinutes
     const hourSlots = Array.from({
@@ -1505,9 +1574,11 @@ export default function PlanningClient() {
                 </div>
               )
             })}
-            <div className="planning-day-axis-endlabel">
-              {format(hourSlots[hourSlots.length - 1], 'HH:mm')}
-            </div>
+            {options.showEndLabel ? (
+              <div className="planning-day-axis-endlabel">
+                {format(hourSlots[hourSlots.length - 1], 'HH:mm')}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="planning-day-rows">
@@ -1554,7 +1625,8 @@ export default function PlanningClient() {
                 {getRowItems(user.id).flatMap((item) => {
                   const start = new Date(item.scheduledAt)
                   const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                  const segmentsByDay = buildSegmentsByDay(start, duration)
+                  const workingDays = getWorkingDaysForUser(users.find((entry) => entry.id === item.assigneeId))
+                  const segmentsByDay = buildSegmentsByDay(start, duration, workingDays)
                   const dayKey = format(day, 'yyyy-MM-dd')
                   const segments = segmentsByDay.get(dayKey) || []
                   if (segments.length === 0) return []
@@ -1582,23 +1654,19 @@ export default function PlanningClient() {
                         key={hoverId}
                         className={`planning-day-block${
                           placement ? ` planning-day-block--${placement}` : ''
-                        }${draggingId === item.id ? ' planning-day-block--dragging' : ''}`}
+                        }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
                         style={{
                           left: `${leftPercent}%`,
                           width: `${widthPercent}%`,
                           borderColor: backgroundColor,
                           background: backgroundColor,
                           color: textColor,
-                          transform:
-                            draggingId === item.id
-                              ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
-                              : undefined
                         }}
                         onPointerDown={(event) => handleBlockPointerDown(event, item)}
                         onPointerMove={handleBlockPointerMove}
                         onPointerUp={(event) => handleBlockPointerUp(event, item)}
                         onMouseEnter={(event) =>
-                          draggingId
+                          dragState
                             ? null
                             : setHoveredPopover({
                                 id: hoverId,
@@ -1607,7 +1675,6 @@ export default function PlanningClient() {
                         }
                         onMouseLeave={() => setHoveredPopover(null)}
                         onClick={(event) => {
-                          if (Date.now() - lastDragAtRef.current < 200) return
                           event.stopPropagation()
                           handlePlanningClick(item)
                         }}
@@ -1653,7 +1720,7 @@ export default function PlanningClient() {
               {unassignedItems.flatMap((item) => {
                 const start = new Date(item.scheduledAt)
                 const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                const segmentsByDay = buildSegmentsByDay(start, duration)
+                const segmentsByDay = buildSegmentsByDay(start, duration, getDefaultWorkingDays())
                 const dayKey = format(day, 'yyyy-MM-dd')
                 const segments = segmentsByDay.get(dayKey) || []
                 if (segments.length === 0) return []
@@ -1681,23 +1748,19 @@ export default function PlanningClient() {
                       key={hoverId}
                       className={`planning-day-block${
                         placement ? ` planning-day-block--${placement}` : ''
-                      }${draggingId === item.id ? ' planning-day-block--dragging' : ''}`}
+                      }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
                       style={{
                         left: `${leftPercent}%`,
                         width: `${widthPercent}%`,
                         borderColor: backgroundColor,
                         background: backgroundColor,
                         color: textColor,
-                        transform:
-                          draggingId === item.id
-                            ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
-                            : undefined
                       }}
                       onPointerDown={(event) => handleBlockPointerDown(event, item)}
                       onPointerMove={handleBlockPointerMove}
                       onPointerUp={(event) => handleBlockPointerUp(event, item)}
                       onMouseEnter={(event) =>
-                        draggingId
+                        dragState
                           ? null
                           : setHoveredPopover({
                               id: hoverId,
@@ -1706,7 +1769,6 @@ export default function PlanningClient() {
                       }
                       onMouseLeave={() => setHoveredPopover(null)}
                       onClick={(event) => {
-                        if (Date.now() - lastDragAtRef.current < 200) return
                         event.stopPropagation()
                         handlePlanningClick(item)
                       }}
@@ -1790,6 +1852,7 @@ export default function PlanningClient() {
         location: location || null,
         customerId: customerId === 'none' ? null : customerId,
         customerName: selectedCustomer?.name || null,
+        customerEmail: selectedCustomer?.email || null,
         vehicleId: vehicleId === 'none' ? null : vehicleId,
         vehiclePlate: selectedVehicle?.licensePlate || null,
         vehicleLabel: selectedVehicle
@@ -1805,7 +1868,8 @@ export default function PlanningClient() {
         priority,
         partsRequired,
         durationMinutes: parsedDuration ?? null,
-        createWorkOrder: createWorkOrder
+        createWorkOrder: createWorkOrder,
+        sendEmail
       }
 
       const response = await apiFetch(
@@ -1859,13 +1923,22 @@ export default function PlanningClient() {
     }
     setDateWarning(null)
 
-    const scheduledEnd = addWorkMinutes(scheduledDate, duration)
+    const scheduledEnd = addWorkMinutes(
+      scheduledDate,
+      duration,
+      getWorkingDaysForUser(selectedUser)
+    )
     const overlap = items.some((item) => {
       if (editingItem && item.id === editingItem.id) return false
       if (item.assigneeId !== assigneeId) return false
       const existingStart = new Date(item.scheduledAt)
       const existingDuration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-      const existingEnd = addWorkMinutes(existingStart, existingDuration)
+      const existingUser = users.find((entry) => entry.id === item.assigneeId)
+      const existingEnd = addWorkMinutes(
+        existingStart,
+        existingDuration,
+        getWorkingDaysForUser(existingUser)
+      )
       return scheduledDate < existingEnd && scheduledEnd > existingStart
     })
     if (overlap) {
@@ -1992,15 +2065,6 @@ export default function PlanningClient() {
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <p className="font-semibold">Notitie</p>
-          <p>
-            Voor demo- of testdata kun je snel afspraken toevoegen met het script
-            <span className="font-medium"> scripts/seed-planning-week.js</span> (8-12 per dag, verdeeld over monteurs).
-            Als dit niet meer nodig is, kan het script later verwijderd worden.
-          </p>
-        </div>
-
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             className="rounded-lg bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-800"
@@ -2120,7 +2184,7 @@ export default function PlanningClient() {
                               </span>
                             </div>
                           ) : null}
-                          {renderDaySchedule(day, { showAllHours })}
+                          {renderDaySchedule(day, { showAllHours, showEndLabel: dayColumnWidth >= 640 })}
                         </div>
                       </div>
                     ))}
@@ -2237,17 +2301,18 @@ export default function PlanningClient() {
 
       {showModal ? (
         <div className="planning-modal-overlay" onClick={resetForm}>
-          <div className="planning-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-xl font-semibold">
-                {editingItem ? 'Planning bewerken' : 'Nieuwe planning'}
-              </h2>
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                type="button"
-                onClick={resetForm}
-              >
-                Sluiten
+          <div className="planning-modal workorder-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="workorder-modal-header">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {editingItem ? 'Planning bewerken' : 'Nieuwe planning'}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Plan een werkorder of afspraak in de agenda.
+                </p>
+              </div>
+              <button className="workorder-close" type="button" onClick={resetForm}>
+                ✕
               </button>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -2271,72 +2336,80 @@ export default function PlanningClient() {
                 </button>
               ) : null}
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-6 text-sm text-slate-700">
-              <label className="flex items-center gap-2">
+            <div className="workorder-toggle-row">
+              <span className="workorder-label">Werkorder aanmaken</span>
+              <label className="glass-toggle">
                 <input
                   type="checkbox"
                   checked={createWorkOrder}
-                  onChange={(event) => setCreateWorkOrder(event.target.checked)}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked
+                    setCreateWorkOrder(nextValue)
+                    if (!nextValue) {
+                      setPartsRequired(false)
+                    }
+                  }}
                 />
-                Maak hiervan een werkorder
+                <span className="glass-toggle-track" />
+                <span className="glass-toggle-thumb" />
               </label>
-              <div className="flex items-center gap-3">
-                <span>Onderdelen nodig</span>
-                <label className="relative inline-flex cursor-pointer items-center">
+            </div>
+            {createWorkOrder ? (
+              <div className="workorder-toggle-row">
+                <span className="workorder-label">Onderdelen nodig</span>
+                <label className="glass-toggle">
                   <input
                     type="checkbox"
-                    className="sr-only"
                     checked={partsRequired}
                     onChange={(event) => setPartsRequired(event.target.checked)}
                   />
-                  <span
-                    className={`inline-flex h-7 w-12 items-center rounded-full transition ${
-                      partsRequired ? 'bg-emerald-600' : 'bg-slate-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition ${
-                        partsRequired ? 'translate-x-5' : 'translate-x-1'
-                      }`}
-                    />
-                  </span>
+                  <span className="glass-toggle-track" />
+                  <span className="glass-toggle-thumb" />
                 </label>
               </div>
-            </div>
-            <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Omschrijving
+            ) : null}
+            {selectedCustomer?.email ? (
+              <div className="workorder-toggle-row">
+                <span className="workorder-label">Bevestigingsmail sturen</span>
+                <label className="glass-toggle">
+                  <input
+                    type="checkbox"
+                    checked={sendEmail}
+                    onChange={(event) => setSendEmail(event.target.checked)}
+                  />
+                  <span className="glass-toggle-track" />
+                  <span className="glass-toggle-thumb" />
+                </label>
+              </div>
+            ) : null}
+            <form className="workorder-form sm:grid-cols-2" onSubmit={handleCreate}>
+              <label className="workorder-field">
+                <span className="workorder-label">Omschrijving</span>
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   required
                 />
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Vanaf (datum/tijd)
+              <label className="workorder-field">
+                <span className="workorder-label">Vanaf (datum/tijd)</span>
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(event) => setScheduledAt(event.target.value)}
                   required
                 />
               </label>
-              {dateWarning ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 sm:col-span-2">
-                  {dateWarning}
-                </div>
-              ) : null}
+              {dateWarning ? <div className="workorder-alert sm:col-span-2">{dateWarning}</div> : null}
               {overlapWarning ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 sm:col-span-2">
-                  {overlapWarning}
-                </div>
+                <div className="workorder-alert sm:col-span-2">{overlapWarning}</div>
               ) : null}
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Werknemer
+              <label className="workorder-field">
+                <span className="workorder-label">Werknemer</span>
                 <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  className="workorder-input"
                   value={assigneeId}
                   onChange={(event) => setAssigneeId(event.target.value)}
                   required
@@ -2349,9 +2422,9 @@ export default function PlanningClient() {
                   ))}
                 </select>
               </label>
-              <div className="grid gap-2 text-sm font-medium text-slate-700">
-                Beschikbaarheid
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <div className="workorder-field">
+                <span className="workorder-label">Beschikbaarheid</span>
+                <div className="workorder-value">
                   {selectedUser ? (
                     <>
                       {selectedUser.planningHoursPerDay
@@ -2367,10 +2440,10 @@ export default function PlanningClient() {
                   )}
                 </div>
               </div>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Klant
+              <label className="workorder-field">
+                <span className="workorder-label">Klant</span>
                 <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  className="workorder-input"
                   value={customerId}
                   onChange={(event) => setCustomerId(event.target.value)}
                 >
@@ -2382,10 +2455,10 @@ export default function PlanningClient() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Voertuig (kenteken)
+              <label className="workorder-field">
+                <span className="workorder-label">Voertuig (kenteken)</span>
                 <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  className="workorder-input"
                   value={vehicleId}
                   onChange={(event) => setVehicleId(event.target.value)}
                 >
@@ -2400,10 +2473,10 @@ export default function PlanningClient() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Planningstype
+              <label className="workorder-field">
+                <span className="workorder-label">Planningstype</span>
                 <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  className="workorder-input"
                   value={planningTypeId}
                   onChange={(event) => setPlanningTypeId(event.target.value)}
                 >
@@ -2415,10 +2488,10 @@ export default function PlanningClient() {
                   ))}
                 </select>
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Duur (uu:mm)
+              <label className="workorder-field">
+                <span className="workorder-label">Duur (uu:mm)</span>
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
                   inputMode="numeric"
                   value={durationMinutes}
                   onChange={(event) => setDurationMinutes(event.target.value)}
@@ -2463,10 +2536,11 @@ export default function PlanningClient() {
                 </div>
                 <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                   {activeTab === 'opdracht' ? (
-                    <label className="grid gap-2 text-sm font-medium text-slate-700">
-                      Opdracht
+                    <label className="workorder-field">
+                      <span className="workorder-label">Opdracht</span>
                       <textarea
-                        className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
+                        className="workorder-input"
+                        rows={4}
                         value={assignmentText}
                         onChange={(event) => setAssignmentText(event.target.value)}
                         placeholder="Omschrijving van de opdracht"
@@ -2477,10 +2551,10 @@ export default function PlanningClient() {
                   )}
                 </div>
               </div>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Akkoordbedrag
+              <label className="workorder-field">
+                <span className="workorder-label">Akkoordbedrag</span>
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
                   type="number"
                   min="0"
                   step="0.01"
@@ -2489,10 +2563,11 @@ export default function PlanningClient() {
                   placeholder="Optioneel"
                 />
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Afspraken
+              <label className="workorder-field">
+                <span className="workorder-label">Afspraken</span>
                 <textarea
-                  className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
+                  rows={4}
                   value={agreementNotes}
                   onChange={(event) => setAgreementNotes(event.target.value)}
                   placeholder="Optioneel"
@@ -2502,7 +2577,7 @@ export default function PlanningClient() {
                 {editingItem ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <button
-                      className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      className="workorder-button secondary"
                       type="button"
                       onClick={() => handleDelete(editingItem)}
                     >
@@ -2513,7 +2588,7 @@ export default function PlanningClient() {
                   <span />
                 )}
                 <button
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
+                  className="workorder-button primary"
                   type="submit"
                 >
                   {editingItem ? 'Bijwerken' : 'Opslaan'}

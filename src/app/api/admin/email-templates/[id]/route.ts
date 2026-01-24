@@ -60,7 +60,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       lastEditedAt: nowIso,
       lastEditedBy: user.uid
     }
-    await firestore.collection('emailTemplates').doc(id).set(payload, { merge: true })
+    const sanitized = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined)
+    )
+    await firestore.collection('emailTemplates').doc(id).set(sanitized, { merge: true })
     return NextResponse.json({ success: true, item: { id, ...payload } })
   } catch (error: any) {
     const status = error.status || 500

@@ -507,33 +507,31 @@ export default function WorkOrderDetailClient() {
             {error}
           </p>
         ) : null}
-        <div className="mt-4 grid gap-3">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Titel
+        <div className="workorder-form">
+          <label className="workorder-field">
+            <span className="workorder-label">Titel</span>
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="workorder-input"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Kenteken
+          <label className="workorder-field">
+            <span className="workorder-label">Kenteken</span>
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="workorder-input"
               value={licensePlate}
               onChange={(event) => setLicensePlate(event.target.value)}
               placeholder="Optioneel"
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Status
+          <label className="workorder-field">
+            <span className="workorder-label">Status</span>
             {!statusesReady || !transitionsReady ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                {workOrder.workOrderStatus || '-'}
-              </div>
+              <div className="workorder-value">{workOrder.workOrderStatus || '-'}</div>
             ) : (
               <select
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                className="workorder-input"
                 value={statusSelection}
                 onChange={(event) => setStatusSelection(event.target.value)}
               >
@@ -557,7 +555,7 @@ export default function WorkOrderDetailClient() {
               <div className="grid gap-2">
                 <span className="text-xs text-slate-500">Override reden (verplicht)</span>
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="workorder-input"
                   value={overrideReason}
                   onChange={(event) => setOverrideReason(event.target.value)}
                   placeholder="Reden voor override"
@@ -565,7 +563,7 @@ export default function WorkOrderDetailClient() {
               </div>
             ) : null}
             <button
-              className="mt-2 rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="workorder-button secondary small"
               type="button"
               onClick={handleStatusSubmit}
               disabled={
@@ -580,10 +578,10 @@ export default function WorkOrderDetailClient() {
               {statusSaving ? 'Wijzigen...' : 'Status wijzigen'}
             </button>
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Duur (minuten)
+          <label className="workorder-field">
+            <span className="workorder-label">Duur (minuten)</span>
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="workorder-input"
               type="number"
               min="0"
               value={durationMinutes}
@@ -592,7 +590,7 @@ export default function WorkOrderDetailClient() {
           </label>
           <button
             type="button"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            className="workorder-button secondary small"
             onClick={() => setShowMore((prev) => !prev)}
           >
             {showMore ? 'Minder details' : 'Meer details'}
@@ -602,41 +600,44 @@ export default function WorkOrderDetailClient() {
 
       {showMore ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mt-2 grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Start (datum/tijd)
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(event) => setScheduledAt(event.target.value)}
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Werknemer
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-                value={assigneeId}
-                onChange={(event) => setAssigneeId(event.target.value)}
-              >
-                <option value="none">Geen medewerker</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name || user.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-              Notities
+          <div className="workorder-form">
+            <div className="workorder-section workorder-two-col">
+              <label className="workorder-field">
+                <span className="workorder-label">Start (datum/tijd)</span>
+                <input
+                  className="workorder-input"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                />
+              </label>
+              <label className="workorder-field">
+                <span className="workorder-label">Werknemer</span>
+                <select
+                  className="workorder-input"
+                  value={assigneeId}
+                  onChange={(event) => setAssigneeId(event.target.value)}
+                >
+                  <option value="none">Geen medewerker</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name || user.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="workorder-field">
+              <span className="workorder-label">Notities</span>
               <textarea
-                className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="workorder-input"
+                rows={4}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Optioneel"
               />
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="workorder-checkbox">
               <input
                 type="checkbox"
                 checked={partsRequired}
@@ -644,52 +645,54 @@ export default function WorkOrderDetailClient() {
               />
               Onderdelen nodig
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-              Klant
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                value={customerQuery}
-                onChange={(event) => setCustomerQuery(event.target.value)}
-                placeholder="Zoek op naam, email of telefoon"
-              />
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-                value={customerId}
-                onChange={(event) => setCustomerId(event.target.value)}
-              >
-                <option value="none">Geen klant</option>
-                {filteredCustomers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name || customer.id}
-                    {customer.email ? ` (${customer.email})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-              Voertuig
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                value={vehicleQuery}
-                onChange={(event) => setVehicleQuery(event.target.value)}
-                placeholder="Zoek op kenteken"
-              />
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-                value={vehicleId}
-                onChange={(event) => setVehicleId(event.target.value)}
-              >
-                <option value="none">Geen voertuig</option>
-                {filteredVehicles.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>
-                    {[vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicle.id}
-                    {vehicle.licensePlate ? ` (${vehicle.licensePlate})` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              <p className="font-medium text-slate-900">Gekoppeld</p>
+            <div className="workorder-section">
+              <label className="workorder-field">
+                <span className="workorder-label">Klant</span>
+                <input
+                  className="workorder-input"
+                  value={customerQuery}
+                  onChange={(event) => setCustomerQuery(event.target.value)}
+                  placeholder="Zoek op naam, email of telefoon"
+                />
+                <select
+                  className="workorder-input"
+                  value={customerId}
+                  onChange={(event) => setCustomerId(event.target.value)}
+                >
+                  <option value="none">Geen klant</option>
+                  {filteredCustomers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name || customer.id}
+                      {customer.email ? ` (${customer.email})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="workorder-field">
+                <span className="workorder-label">Voertuig</span>
+                <input
+                  className="workorder-input"
+                  value={vehicleQuery}
+                  onChange={(event) => setVehicleQuery(event.target.value)}
+                  placeholder="Zoek op kenteken"
+                />
+                <select
+                  className="workorder-input"
+                  value={vehicleId}
+                  onChange={(event) => setVehicleId(event.target.value)}
+                >
+                  <option value="none">Geen voertuig</option>
+                  {filteredVehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {[vehicle.brand, vehicle.model].filter(Boolean).join(' ') || vehicle.id}
+                      {vehicle.licensePlate ? ` (${vehicle.licensePlate})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="workorder-summary">
+              <p className="workorder-summary-title">Gekoppeld</p>
               <p>
                 {selectedCustomer?.name || 'Geen klant'}
                 {selectedCustomer?.email ? ` · ${selectedCustomer.email}` : ''}

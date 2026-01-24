@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
 
 const getIdFromRequest = async (
   request: NextRequest,
@@ -31,13 +23,13 @@ export async function GET(
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('pages').doc(id)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.page.findUnique({ where: { id } })
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, item: { id: docSnap.id, ...docSnap.data() } })
+    
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error fetching page:', error)
@@ -57,38 +49,55 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('pages').doc(id)
-    const nowIso = new Date().toISOString()
-
     const isPublish = body.status === 'PUBLISHED'
     const draftTitle = body.draftTitle ?? undefined
     const draftSeo = body.draftSeo ?? undefined
     const draftBlocks = Array.isArray(body.draftBlocks) ? body.draftBlocks : undefined
     const nextStatus = body.status ?? undefined
 
-    const payload = {
-      slug: body.slug ?? undefined,
-      status: nextStatus,
-      draftTitle,
-      draftSeo,
-      draftBlocks,
-      ...(isPublish
-        ? {
-            title: draftTitle ?? undefined,
-            seo: draftSeo ?? undefined,
-            blocks: draftBlocks ?? undefined
-          }
-        : {}),
-      updated_at: nowIso,
-      updated_by: user.uid
+    const updateData: any = {}
+    if (body.slug !== undefined) updateData.slug = body.slug
+    if (nextStatus !== undefined) updateData.status = nextStatus
+    if (draftTitle !== undefined) updateData.draftTitle = draftTitle
+    if (draftSeo !== undefined) updateData.draftSeo = draftSeo
+    if (draftBlocks !== undefined) updateData.draftBlocks = draftBlocks
+
+    if (isPublish) {
+      if (draftTitle !== undefined) updateData.title = draftTitle
+      if (draftSeo !== undefined) updateData.seo = draftSeo
+      if (draftBlocks !== undefined) updateData.blocks = draftBlocks
+      updateData.publishedAt = new Date()
     }
 
-    await docRef.set(payload, { merge: true })
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    const item = await prisma.page.update({
+      where: { id },
+      data: updateData
+    })
+
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error updating page:', error)
+    return NextResponse.json({ success: false, error: error.message }, { status })
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: { id?: string } } | { params: Promise<{ id?: string }> }
+) {
+  try {
+    await requireRole(request, ['SYSTEM_ADMIN'])
+    const id = await getIdFromRequest(request, context)
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
+    }
+    
+    await prisma.page.delete({ where: { id } })
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    const status = error.status || 500
+    console.error('Error deleting page:', error)
     return NextResponse.json({ success: false, error: error.message }, { status })
   }
 }

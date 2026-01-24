@@ -35,7 +35,7 @@ export default function ToolsClient() {
           setAllowed(false)
           return
         }
-        setAllowed(data.user?.role === 'SYSTEM_ADMIN')
+        setAllowed(data.user?.isSystemAdmin === true)
       } catch {
         setAllowed(false)
       }
@@ -219,6 +219,21 @@ export default function ToolsClient() {
     }
   }
 
+  const handleSeedEmailUpdate = async () => {
+    try {
+      setError(null)
+      setEmailSeedResult(null)
+      const response = await apiFetch('/api/admin/seed-email?force=1', { method: 'POST' })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Seed mislukt')
+      }
+      setEmailSeedResult(`Email seed bijgewerkt: ${data.created?.length || 0}`)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
   const handleStatusDebug = async () => {
     try {
       setError(null)
@@ -333,6 +348,13 @@ export default function ToolsClient() {
             onClick={handleSeedEmail}
           >
             Seed email
+          </button>
+          <button
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            type="button"
+            onClick={handleSeedEmailUpdate}
+          >
+            Seed email (update)
           </button>
           <button
             className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"

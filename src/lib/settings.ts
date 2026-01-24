@@ -1,4 +1,4 @@
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 
 export type StatusEntry = {
   code: string
@@ -111,38 +111,31 @@ export type WorkOrderTransitionsSettings = {
   transitions: WorkOrderTransition[]
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 const readSettingsDoc = async (group: string) => {
-  const firestore = ensureFirestore()
-  const docSnap = await firestore.collection('settings').doc(group).get()
-  if (!docSnap.exists) {
+  const setting = await prisma.setting.findUnique({
+    where: { group },
+  })
+  
+  if (!setting) {
     throw new Error(`Missing settings group: ${group}`)
   }
-  const data = docSnap.data() || {}
-  return data.data ?? data
+  
+  return setting.data as any
 }
 
 const readSettingsDocOptional = async (group: string) => {
-  const firestore = ensureFirestore()
-  const docSnap = await firestore.collection('settings').doc(group).get()
-  if (!docSnap.exists) {
+  const setting = await prisma.setting.findUnique({
+    where: { group },
+  })
+  
+  if (!setting) {
     return null
   }
-  const data = docSnap.data() || {}
-  return data.data ?? data
+  
+  return setting.data as any
 }
 
 const seedNotificationSettings = async (): Promise<NotificationSettings> => {
-  const firestore = ensureFirestore()
-  const docRef = firestore.collection('settings').doc('notifications')
-  const nowIso = new Date().toISOString()
   const payload: NotificationSettings = {
     enabled: true,
     leadTimeHoursDefault: 24,
@@ -151,11 +144,16 @@ const seedNotificationSettings = async (): Promise<NotificationSettings> => {
     channels: { inApp: true, email: false, push: false },
     typesEnabled: { planningRisk: true, etaDelay: true, approvalMissing: true }
   }
-  await docRef.set({
-    data: payload,
-    created_at: nowIso,
-    updated_at: nowIso
+  
+  await prisma.setting.upsert({
+    where: { group: 'notifications' },
+    update: { data: payload },
+    create: {
+      group: 'notifications',
+      data: payload,
+    },
   })
+  
   return payload
 }
 
@@ -257,7 +255,10 @@ export const getNumberingSettings = async (): Promise<NumberingSettings> => {
 }
 
 export const getExecutionStatusRules = async (): Promise<ExecutionStatusRules> => {
-  const data = await readSettingsDoc('executionStatusRules')
+  const data = await readSettingsDocOptional('executionStatusRules')
+  if (!data) {
+    return { rules: [] }
+  }
   const rules = Array.isArray(data.rules) ? data.rules : []
   const normalized = rules
     .map((rule: any) => ({

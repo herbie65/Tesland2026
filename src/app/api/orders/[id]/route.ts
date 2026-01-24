@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { getPaymentMethods, getSalesStatusSettings, getShippingMethods } from '@/lib/settings'
 
@@ -15,14 +15,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   return segments[segments.length - 1] || ''
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['MANAGEMENT'])
@@ -30,12 +22,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('orders').doc(id).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        vehicle: true,
+        invoices: true
+      }
+    })
+    
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, item: { id: docSnap.id, ...docSnap.data() } })
+    
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error fetching order:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -71,14 +72,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Invalid shippingMethod' }, { status: 400 })
     }
 
-    const firestore = ensureFirestore()
-    const payload = {
-      ...body,
-      updated_at: new Date().toISOString(),
-      updated_by: user.uid
-    }
-    await firestore.collection('orders').doc(id).set(payload, { merge: true })
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    const updateData: any = {}
+    if (body.title !== undefined) updateData.title = body.title
+    if (body.customerId !== undefined) updateData.customerId = body.customerId
+    if (body.vehicleId !== undefined) updateData.vehicleId = body.vehicleId
+    if (body.vehiclePlate !== undefined) updateData.vehiclePlate = body.vehiclePlate
+    if (body.vehicleLabel !== undefined) updateData.vehicleLabel = body.vehicleLabel
+    if (body.orderStatus !== undefined) updateData.orderStatus = body.orderStatus
+    if (body.paymentStatus !== undefined) updateData.paymentStatus = body.paymentStatus
+    if (body.shipmentStatus !== undefined) updateData.shipmentStatus = body.shipmentStatus
+    if (body.paymentMethod !== undefined) updateData.paymentMethod = body.paymentMethod
+    if (body.shippingMethod !== undefined) updateData.shippingMethod = body.shippingMethod
+    if (body.totalAmount !== undefined) updateData.totalAmount = Number(body.totalAmount)
+    if (body.scheduledAt !== undefined) updateData.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
+    if (body.notes !== undefined) updateData.notes = body.notes
+
+    const item = await prisma.order.update({
+      where: { id },
+      data: updateData
+    })
+
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error updating order:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -92,8 +106,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    await firestore.collection('orders').doc(id).delete()
+    
+    await prisma.order.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Error deleting order:', error)

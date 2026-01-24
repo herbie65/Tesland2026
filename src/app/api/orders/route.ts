@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { getPaymentMethods, getSalesStatusSettings, getShippingMethods } from '@/lib/settings'
 import { generateSalesNumber } from '@/lib/numbering'
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest) {
   try {
     await requireRole(request, ['MANAGEMENT'])
-    const firestore = ensureFirestore()
-    const snapshot = await firestore.collection('orders').get()
-    const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    const items = await prisma.order.findMany({
+      include: {
+        customer: true,
+        vehicle: true,
+        invoices: true
+      },
+      orderBy: { createdAt: 'desc' }
+    })
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     console.error('Error fetching orders:', error)
@@ -69,36 +66,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid shippingMethod' }, { status: 400 })
     }
 
-    const firestore = ensureFirestore()
     const orderNumber = await generateSalesNumber('orders')
-    const payload = {
-      orderNumber,
-      title,
-      customerId: customerId || null,
-      vehicleId: vehicleId || null,
-      vehiclePlate: vehiclePlate || null,
-      vehicleLabel: vehicleLabel || null,
-      orderStatus: orderStatus || null,
-      paymentStatus: paymentStatus || null,
-      shipmentStatus: shipmentStatus || null,
-      paymentMethod: paymentMethod || null,
-      shippingMethod: shippingMethod || null,
-      totalAmount: Number.isFinite(Number(totalAmount)) ? Number(totalAmount) : null,
-      scheduledAt: scheduledAt || null,
-      notes: notes || null,
-      created_at: new Date().toISOString(),
-      created_by: user.uid,
-      updated_at: new Date().toISOString(),
-      updated_by: user.uid
-    }
-
-    const docRef = firestore.collection('orders').doc(orderNumber)
-    const existing = await docRef.get()
-    if (existing.exists) {
+    
+    const existing = await prisma.order.findUnique({ where: { orderNumber } })
+    if (existing) {
       return NextResponse.json({ success: false, error: 'Order number already exists' }, { status: 409 })
     }
-    await docRef.set({ id: orderNumber, ...payload })
-    return NextResponse.json({ success: true, item: { id: orderNumber, ...payload } }, { status: 201 })
+
+    const item = await prisma.order.create({
+      data: {
+        orderNumber,
+        title,
+        customerId: customerId || null,
+        vehicleId: vehicleId || null,
+        vehiclePlate: vehiclePlate || null,
+        vehicleLabel: vehicleLabel || null,
+        orderStatus: orderStatus || null,
+        paymentStatus: paymentStatus || null,
+        shipmentStatus: shipmentStatus || null,
+        paymentMethod: paymentMethod || null,
+        shippingMethod: shippingMethod || null,
+        totalAmount: Number.isFinite(Number(totalAmount)) ? Number(totalAmount) : null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        notes: notes || null
+      }
+    })
+
+    return NextResponse.json({ success: true, item }, { status: 201 })
   } catch (error: any) {
     console.error('Error creating order:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

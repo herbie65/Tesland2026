@@ -1,13 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
+import { prisma } from '@/lib/prisma'
 
 const getSlugFromRequest = async (
   request: NextRequest,
@@ -30,15 +22,8 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Missing slug' }, { status: 400 })
     }
 
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('pages').doc(slug)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
-      return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
-    }
-
-    const page = { id: docSnap.id, ...docSnap.data() } as any
-    if (page.status !== 'PUBLISHED') {
+    const page = await prisma.page.findUnique({ where: { slug } })
+    if (!page || page.status !== 'PUBLISHED') {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 

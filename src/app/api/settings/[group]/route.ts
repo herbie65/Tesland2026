@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 
 type RouteContext = {
@@ -23,20 +23,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
         { status: 400 }
       )
     }
+    
     if (group === 'rdwSettings') {
       await requireRole(request, ['SYSTEM_ADMIN'])
     } else {
       await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
     }
-    ensureAdmin()
-    if (!adminFirestore) {
-      return NextResponse.json({ success: false, error: 'Firebase Admin not initialized' }, { status: 500 })
-    }
-    const docSnap = await adminFirestore.collection('settings').doc(group).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.setting.findUnique({ where: { group } })
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, item: { id: docSnap.id, ...docSnap.data() } })
+    
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error fetching settings group:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -52,16 +51,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       )
     }
+    
     if (group === 'rdwSettings') {
       await requireRole(request, ['SYSTEM_ADMIN'])
     } else {
       await requireRole(request, ['MANAGEMENT'])
     }
+    
     const body = await request.json()
     const { data } = body || {}
+    
     if (!data) {
       return NextResponse.json({ success: false, error: 'data is required' }, { status: 400 })
     }
+    
     if (group === 'rdwSettings') {
       const requiredFields = [
         'bedrijfsnummer',
@@ -80,17 +83,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         )
       }
     }
-    ensureAdmin()
-    if (!adminFirestore) {
-      return NextResponse.json({ success: false, error: 'Firebase Admin not initialized' }, { status: 500 })
-    }
-    const payload = {
-      group,
-      data,
-      updated_at: new Date().toISOString()
-    }
-    await adminFirestore.collection('settings').doc(group).set(payload, { merge: true })
-    return NextResponse.json({ success: true, item: { id: group, ...payload } })
+
+    const item = await prisma.setting.upsert({
+      where: { group },
+      update: { data },
+      create: { group, data }
+    })
+
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error updating settings group:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

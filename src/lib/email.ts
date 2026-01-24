@@ -1,13 +1,14 @@
 import nodemailer from 'nodemailer'
 import sgMail from '@sendgrid/mail'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { getEmailSettings } from '@/lib/settings'
 
 type EmailTemplate = {
   id: string
-  enabled?: boolean
+  name?: string
+  isActive?: boolean
   subject?: string
-  bodyText?: string
+  body?: string
 }
 
 type SendEmailInput = {
@@ -16,31 +17,34 @@ type SendEmailInput = {
   variables?: Record<string, string>
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 const renderTemplate = (value: string, variables: Record<string, string>) => {
   return value.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] ?? '')
 }
 
 const loadTemplate = async (templateId: string) => {
-  const firestore = ensureFirestore()
-  const docSnap = await firestore.collection('emailTemplates').doc(templateId).get()
-  if (!docSnap.exists) {
+  const template = await prisma.emailTemplate.findUnique({
+    where: { id: templateId },
+  })
+  
+  if (!template) {
     return null
   }
-  return { id: docSnap.id, ...docSnap.data() } as EmailTemplate
+  
+  return template as EmailTemplate
 }
 
 const logEmail = async (payload: Record<string, any>) => {
-  const firestore = ensureFirestore()
-  const nowIso = new Date().toISOString()
-  await firestore.collection('emailLogs').add({ ...payload, sentAt: nowIso })
+  await prisma.emailLog.create({
+    data: {
+      to: payload.to,
+      from: payload.from || null,
+      subject: payload.subject,
+      templateId: payload.templateId || null,
+      status: payload.status || 'sent',
+      error: payload.error || null,
+      sentAt: new Date(),
+    },
+  })
 }
 
 const sendViaSmtp = async (payload: {

@@ -1,17 +1,48 @@
-import { getFirebaseAuth } from '@/lib/firebase-auth'
+/**
+ * Helper to make authenticated API calls with JWT token
+ */
+export async function apiFetch(url: string, options: RequestInit = {}) {
+  const token = localStorage.getItem('token')
+  
+  const headers = new Headers(options.headers)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  })
+  
+  // If 401, redirect to login
+  if (response.status === 401) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    window.location.href = '/login'
+  }
+  
+  return response
+}
 
-export const apiFetch = async (input: RequestInfo, init: RequestInit = {}) => {
-  const auth = getFirebaseAuth()
-  const user = auth.currentUser
-  if (!user) {
-    throw new Error('Not authenticated')
+/**
+ * Get current user from localStorage
+ */
+export function getCurrentUser() {
+  const userStr = localStorage.getItem('user')
+  if (!userStr) return null
+  
+  try {
+    return JSON.parse(userStr)
+  } catch {
+    return null
   }
-  const token = await user.getIdToken()
-  const headers = new Headers(init.headers || {})
-  headers.set('Authorization', `Bearer ${token}`)
-  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData
-  if (init.body && !headers.has('Content-Type') && !isFormData) {
-    headers.set('Content-Type', 'application/json')
-  }
-  return fetch(input, { ...init, headers })
+}
+
+/**
+ * Logout - clear token and redirect
+ */
+export function logout() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  window.location.href = '/login'
 }

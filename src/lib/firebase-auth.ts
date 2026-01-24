@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth'
+import { getAuth, signInWithEmailAndPassword, signOut, User } from 'firebase/auth'
 
 const getFirebaseConfig = () => ({
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || '',
@@ -25,10 +25,9 @@ export const getFirebaseAuth = () => {
   return getAuth(app)
 }
 
-export const loginWithGoogle = async () => {
+export const loginWithEmailPassword = async (email: string, password: string) => {
   const auth = getFirebaseAuth()
-  const provider = new GoogleAuthProvider()
-  return signInWithPopup(auth, provider)
+  return signInWithEmailAndPassword(auth, email, password)
 }
 
 export const logout = async () => {

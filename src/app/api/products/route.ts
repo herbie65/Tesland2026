@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { FirebaseAdminService } from '@/lib/firebase-admin-service'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
-    const items = await FirebaseAdminService.getProducts()
+    const items = await prisma.product.findMany({
+      orderBy: { createdAt: 'desc' }
+    })
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     console.error('Error fetching products:', error)
@@ -19,37 +21,40 @@ export async function POST(request: NextRequest) {
       sku,
       category,
       price,
-      stock_quantity,
-      min_stock,
+      cost,
+      stock,
+      unit,
+      supplier,
+      supplierSku,
       description,
-      image_url,
-      shelf_number,
-      bin_number,
-      is_stocked,
-      is_active
+      isActive
     } = body || {}
 
     if (!name) {
       return NextResponse.json({ success: false, error: 'name is required' }, { status: 400 })
     }
-
-    const payload = {
-      name,
-      sku: sku || null,
-      category: category || null,
-      price: Number(price) || 0,
-      stock_quantity: Number(stock_quantity) || 0,
-      min_stock: Number(min_stock) || 0,
-      description: description || null,
-      image_url: image_url || null,
-      shelf_number: shelf_number || null,
-      bin_number: bin_number || null,
-      is_stocked: is_stocked !== undefined ? Boolean(is_stocked) : true,
-      is_active: is_active !== undefined ? Boolean(is_active) : true
+    
+    if (!sku) {
+      return NextResponse.json({ success: false, error: 'sku is required' }, { status: 400 })
     }
 
-    const created = await FirebaseAdminService.createProduct(payload)
-    return NextResponse.json({ success: true, item: created }, { status: 201 })
+    const item = await prisma.product.create({
+      data: {
+        name,
+        sku,
+        category: category || null,
+        price: price !== undefined ? Number(price) : null,
+        cost: cost !== undefined ? Number(cost) : null,
+        stock: stock !== undefined ? Number(stock) : 0,
+        unit: unit || null,
+        supplier: supplier || null,
+        supplierSku: supplierSku || null,
+        description: description || null,
+        isActive: isActive !== undefined ? Boolean(isActive) : true
+      }
+    })
+    
+    return NextResponse.json({ success: true, item }, { status: 201 })
   } catch (error: any) {
     console.error('Error creating product:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })

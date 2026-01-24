@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 
 type RouteContext = {
@@ -14,14 +14,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   return segments[segments.length - 1] || ''
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['MANAGEMENT'])
@@ -29,12 +21,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('credit_invoices').doc(id).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.creditInvoice.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        order: true
+      }
+    })
+    
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, item: { id: docSnap.id, ...docSnap.data() } })
+    
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error fetching credit invoice:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -48,15 +48,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
+    
     const body = await request.json()
-    const firestore = ensureFirestore()
-    const payload = {
-      ...body,
-      updated_at: new Date().toISOString(),
-      updated_by: user.uid
-    }
-    await firestore.collection('credit_invoices').doc(id).set(payload, { merge: true })
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    const updateData: any = {}
+    if (body.orderId !== undefined) updateData.orderId = body.orderId
+    if (body.customerId !== undefined) updateData.customerId = body.customerId
+    if (body.amount !== undefined) updateData.amount = Number(body.amount)
+    if (body.reason !== undefined) updateData.reason = body.reason
+
+    const item = await prisma.creditInvoice.update({
+      where: { id },
+      data: updateData
+    })
+
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     console.error('Error updating credit invoice:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
@@ -70,8 +75,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    await firestore.collection('credit_invoices').doc(id).delete()
+    
+    await prisma.creditInvoice.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Error deleting credit invoice:', error)

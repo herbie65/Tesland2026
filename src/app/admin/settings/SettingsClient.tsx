@@ -41,29 +41,13 @@ export default function SettingsClient() {
       }
       const merged: Record<string, any> = { ...SETTINGS_DEFAULTS }
       ;(data.items || []).forEach((item: SettingsGroup) => {
-        merged[item.id] = { ...merged[item.id], ...(item.data || {}) }
+        merged[item.group] = { ...merged[item.group], ...(item.data || {}) }
       })
       setSettings(merged)
     } catch (err: any) {
       setError(err.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const bootstrapDefaults = async () => {
-    try {
-      setError(null)
-      setSuccess(null)
-      const response = await apiFetch("/api/settings/bootstrap", { method: "POST" })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to bootstrap settings")
-      }
-      setSuccess("Defaults zijn opgeslagen.")
-      await loadSettings()
-    } catch (err: any) {
-      setError(err.message)
     }
   }
 
@@ -179,6 +163,7 @@ export default function SettingsClient() {
       }
       setSuccess(`Instellingen opgeslagen: ${group}`)
       setTimeout(() => setSuccess(null), 2000)
+      await loadSettings() // Reload settings after save
     } catch (err: any) {
       setError(err.message)
     }
@@ -200,6 +185,7 @@ export default function SettingsClient() {
       }
       setSuccess("E-mail instellingen opgeslagen.")
       setTimeout(() => setSuccess(null), 2000)
+      await loadSettings() // Reload settings after save
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -237,6 +223,7 @@ export default function SettingsClient() {
       }
       setSuccess("RDW instellingen opgeslagen.")
       setTimeout(() => setSuccess(null), 2000)
+      await loadSettings() // Reload settings after save
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -245,24 +232,24 @@ export default function SettingsClient() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold">Personalisatie</h2>
-            <p className="text-sm text-slate-600">
+            <h2 className="text-lg font-semibold text-slate-800">Personalisatie</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
               Stel je profielafbeelding, achtergrond en transparantie in.
             </p>
           </div>
         </div>
         {profileLoading ? (
-          <p className="mt-4 text-sm text-slate-500">Profiel laden...</p>
+          <p className="mt-3 text-xs text-slate-400">Profiel laden...</p>
         ) : (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               Profielfoto URL
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={profile.profilePhoto}
                 onChange={(event) =>
                   setProfile((prev) => ({ ...prev, profilePhoto: event.target.value }))
@@ -270,17 +257,17 @@ export default function SettingsClient() {
                 placeholder="https://"
               />
               <button
-                className="w-fit rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                className="w-fit rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md"
                 type="button"
                 onClick={() => setShowProfilePicker(true)}
               >
                 Media kiezen
               </button>
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               Achtergrond URL
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={profile.backgroundPhoto}
                 onChange={(event) =>
                   setProfile((prev) => ({ ...prev, backgroundPhoto: event.target.value }))
@@ -288,14 +275,14 @@ export default function SettingsClient() {
                 placeholder="https://"
               />
               <button
-                className="w-fit rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                className="w-fit rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md"
                 type="button"
                 onClick={() => setShowBackgroundPicker(true)}
               >
                 Media kiezen
               </button>
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
               Transparantie ({profile.transparency}%)
               <input
                 type="range"
@@ -308,11 +295,12 @@ export default function SettingsClient() {
                     transparency: Number(event.target.value)
                   }))
                 }
+                className="h-2 w-full appearance-none rounded-lg bg-slate-200/50 backdrop-blur-sm accent-blue-600"
               />
             </label>
             <div className="flex items-center gap-3 sm:col-span-2">
               <button
-                className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
                 type="button"
                 disabled={profileSaving}
                 onClick={async () => {
@@ -347,7 +335,7 @@ export default function SettingsClient() {
                 <img
                   src={profile.profilePhoto}
                   alt="Profielfoto"
-                  className="h-12 w-12 rounded-full object-cover"
+                  className="h-10 w-10 rounded-full border-2 border-white/50 object-cover shadow-md"
                 />
               ) : null}
               {profile.backgroundPhoto ? (
@@ -358,25 +346,25 @@ export default function SettingsClient() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
+        <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold">E-mail instellingen</h2>
-            <p className="text-sm text-slate-600">
+            <h2 className="text-lg font-semibold text-slate-800">E-mail instellingen</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
               TEST-mode stuurt altijd naar test-ontvangers.
             </p>
           </div>
         </div>
         {String(settings.email?.mode || "OFF") === "TEST" ? (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="mt-2 rounded-lg border border-amber-200/50 bg-amber-50/80 px-3 py-2 text-xs text-amber-800 backdrop-blur-sm">
             E-mail staat in TEST-modus – alle mails gaan naar testadres.
           </div>
         ) : null}
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Mode
             <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.email?.mode || "OFF"}
               onChange={(event) => updateGroup("email", "mode", event.target.value)}
             >
@@ -385,10 +373,10 @@ export default function SettingsClient() {
               <option value="LIVE">LIVE</option>
             </select>
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Provider
             <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.email?.provider || "SMTP"}
               onChange={(event) => updateGroup("email", "provider", event.target.value)}
             >
@@ -396,26 +384,26 @@ export default function SettingsClient() {
               <option value="SENDGRID">SendGrid</option>
             </select>
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             From naam
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.email?.fromName || ""}
               onChange={(event) => updateGroup("email", "fromName", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             From e-mail
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.email?.fromEmail || ""}
               onChange={(event) => updateGroup("email", "fromEmail", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
             Test ontvangers (komma-gescheiden)
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={(settings.email?.testRecipients || []).join(", ")}
               onChange={(event) =>
                 updateGroup(
@@ -431,7 +419,7 @@ export default function SettingsClient() {
           </label>
           <div className="sm:col-span-2">
             <button
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
+              className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
               type="button"
               onClick={saveEmailSettings}
               disabled={emailSaving}
@@ -443,16 +431,16 @@ export default function SettingsClient() {
       </section>
 
       {isSystemAdmin ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-semibold">RDW / APK</h2>
-              <p className="text-sm text-slate-600">
+              <h2 className="text-lg font-semibold text-slate-800">RDW / APK</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
                 Verplicht voor RDW meldingen (km-standen, APK afmelden).
               </p>
             </div>
             <button
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
+              className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
               type="button"
               onClick={saveRdwSettings}
               disabled={rdwSaving}
@@ -460,67 +448,67 @@ export default function SettingsClient() {
               {rdwSaving ? "Opslaan..." : "RDW instellingen opslaan"}
             </button>
           </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               Bedrijfsnummer (RDW)
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.bedrijfsnummer || ""}
                 onChange={(event) =>
                   updateGroup("rdwSettings", "bedrijfsnummer", event.target.value)
                 }
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               Keuringsinstantienummer
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.keuringsinstantienummer || ""}
                 onChange={(event) =>
                   updateGroup("rdwSettings", "keuringsinstantienummer", event.target.value)
                 }
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               Naam KvK
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.kvkNaam || ""}
                 onChange={(event) => updateGroup("rdwSettings", "kvkNaam", event.target.value)}
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               KvK-nummer
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.kvkNummer || ""}
                 onChange={(event) => updateGroup("rdwSettings", "kvkNummer", event.target.value)}
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               KvK-vestigingsnummer
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.kvkVestigingsnummer || ""}
                 onChange={(event) =>
                   updateGroup("rdwSettings", "kvkVestigingsnummer", event.target.value)
                 }
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
               RDW aansluitnummer (optioneel)
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.aansluitnummer || ""}
                 onChange={(event) =>
                   updateGroup("rdwSettings", "aansluitnummer", event.target.value)
                 }
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
               Certificaat-referentie (geen private key)
               <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                 value={settings.rdwSettings?.certificaatReferentie || ""}
                 onChange={(event) =>
                   updateGroup("rdwSettings", "certificaatReferentie", event.target.value)
@@ -550,78 +538,61 @@ export default function SettingsClient() {
         title="Kies achtergrond"
       />
       {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="relative overflow-hidden rounded-xl border border-red-200/50 bg-gradient-to-br from-red-50/80 to-red-100/60 px-4 py-3 text-sm text-red-700 shadow-md backdrop-blur-sm">
           {error}
-        </p>
+        </div>
       ) : null}
       {success ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <div className="relative overflow-hidden rounded-xl border border-emerald-200/50 bg-gradient-to-br from-emerald-50/80 to-emerald-100/60 px-4 py-3 text-sm text-emerald-700 shadow-md backdrop-blur-sm">
           {success}
-        </p>
-      ) : null}
-
-      {isSystemAdmin ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold">Startinstellingen</h2>
-              <p className="text-sm text-slate-600">
-                Maak standaard instellingen aan als de collectie nog leeg is.
-              </p>
-            </div>
-            <button
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-              type="button"
-              onClick={bootstrapDefaults}
-            >
-              Initialiseer defaults
-            </button>
-          </div>
-        </section>
+        </div>
       ) : null}
 
       <PlanningTypes />
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Algemeen</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Algemeen</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Bedrijfsinformatie</p>
+          </div>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
             type="button"
             onClick={() => saveGroup("general")}
           >
             Opslaan
           </button>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Bedrijfsnaam
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.general.companyName}
               onChange={(event) => updateGroup("general", "companyName", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Contact email
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.general.contactEmail}
               onChange={(event) => updateGroup("general", "contactEmail", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Contact telefoon
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.general.contactPhone}
               onChange={(event) => updateGroup("general", "contactPhone", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
             Adres
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.general.address}
               onChange={(event) => updateGroup("general", "address", event.target.value)}
             />
@@ -629,22 +600,25 @@ export default function SettingsClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Planning</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Planning</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Standaard planning instellingen</p>
+          </div>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
             type="button"
             onClick={() => saveGroup("planning")}
           >
             Opslaan
           </button>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Standaard duur (minuten)
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="number"
               min="0"
               value={settings.planning.defaultDurationMinutes}
@@ -653,36 +627,36 @@ export default function SettingsClient() {
               }
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Dag starttijd
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="time"
               value={settings.planning.dayStart}
               onChange={(event) => updateGroup("planning", "dayStart", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Dag eindtijd
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="time"
               value={settings.planning.dayEnd}
               onChange={(event) => updateGroup("planning", "dayEnd", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Standaard status
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.planning.defaultStatus}
               onChange={(event) => updateGroup("planning", "defaultStatus", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Tijdsblok (minuten)
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="number"
               min="15"
               step="5"
@@ -690,60 +664,62 @@ export default function SettingsClient() {
               onChange={(event) => updateGroup("planning", "slotMinutes", Number(event.target.value))}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Dag‑view dagen (horizontaal)
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="number"
               min="1"
               value={settings.planning.dayViewDays}
               onChange={(event) => updateGroup("planning", "dayViewDays", Number(event.target.value))}
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
               checked={Boolean(settings.planning.selectableSaturday)}
               onChange={(event) =>
                 updateGroup("planning", "selectableSaturday", event.target.checked)
               }
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
             />
             Zaterdag selecteerbaar in klantkalender
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
               checked={Boolean(settings.planning.selectableSunday)}
               onChange={(event) =>
                 updateGroup("planning", "selectableSunday", event.target.checked)
               }
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
             />
             Zondag selecteerbaar in klantkalender
           </label>
           <div className="sm:col-span-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-800">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-600 mb-2">
               <span>Pauzes</span>
               <button
-                className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md"
                 type="button"
                 onClick={addPlanningBreak}
               >
-                Pauze toevoegen
+                + Pauze toevoegen
               </button>
             </div>
-            <div className="mt-3 grid gap-3">
+            <div className="grid gap-2">
               {planningBreaks.length === 0 ? (
-                <p className="text-sm text-slate-500">Geen pauzes ingesteld.</p>
+                <p className="text-xs text-slate-400 py-2">Geen pauzes ingesteld.</p>
               ) : (
                 planningBreaks.map((entry: any, index: number) => (
                   <div
                     key={`break-${index}`}
                     className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
                   >
-                    <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    <label className="grid gap-1 text-xs font-medium text-slate-700">
                       Start
                       <input
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                        className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                         type="time"
                         value={entry?.start || ""}
                         onChange={(event) =>
@@ -751,10 +727,10 @@ export default function SettingsClient() {
                         }
                       />
                     </label>
-                    <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    <label className="grid gap-1 text-xs font-medium text-slate-700">
                       Eind
                       <input
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                        className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                         type="time"
                         value={entry?.end || ""}
                         onChange={(event) =>
@@ -763,7 +739,7 @@ export default function SettingsClient() {
                       />
                     </label>
                     <button
-                      className="mt-6 h-10 rounded-lg border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-50"
+                      className="mt-5 h-8 rounded-lg border border-red-300/50 bg-white/80 px-3 text-xs font-medium text-red-600 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-red-50 hover:shadow-md active:scale-95"
                       type="button"
                       onClick={() => removePlanningBreak(index)}
                     >
@@ -777,41 +753,56 @@ export default function SettingsClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Werkoverzicht</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Werkoverzicht</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Beheer zichtbare kolommen</p>
+          </div>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
             type="button"
             onClick={() => saveGroup("workoverview")}
           >
             Opslaan
           </button>
         </div>
-        <div className="mt-4 grid gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-700">
+        <div className="mt-3 grid gap-2">
+          <div className="flex items-center justify-between text-xs font-medium text-slate-600">
             <span>Kolommen</span>
             <button
-              className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md"
               type="button"
               onClick={addWorkOverviewColumn}
             >
-              Kolom toevoegen
+              + Kolom toevoegen
             </button>
           </div>
           {workOverviewColumns.length === 0 ? (
-            <p className="text-sm text-slate-500">Geen kolommen ingesteld.</p>
+            <p className="text-xs text-slate-400 py-2">Geen kolommen ingesteld.</p>
           ) : (
             workOverviewColumns.map((entry: any, index: number) => (
-              <div key={`workoverview-${index}`} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <div key={`workoverview-${index}`} className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                 <input
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
                   value={entry}
                   onChange={(event) => updateWorkOverviewColumn(index, event.target.value)}
                   placeholder="Kolomnaam"
                 />
                 <button
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                  className="rounded-lg border border-blue-300/50 bg-gradient-to-br from-blue-500 to-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-md transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-lg active:scale-95"
+                  type="button"
+                  onClick={() => {
+                    const newValue = prompt('Wijzig kolomnaam:', entry)
+                    if (newValue !== null && newValue.trim()) {
+                      updateWorkOverviewColumn(index, newValue.trim())
+                    }
+                  }}
+                >
+                  Wijzig
+                </button>
+                <button
+                  className="rounded-lg border border-red-300/50 bg-white/80 px-3 py-1.5 text-xs font-medium text-red-600 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-red-50 hover:shadow-md active:scale-95"
                   type="button"
                   onClick={() => removeWorkOverviewColumn(index)}
                 >
@@ -823,50 +814,55 @@ export default function SettingsClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Notificaties</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Notificaties</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Notificatie instellingen</p>
+          </div>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
             type="button"
             onClick={() => saveGroup("notifications")}
           >
             Opslaan
           </button>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Afzender email
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.notifications.senderEmail}
               onChange={(event) => updateGroup("notifications", "senderEmail", event.target.value)}
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
               checked={settings.notifications.notifyOnNewOrder}
               onChange={(event) =>
                 updateGroup("notifications", "notifyOnNewOrder", event.target.checked)
               }
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
             />
             Mail bij nieuwe order
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
               checked={settings.notifications.notifyOnPlanningChange}
               onChange={(event) =>
                 updateGroup("notifications", "notifyOnPlanningChange", event.target.checked)
               }
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
             />
             Mail bij wijziging planning
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Meldingen X uur vooraf
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               type="number"
               min="1"
               value={settings.notifications.planningLeadHours}
@@ -878,30 +874,33 @@ export default function SettingsClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Integraties</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Integraties</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Externe systemen en webhooks</p>
+          </div>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
             type="button"
             onClick={() => saveGroup("integrations")}
           >
             Opslaan
           </button>
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
             Webhook URL
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.integrations.webhookUrl}
               onChange={(event) => updateGroup("integrations", "webhookUrl", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Extern systeem
             <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
               value={settings.integrations.externalSystem}
               onChange={(event) =>
                 updateGroup("integrations", "externalSystem", event.target.value)

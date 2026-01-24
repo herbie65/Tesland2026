@@ -1,13 +1,5 @@
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import type { NextRequest } from 'next/server'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
 
 type AuditPayload = {
   action:
@@ -29,9 +21,8 @@ type AuditPayload = {
 }
 
 export const logAudit = async (payload: AuditPayload, request?: NextRequest) => {
-  const firestore = ensureFirestore()
-  const nowIso = new Date().toISOString()
   const context: Record<string, any> = payload.context || {}
+  
   if (request) {
     context.ip =
       request.headers.get('x-forwarded-for') ||
@@ -39,9 +30,23 @@ export const logAudit = async (payload: AuditPayload, request?: NextRequest) => 
       null
     context.userAgent = request.headers.get('user-agent') || null
   }
-  await firestore.collection('auditLogs').add({
-    ...payload,
-    context,
-    timestamp: nowIso
+  
+  await prisma.auditLog.create({
+    data: {
+      userId: payload.actorUid,
+      action: payload.action,
+      resource: 'USER',
+      resourceId: payload.targetUid || null,
+      changes: {
+        beforeRole: payload.beforeRole,
+        afterRole: payload.afterRole,
+        actorEmail: payload.actorEmail,
+        targetEmail: payload.targetEmail,
+        reason: payload.reason,
+      },
+      context,
+      ipAddress: context.ip || null,
+      userAgent: context.userAgent || null,
+    },
   })
 }

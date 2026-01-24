@@ -1,21 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { normalizeLicensePlate } from '@/lib/license-plate'
-import { FirebaseAdminService } from '@/lib/firebase-admin-service'
 import { sendTemplatedEmail } from '@/lib/email'
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 const getPlanningSettings = async () => {
-  const firestore = ensureFirestore()
-  const docSnap = await firestore.collection('settings').doc('planning').get()
-  const data = docSnap.exists ? (docSnap.data()?.data ?? docSnap.data()) : {}
+  const settings = await prisma.setting.findUnique({ where: { group: 'planning' } })
+  const data = settings?.data as any || {}
   const defaultDurationMinutes = Number(data?.defaultDurationMinutes || 60)
   return { defaultDurationMinutes }
 }
@@ -53,7 +43,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'name and email are required' }, { status: 400 })
     }
 
-    const firestore = ensureFirestore()
     const settings = await getPlanningSettings()
     const duration =
       Number.isFinite(Number(durationMinutes)) && Number(durationMinutes) > 0
@@ -65,7 +54,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid date or time' }, { status: 400 })
     }
 
-    const nowIso = new Date().toISOString()
     const normalizedPlate = licensePlate ? normalizeLicensePlate(String(licensePlate)) : null
 
     const titleBase = planningTypeName || 'Afspraak'
@@ -73,64 +61,74 @@ export async function POST(request: NextRequest) {
     let resolvedVehicleId = vehicleId || null
 
     if (!resolvedCustomerId) {
-      const createdCustomer = await FirebaseAdminService.createCollectionItem('customers', {
-        name,
-        email,
-        phone: phone || null,
-        company: company || null,
-        address: address || null,
-        postalCode: postalCode || null,
-        city: city || null
+      const createdCustomer = await prisma.customer.create({
+        data: {
+          name,
+          email,
+          phone: phone || null,
+          company: company || null,
+          address: address ? { street: address, postalCode, city } : null,
+          postalCode: postalCode || null,
+          city: city || null
+        }
       })
       resolvedCustomerId = createdCustomer.id
     }
 
     if (licensePlate && !resolvedVehicleId) {
-      const createdVehicle = await FirebaseAdminService.createCollectionItem('vehicles', {
-        customerId: resolvedCustomerId,
-        licensePlate: normalizedPlate || null,
-        brand: null,
-        model: null
+      const createdVehicle = await prisma.vehicle.create({
+        data: {
+          customerId: resolvedCustomerId,
+          licensePlate: normalizedPlate || null,
+          make: null,
+          model: null
+        }
       })
       resolvedVehicleId = createdVehicle.id
     }
 
-    const payload = {
-      title: titleBase,
-      scheduledAt: scheduledAt.toISOString(),
-      durationMinutes: duration,
-      customerId: resolvedCustomerId,
-      customerName: name || null,
-      customerEmail: email || null,
-      customerPhone: phone || null,
-      vehicleId: resolvedVehicleId,
-      vehiclePlate: normalizedPlate,
-      planningTypeId: planningTypeId || null,
-      planningTypeName: planningTypeName || null,
-      planningTypeColor: planningTypeColor || null,
-      notes: notes || null,
-      isRequest: true,
-      requestStatus: 'REQUESTED',
-      created_at: nowIso,
-      updated_at: nowIso,
-      created_by: 'public',
-      updated_by: 'public'
-    }
+    const endAt = new Date(scheduledAt.getTime() + duration * 60 * 1000)
 
-    const docRef = firestore.collection('planningItems').doc()
-    await docRef.set({ id: docRef.id, ...payload })
-
-    await sendTemplatedEmail({
-      templateId: 'appointment_confirmed',
-      to: email,
-      variables: {
-        klantNaam: name || '',
-        datum: date,
-        tijd: time,
-        kenteken: normalizedPlate || ''
+    const appointment = await prisma.planningItem.create({
+      data: {
+        title: titleBase,
+        scheduledAt,
+        duration,
+        endAt,
+        customerId: resolvedCustomerId,
+        vehicleId: resolvedVehicleId,
+        planningTypeId: planningTypeId || null,
+        notes: notes || null,
+        isPublicBooking: true,
+        confirmationSent: false,
+        planningTypeColor: planningTypeColor || null
       }
     })
-    return NextResponse.json({ success: true, id: docRef.id })
+
+    // Send confirmation email
+    try {
+      await sendTemplatedEmail({
+        to: email,
+        template: 'appointment-confirmation',
+        data: {
+          name,
+          date,
+          time,
+          duration,
+          planningType: planningTypeName || 'Afspraak',
+          licensePlate: licensePlate || '',
+          notes: notes || ''
+        }
+      })
+      await prisma.planningItem.update({
+        where: { id: appointment.id },
+        data: { confirmationSent: true }
+      })
+    } catch (emailError) {
+      console.error('Failed to send confirmation email:', emailError)
+    }
+
+    return NextResponse.json({ success: true, item: appointment }, { status: 201 })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error creating public appointment:', error)

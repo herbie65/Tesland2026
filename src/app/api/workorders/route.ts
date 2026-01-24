@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import {
   getDefaultsSettings,
@@ -17,27 +17,26 @@ import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
-    const firestore = ensureFirestore()
     const includeMissing = request.nextUrl.searchParams.get('includeMissing') === '1'
 
-    let query: FirebaseFirestore.Query = firestore.collection('workOrders')
+    const where: any = {}
     if (user.role === 'MONTEUR') {
-      query = query.where('assigneeId', '==', user.uid)
+      where.assigneeId = user.id
     }
 
-    const snapshot = await query.get()
-    let items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[]
+    let items = await prisma.workOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: true,
+        vehicle: true,
+        assignee: true,
+        partsLines: includeMissing,
+      }
+    })
 
     if (user.role === 'MAGAZIJN') {
       const allowed = new Set(['GOEDGEKEURD', 'GEPLAND'])
@@ -46,22 +45,20 @@ export async function GET(request: NextRequest) {
 
     if (includeMissing) {
       const partsLogic = await getPartsLogicSettings()
-      const partsSnap = await firestore.collection('partsLines').get()
-      const parts = partsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[]
-      const missingMap = new Map<string, number>()
-      parts.forEach((line) => {
-        if (!line.workOrderId) return
-        if (!partsLogic.missingLineStatuses.includes(String(line.status || ''))) return
-        missingMap.set(
-          line.workOrderId,
-          (missingMap.get(line.workOrderId) || 0) + 1
-        )
+      const itemsWithMissing = items.map((item) => {
+        const missingCount = (item.partsLines || []).filter((line: any) => 
+          partsLogic.missingLineStatuses.includes(String(line.status || ''))
+        ).length
+        
+        return {
+          ...item,
+          missingItemsCount: missingCount
+        }
       })
-      items = items.map((item) => ({
-        ...item,
-        missingItemsCount: missingMap.get(item.id) || 0
-      }))
+      
+      return NextResponse.json({ success: true, items: itemsWithMissing })
     }
+
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     const status = error.status || 500
@@ -73,7 +70,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'SYSTEM_ADMIN'])
-    const firestore = ensureFirestore()
     const body = await request.json()
     const {
       title,
@@ -144,77 +140,71 @@ export async function POST(request: NextRequest) {
       nextStatus === 'GEPLAND' &&
       !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus)
 
-    const orderNumber = await generateWorkOrderNumber()
-    const payload = {
-      title,
-      orderNumber,
-      licensePlate: licensePlate || vehiclePlate || null,
-      scheduledAt: scheduledAt || null,
-      assigneeId: assigneeId || null,
-      assigneeName: assigneeName || null,
-      assigneeColor: assigneeColor || null,
-      location: location || null,
-      customerId: customerId || null,
-      customerName: customerName || null,
-      vehicleId: vehicleId || null,
-      vehiclePlate: vehiclePlate || null,
-      vehicleLabel: vehicleLabel || null,
-      planningTypeId: planningTypeId || null,
-      planningTypeName: planningTypeName || null,
-      planningTypeColor: planningTypeColor || null,
-      notes: notes || null,
-      priority: priority || null,
-      durationMinutes: resolvedDuration,
-      workOrderStatus: nextStatus,
-      partsSummaryStatus: defaults.partsSummaryStatus,
-      planningRiskActive,
-      planningRiskHistory: planningRiskActive
-          ? [
-              {
-                userId: user.uid,
-                timestamp: nowIso,
-                reason: 'planned-with-incomplete-parts',
-                partsSummaryStatus: defaults.partsSummaryStatus
-              }
-            ]
-          : [],
-      ...(executionStatus ? { executionStatus } : {}),
-      pricingMode: nextPricingMode,
-      estimatedAmount: Number.isFinite(Number(estimatedAmount)) ? Number(estimatedAmount) : null,
-      priceAmount: Number.isFinite(Number(priceAmount)) ? Number(priceAmount) : null,
-      customerApproved: Boolean(customerApproved),
-      approvalDate: approvalDate || null,
-      approvedBy: approvedBy || null,
-      extraWorkRequired: typeof extraWorkRequired === 'boolean' ? extraWorkRequired : null,
-      extraWorkApproved: typeof extraWorkApproved === 'boolean' ? extraWorkApproved : null,
-      partsRequired: typeof partsRequired === 'boolean' ? partsRequired : null,
-      created_at: nowIso,
-      createdAt: nowIso,
-      updated_at: nowIso,
-      created_by: user.uid,
-      createdByUid: user.uid,
-      updated_by: user.uid,
-      statusHistory: [
-        {
-          from: null,
-          to: nextStatus,
-          userId: user.uid,
-          timestamp: nowIso,
-          reason: 'created'
-        }
-      ]
-    }
-
-    const docRef = firestore.collection('workOrders').doc()
-    const workOrderId = docRef.id
-    await docRef.set({ id: workOrderId, ...payload })
+    const workOrderNumber = await generateWorkOrderNumber()
+    
+    const item = await prisma.workOrder.create({
+      data: {
+        title,
+        workOrderNumber,
+        licensePlate: licensePlate || vehiclePlate || null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        assigneeId: assigneeId || null,
+        assigneeName: assigneeName || null,
+        assigneeColor: assigneeColor || null,
+        location: location || null,
+        customerId: customerId || null,
+        customerName: customerName || null,
+        vehicleId: vehicleId || null,
+        vehiclePlate: vehiclePlate || null,
+        vehicleLabel: vehicleLabel || null,
+        planningTypeId: planningTypeId || null,
+        planningTypeName: planningTypeName || null,
+        planningTypeColor: planningTypeColor || null,
+        notes: notes || null,
+        priority: priority || null,
+        durationMinutes: resolvedDuration,
+        workOrderStatus: nextStatus,
+        partsSummaryStatus: defaults.partsSummaryStatus,
+        planningRiskActive,
+        planningRiskHistory: planningRiskActive
+            ? [
+                {
+                  userId: user.id,
+                  timestamp: nowIso,
+                  reason: 'planned-with-incomplete-parts',
+                  partsSummaryStatus: defaults.partsSummaryStatus
+                }
+              ]
+            : [],
+        executionStatus: executionStatus || null,
+        pricingMode: nextPricingMode,
+        estimatedAmount: Number.isFinite(Number(estimatedAmount)) ? Number(estimatedAmount) : null,
+        priceAmount: Number.isFinite(Number(priceAmount)) ? Number(priceAmount) : null,
+        customerApproved: Boolean(customerApproved),
+        approvalDate: approvalDate ? new Date(approvalDate) : null,
+        approvedBy: approvedBy || null,
+        extraWorkRequired: typeof extraWorkRequired === 'boolean' ? extraWorkRequired : null,
+        extraWorkApproved: typeof extraWorkApproved === 'boolean' ? extraWorkApproved : null,
+        partsRequired: typeof partsRequired === 'boolean' ? partsRequired : null,
+        createdBy: user.id,
+        statusHistory: [
+          {
+            from: null,
+            to: nextStatus,
+            userId: user.id,
+            timestamp: nowIso,
+            reason: 'created'
+          }
+        ]
+      }
+    })
 
     await logAudit(
       {
         action: 'WORKORDER_CREATED',
-        actorUid: user.uid,
+        actorUid: user.id,
         actorEmail: user.email,
-        targetUid: workOrderId,
+        targetUid: item.id,
         beforeRole: null,
         afterRole: nextStatus,
         context: { source: 'workorders' }
@@ -223,17 +213,18 @@ export async function POST(request: NextRequest) {
     )
 
     if (customerName && customerId) {
-      const customerSnap = await firestore.collection('customers').doc(customerId).get()
-      const customerData = customerSnap.exists ? (customerSnap.data() as any) : null
-      const customerEmail = String(customerData?.email || '').trim()
-      if (customerEmail) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId }
+      })
+      
+      if (customer?.email) {
         await sendTemplatedEmail({
           templateId: 'workorder_created',
-          to: customerEmail,
+          to: customer.email,
           variables: {
-            klantNaam: customerData?.name || customerName || '',
+            klantNaam: customer.name || customerName || '',
             kenteken: licensePlate || vehiclePlate || '',
-            workOrderId
+            workOrderId: item.id
           }
         })
       }
@@ -243,11 +234,11 @@ export async function POST(request: NextRequest) {
       await createNotification({
         type: 'planning-risk',
         title: 'Planning risico',
-        message: `Werkorder ${workOrderId} is gepland terwijl onderdelen niet compleet zijn.`,
-        workOrderId,
+        message: `Werkorder ${item.id} is gepland terwijl onderdelen niet compleet zijn.`,
+        workOrderId: item.id,
         riskReason: 'PARTS_MISSING',
         meta: { partsSummaryStatus: defaults.partsSummaryStatus },
-        created_by: user.uid
+        created_by: user.id
       })
     }
 
@@ -259,18 +250,18 @@ export async function POST(request: NextRequest) {
           await createNotification({
             type: 'planning-lead',
             title: 'Planning start binnenkort',
-            message: `Werkorder ${workOrderId} start over ${leadHours} uur.`,
-            workOrderId,
+            message: `Werkorder ${item.id} start over ${leadHours} uur.`,
+            workOrderId: item.id,
             riskReason: 'PLANNING_UPCOMING',
             notifyAt: notifyAt.toISOString(),
             meta: { scheduledAt },
-            created_by: user.uid
+            created_by: user.id
           })
         }
       }
     }
 
-    return NextResponse.json({ success: true, item: { id: workOrderId, ...payload } }, { status: 201 })
+    return NextResponse.json({ success: true, item }, { status: 201 })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error creating workOrder:', error)

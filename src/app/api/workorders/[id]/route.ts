@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { getNotificationSettings, getPricingModes, getWorkOrderDefaults } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
@@ -14,14 +14,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   if (directId) return directId
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
-}
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
 }
 
 const shouldSyncPlanning = (body: Record<string, any>) =>
@@ -48,21 +40,32 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('workOrders').doc(id).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.workOrder.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        vehicle: true,
+        assignee: true,
+        partsLines: true,
+      }
+    })
+    
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    const item = { id: docSnap.id, ...docSnap.data() } as any
-    if (user.role === 'MONTEUR' && item.assigneeId !== user.uid) {
+    
+    if (user.role === 'MONTEUR' && item.assigneeId !== user.id) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
+    
     if (user.role === 'MAGAZIJN') {
       const allowed = new Set(['GOEDGEKEURD', 'GEPLAND'])
       if (!allowed.has(String(item.workOrderStatus || ''))) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
       }
     }
+    
     return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
@@ -87,22 +90,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('workOrders').doc(id)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
+    const existing = await prisma.workOrder.findUnique({ where: { id } })
+    if (!existing) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 
-    const existing = docSnap.data() || {}
-
     if (body.customerId && body.vehicleId) {
-      const vehicleSnap = await firestore.collection('vehicles').doc(String(body.vehicleId)).get()
-      if (!vehicleSnap.exists) {
+      const vehicle = await prisma.vehicle.findUnique({ where: { id: String(body.vehicleId) } })
+      if (!vehicle) {
         return NextResponse.json({ success: false, error: 'Vehicle not found' }, { status: 400 })
       }
-      const vehicleData = vehicleSnap.data() || {}
-      if (String(vehicleData.customerId || '') !== String(body.customerId || '')) {
+      if (String(vehicle.customerId || '') !== String(body.customerId || '')) {
         return NextResponse.json(
           { success: false, error: 'Vehicle does not belong to customer' },
           { status: 400 }
@@ -130,85 +128,59 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const nowIso = new Date().toISOString()
-    const payload = {
-      title: body.title ?? null,
-      licensePlate: body.licensePlate ?? null,
-      notes: body.notes ?? null,
-      scheduledAt: body.scheduledAt ?? null,
-      durationMinutes: body.durationMinutes ?? null,
-      assigneeId: body.assigneeId ?? null,
-      assigneeName: body.assigneeName ?? null,
-      assigneeColor: body.assigneeColor ?? null,
-      customerId: body.customerId ?? null,
-      customerName: body.customerName ?? null,
-      vehicleId: body.vehicleId ?? null,
-      vehiclePlate: body.vehiclePlate ?? null,
-      vehicleLabel: body.vehicleLabel ?? null,
-      partsRequired: typeof body.partsRequired === 'boolean' ? body.partsRequired : null,
-      pricingMode: body.pricingMode ?? null,
-      estimatedAmount: Number.isFinite(Number(body.estimatedAmount)) ? Number(body.estimatedAmount) : null,
-      priceAmount: Number.isFinite(Number(body.priceAmount)) ? Number(body.priceAmount) : null,
-      customerApproved: typeof body.customerApproved === 'boolean' ? body.customerApproved : null,
-      agreementNotes: body.agreementNotes ?? null,
-      customerNumber: body.customerNumber ?? null,
-      customerAddress: body.customerAddress ?? null,
-      customerCity: body.customerCity ?? null,
-      customerMobile: body.customerMobile ?? null,
-      driverName: body.driverName ?? null,
-      workDescription: body.workDescription ?? null,
-      orderNumber: body.orderNumber ?? null,
-      orderDate: body.orderDate ?? null,
-      vehicleBrand: body.vehicleBrand ?? null,
-      vehicleModel: body.vehicleModel ?? null,
-      vehicleBuildYear: body.vehicleBuildYear ?? null,
-      chassisNumber: body.chassisNumber ?? null,
-      currentMileage: body.currentMileage ?? null,
-      lastApkMileage: body.lastApkMileage ?? null,
-      apkDueDate: body.apkDueDate ?? null,
-      lastServiceDate: body.lastServiceDate ?? null,
-      lastAircoServiceDate: body.lastAircoServiceDate ?? null,
-      callPreference: typeof body.callPreference === 'boolean' ? body.callPreference : null,
-      smsPreference: typeof body.smsPreference === 'boolean' ? body.smsPreference : null,
-      alwaysCall: typeof body.alwaysCall === 'boolean' ? body.alwaysCall : null,
-      approvalLimitAmount: Number.isFinite(Number(body.approvalLimitAmount))
-        ? Number(body.approvalLimitAmount)
-        : null,
-      carWashed: typeof body.carWashed === 'boolean' ? body.carWashed : null,
-      carVacuumed: typeof body.carVacuumed === 'boolean' ? body.carVacuumed : null,
-      carCharged: typeof body.carCharged === 'boolean' ? body.carCharged : null,
-      jobLines: Array.isArray(body.jobLines) ? body.jobLines : null,
-      tireSize: body.tireSize ?? null,
-      tireBrand: body.tireBrand ?? null,
-      tireType: body.tireType ?? null,
-      tireTreadFrontLeft: body.tireTreadFrontLeft ?? null,
-      tireTreadFrontRight: body.tireTreadFrontRight ?? null,
-      tireTreadRearLeft: body.tireTreadRearLeft ?? null,
-      tireTreadRearRight: body.tireTreadRearRight ?? null,
-      readyToInvoice: typeof body.readyToInvoice === 'boolean' ? body.readyToInvoice : null,
-      followUpAppointment: typeof body.followUpAppointment === 'boolean' ? body.followUpAppointment : null,
-      signatureInName: body.signatureInName ?? null,
-      signatureOutName: body.signatureOutName ?? null,
-      updated_at: nowIso,
-      updated_by: user.uid
-    }
+    const updateData: any = {}
+    if (body.title !== undefined) updateData.title = body.title
+    if (body.licensePlate !== undefined) updateData.licensePlate = body.licensePlate
+    if (body.notes !== undefined) updateData.notes = body.notes
+    if (body.scheduledAt !== undefined) updateData.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
+    if (body.durationMinutes !== undefined) updateData.durationMinutes = body.durationMinutes
+    if (body.assigneeId !== undefined) updateData.assigneeId = body.assigneeId
+    if (body.assigneeName !== undefined) updateData.assigneeName = body.assigneeName
+    if (body.assigneeColor !== undefined) updateData.assigneeColor = body.assigneeColor
+    if (body.customerId !== undefined) updateData.customerId = body.customerId
+    if (body.customerName !== undefined) updateData.customerName = body.customerName
+    if (body.vehicleId !== undefined) updateData.vehicleId = body.vehicleId
+    if (body.vehiclePlate !== undefined) updateData.vehiclePlate = body.vehiclePlate
+    if (body.vehicleLabel !== undefined) updateData.vehicleLabel = body.vehicleLabel
+    if (body.partsRequired !== undefined) updateData.partsRequired = body.partsRequired
+    if (body.pricingMode !== undefined) updateData.pricingMode = body.pricingMode
+    if (body.estimatedAmount !== undefined) updateData.estimatedAmount = Number.isFinite(Number(body.estimatedAmount)) ? Number(body.estimatedAmount) : null
+    if (body.priceAmount !== undefined) updateData.priceAmount = Number.isFinite(Number(body.priceAmount)) ? Number(body.priceAmount) : null
+    if (body.customerApproved !== undefined) updateData.customerApproved = body.customerApproved
+    if (body.description !== undefined) updateData.description = body.description
+    if (body.internalNotes !== undefined) updateData.internalNotes = body.internalNotes
+    
+    // Additional extended fields
+    const extendedFields = [
+      'agreementNotes', 'customerNumber', 'customerAddress', 'customerCity', 'customerMobile',
+      'driverName', 'workDescription', 'orderNumber', 'orderDate', 'vehicleBrand', 'vehicleModel',
+      'vehicleBuildYear', 'chassisNumber', 'currentMileage', 'lastApkMileage', 'apkDueDate',
+      'lastServiceDate', 'lastAircoServiceDate', 'callPreference', 'smsPreference', 'alwaysCall',
+      'approvalLimitAmount', 'carWashed', 'carVacuumed', 'carCharged', 'jobLines', 'tireSize',
+      'tireBrand', 'tireType', 'tireTreadFrontLeft', 'tireTreadFrontRight', 'tireTreadRearLeft',
+      'tireTreadRearRight', 'readyToInvoice', 'followUpAppointment', 'signatureInName', 'signatureOutName'
+    ]
+    
+    extendedFields.forEach(field => {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field]
+      }
+    })
+    
+    updateData.createdBy = user.id
 
     const shouldUpdatePlanning = shouldSyncPlanning(body)
-    let planningRef: any = null
-    let planningData: any = null
+    let planningItem = null
 
     if (shouldUpdatePlanning) {
-      const planningSnap = await firestore
-        .collection('planningItems')
-        .where('workOrderId', '==', id)
-        .limit(1)
-        .get()
-      if (!planningSnap.empty) {
-        planningRef = planningSnap.docs[0].ref
-        planningData = planningSnap.docs[0].data() || {}
-      } else {
-        planningRef = firestore.collection('planningItems').doc(id)
-        planningData = null
+      planningItem = await prisma.planningItem.findFirst({
+        where: { workOrderId: id }
+      })
+      
+      if (!planningItem) {
+        planningItem = await prisma.planningItem.findUnique({
+          where: { id }
+        })
       }
     }
 
@@ -220,21 +192,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const scheduledDate = new Date(body.scheduledAt)
       const startMinutes = scheduledDate.getHours() * 60 + scheduledDate.getMinutes()
       const endMinutes = startMinutes + duration
-      const existingPlans = await firestore
-        .collection('planningItems')
-        .where('assigneeId', '==', body.assigneeId)
-        .get()
-      const hasOverlap = existingPlans.docs.some((doc) => {
-        if (planningRef && doc.id === planningRef.id) return false
-        const data = doc.data()
-        if (!data?.scheduledAt) return false
-        const existingStart = new Date(data.scheduledAt)
+      
+      const existingPlans = await prisma.planningItem.findMany({
+        where: { assigneeId: body.assigneeId }
+      })
+      
+      const hasOverlap = existingPlans.some((doc) => {
+        if (planningItem && doc.id === planningItem.id) return false
+        if (!doc.scheduledAt) return false
+        const existingStart = new Date(doc.scheduledAt)
         if (existingStart.toDateString() !== scheduledDate.toDateString()) return false
-        const existingDuration = Number(data.durationMinutes ?? duration)
+        const existingDuration = Number(doc.durationMinutes ?? duration)
         const existingStartMinutes = existingStart.getHours() * 60 + existingStart.getMinutes()
         const existingEndMinutes = existingStartMinutes + existingDuration
         return startMinutes < existingEndMinutes && endMinutes > existingStartMinutes
       })
+      
       if (hasOverlap) {
         return NextResponse.json(
           { success: false, error: 'Overlapping planning for this worker.' },
@@ -243,44 +216,55 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const batch = firestore.batch()
-    batch.set(docRef, payload, { merge: true })
+    // Update work order
+    const item = await prisma.workOrder.update({
+      where: { id },
+      data: updateData
+    })
 
-    if (planningRef && shouldUpdatePlanning) {
-      const planningPayload = {
+    // Update associated planning item if needed
+    if (planningItem && shouldUpdatePlanning) {
+      const planningUpdateData: any = {
         workOrderId: id,
-        title: body.title ?? existing.title ?? planningData?.title ?? null,
-        scheduledAt: body.scheduledAt ?? existing.scheduledAt ?? planningData?.scheduledAt ?? null,
-        durationMinutes:
-          body.durationMinutes ??
-          existing.durationMinutes ??
-          planningData?.durationMinutes ??
-          null,
-        assigneeId: body.assigneeId ?? existing.assigneeId ?? planningData?.assigneeId ?? null,
-        assigneeName: body.assigneeName ?? existing.assigneeName ?? planningData?.assigneeName ?? null,
-        assigneeColor: body.assigneeColor ?? existing.assigneeColor ?? planningData?.assigneeColor ?? null,
-        customerId: body.customerId ?? existing.customerId ?? planningData?.customerId ?? null,
-        customerName: body.customerName ?? existing.customerName ?? planningData?.customerName ?? null,
-        vehicleId: body.vehicleId ?? existing.vehicleId ?? planningData?.vehicleId ?? null,
-        vehiclePlate:
-          body.vehiclePlate ??
-          existing.vehiclePlate ??
-          body.licensePlate ??
-          existing.licensePlate ??
-          planningData?.vehiclePlate ??
-          null,
-        vehicleLabel: body.vehicleLabel ?? existing.vehicleLabel ?? planningData?.vehicleLabel ?? null,
-        notes: body.notes ?? existing.notes ?? planningData?.notes ?? null,
-        updated_at: nowIso,
-        updated_by: user.uid,
-        ...(planningData
-          ? {}
-          : { created_at: nowIso, created_by: user.uid })
+        title: body.title ?? existing.title ?? planningItem.title,
+        scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : existing.scheduledAt ?? planningItem.scheduledAt,
+        durationMinutes: body.durationMinutes ?? existing.durationMinutes ?? planningItem.durationMinutes,
+        assigneeId: body.assigneeId ?? existing.assigneeId ?? planningItem.assigneeId,
+        assigneeName: body.assigneeName ?? existing.assigneeName ?? planningItem.assigneeName,
+        assigneeColor: body.assigneeColor ?? existing.assigneeColor ?? planningItem.assigneeColor,
+        customerId: body.customerId ?? existing.customerId ?? planningItem.customerId,
+        customerName: body.customerName ?? existing.customerName ?? planningItem.customerName,
+        vehicleId: body.vehicleId ?? existing.vehicleId ?? planningItem.vehicleId,
+        vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? body.licensePlate ?? existing.licensePlate ?? planningItem.vehiclePlate,
+        vehicleLabel: body.vehicleLabel ?? existing.vehicleLabel ?? planningItem.vehicleLabel,
+        notes: body.notes ?? existing.notes ?? planningItem.notes,
       }
-      batch.set(planningRef, planningPayload, { merge: true })
+      
+      await prisma.planningItem.update({
+        where: { id: planningItem.id },
+        data: planningUpdateData
+      })
+    } else if (!planningItem && shouldUpdatePlanning) {
+      // Create new planning item if it doesn't exist
+      await prisma.planningItem.create({
+        data: {
+          id,
+          workOrderId: id,
+          title: body.title ?? existing.title ?? 'Werk',
+          scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : existing.scheduledAt ?? new Date(),
+          durationMinutes: body.durationMinutes ?? existing.durationMinutes ?? 60,
+          assigneeId: body.assigneeId ?? existing.assigneeId,
+          assigneeName: body.assigneeName ?? existing.assigneeName,
+          assigneeColor: body.assigneeColor ?? existing.assigneeColor,
+          customerId: body.customerId ?? existing.customerId,
+          customerName: body.customerName ?? existing.customerName,
+          vehicleId: body.vehicleId ?? existing.vehicleId,
+          vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? body.licensePlate ?? existing.licensePlate,
+          vehicleLabel: body.vehicleLabel ?? existing.vehicleLabel,
+          notes: body.notes ?? existing.notes,
+        }
+      })
     }
-
-    await batch.commit()
 
     if (body.scheduledAt) {
       const notificationSettings = await getNotificationSettings()
@@ -297,14 +281,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               riskReason: 'PLANNING_UPCOMING',
               notifyAt: notifyAt.toISOString(),
               meta: { scheduledAt: body.scheduledAt },
-              created_by: user.uid
+              created_by: user.id
             })
           }
         }
       }
     }
 
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error updating workOrder:', error)
@@ -319,31 +303,31 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
+    
     const deletePlanningParam = request.nextUrl.searchParams.get('deletePlanning') || ''
     const deletePlanning = ['1', 'true', 'yes'].includes(deletePlanningParam.toLowerCase())
-    const workOrderRef = firestore.collection('workOrders').doc(id)
-    const batch = firestore.batch()
 
     if (deletePlanning) {
-      const planningSnap = await firestore
-        .collection('planningItems')
-        .where('workOrderId', '==', id)
-        .get()
-      const planningIds = new Set<string>()
-      planningSnap.docs.forEach((doc) => {
-        planningIds.add(doc.id)
-        batch.delete(doc.ref)
+      // Delete associated planning items
+      await prisma.planningItem.deleteMany({
+        where: { workOrderId: id }
       })
-      const directPlanningRef = firestore.collection('planningItems').doc(id)
-      const directPlanningSnap = await directPlanningRef.get()
-      if (directPlanningSnap.exists && !planningIds.has(id)) {
-        batch.delete(directPlanningRef)
+      
+      // Also try to delete planning item with same ID
+      try {
+        await prisma.planningItem.delete({
+          where: { id }
+        })
+      } catch {
+        // Ignore if doesn't exist
       }
     }
 
-    batch.delete(workOrderRef)
-    await batch.commit()
+    // Delete the work order
+    await prisma.workOrder.delete({
+      where: { id }
+    })
+    
     return NextResponse.json({ success: true })
   } catch (error: any) {
     const status = error.status || 500

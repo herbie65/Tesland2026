@@ -1,20 +1,11 @@
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { getNumberingSettings } from '@/lib/settings'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
 
 const pad = (value: number, length: number) => String(value).padStart(length, '0')
 
 export type NumberingKey = 'orders' | 'invoices' | 'creditInvoices' | 'rmas'
 
 export const generateSalesNumber = async (key: NumberingKey) => {
-  const firestore = ensureFirestore()
   const numbering = await getNumberingSettings()
   const now = new Date()
   const yearRaw = String(now.getFullYear())
@@ -28,33 +19,48 @@ export const generateSalesNumber = async (key: NumberingKey) => {
   }
   const prefix = prefixMap[key]
 
-  const counterRef = firestore.collection('counters').doc(key)
-  const nextNumber = await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(counterRef)
-    const data = snap.data() || {}
-    const storedYear = String(data.year || '')
-    const currentSeq = Number(data.seq || 0)
-    const nextSeq = storedYear === year ? currentSeq + 1 : 1
-    tx.set(counterRef, { year, seq: nextSeq, updated_at: now.toISOString() }, { merge: true })
+  // Use Prisma transaction for atomic counter increment
+  const result = await prisma.$transaction(async (tx) => {
+    const counter = await tx.counter.findUnique({
+      where: { id: key },
+    })
+
+    const storedYear = counter?.format?.includes('{year}') ? year : ''
+    const currentSeq = counter?.currentValue || 0
+    const nextSeq = storedYear === year || !storedYear ? currentSeq + 1 : 1
+
+    await tx.counter.update({
+      where: { id: key },
+      data: { currentValue: nextSeq },
+    })
+
     return nextSeq
   })
 
-  return `${prefix}-${year}${pad(nextNumber, numbering.sequenceLength)}`
+  return `${prefix}-${year}${pad(result, numbering.sequenceLength)}`
 }
 
 export const generateWorkOrderNumber = async (date = new Date()) => {
-  const firestore = ensureFirestore()
   const now = date
   const year = String(now.getFullYear()).slice(-2)
-  const counterRef = firestore.collection('counters').doc('workorders')
-  const nextNumber = await firestore.runTransaction(async (tx) => {
-    const snap = await tx.get(counterRef)
-    const data = snap.data() || {}
-    const storedYear = String(data.year || '')
-    const currentSeq = Number(data.seq || 0)
+
+  // Use Prisma transaction for atomic counter increment
+  const result = await prisma.$transaction(async (tx) => {
+    const counter = await tx.counter.findUnique({
+      where: { id: 'workorders' },
+    })
+
+    const storedYear = String((counter?.format || '').match(/\d{2}/)?.[0] || '')
+    const currentSeq = counter?.currentValue || 0
     const nextSeq = storedYear === year ? currentSeq + 1 : 1
-    tx.set(counterRef, { year, seq: nextSeq, updated_at: now.toISOString() }, { merge: true })
+
+    await tx.counter.update({
+      where: { id: 'workorders' },
+      data: { currentValue: nextSeq },
+    })
+
     return nextSeq
   })
-  return `WO${year}-${pad(nextNumber, 5)}`
+
+  return `WO${year}-${pad(result, 5)}`
 }

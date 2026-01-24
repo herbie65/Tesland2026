@@ -4,9 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { apiFetch } from '@/lib/api'
-import { getFirebaseAuth, logout } from '@/lib/firebase-auth'
-import { onAuthStateChanged } from 'firebase/auth'
+import { apiFetch, getCurrentUser, logout } from '@/lib/api'
 import {
   ArrowDownTrayIcon,
   ArrowUturnLeftIcon,
@@ -83,10 +81,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   ).length
 
   useEffect(() => {
-    const auth = getFirebaseAuth()
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) return
-      setCurrentUserId(user.uid)
+    const user = getCurrentUser()
+    if (!user) return
+    
+    setCurrentUserId(user.id)
+    
+    // Load cached profile immediately for faster render
+    const cachedProfile = localStorage.getItem('userProfile')
+    if (cachedProfile) {
+      try {
+        const parsed = JSON.parse(cachedProfile)
+        if (parsed.backgroundPhoto) setBackgroundImage(parsed.backgroundPhoto)
+        if (parsed.profilePhoto) setProfilePhoto(parsed.profilePhoto)
+        if (parsed.transparency) {
+          const opacity = Math.max(0.05, Math.min(0.95, Number(parsed.transparency) / 100))
+          document.documentElement.style.setProperty('--admin-glass-opacity', String(opacity))
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
+    
+    // Load user profile and settings from API
+    const loadProfile = async () => {
       try {
         const meResponse = await apiFetch('/api/admin/me')
         const meData = await meResponse.json()
@@ -102,38 +119,38 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           const bg = data.profile?.backgroundPhoto || null
           setBackgroundImage(bg)
           setProfilePhoto(data.profile?.profilePhoto || null)
+          
+          // Cache profile for next load
+          localStorage.setItem('userProfile', JSON.stringify(data.profile))
         }
       } catch (error) {
         console.error('Failed to load profile settings', error)
       }
-    })
-    return () => unsub()
+    }
+    loadProfile()
   }, [])
 
   useEffect(() => {
-    const auth = getFirebaseAuth()
-    let interval: ReturnType<typeof setInterval> | null = null
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (!user) return
-      const loadNotifications = async () => {
-        try {
-          const response = await apiFetch('/api/notifications')
-          if (!response.ok) return
-          const data = await response.json()
-          if (data.success) {
-            setNotifications(data.items || [])
-          }
-        } catch (error) {
-          console.error('Failed to load notifications', error)
+    const user = getCurrentUser()
+    if (!user) return
+    
+    const loadNotifications = async () => {
+      try {
+        const response = await apiFetch('/api/notifications')
+        if (!response.ok) return
+        const data = await response.json()
+        if (data.success) {
+          setNotifications(data.items || [])
         }
+      } catch (error) {
+        console.error('Failed to load notifications', error)
       }
-      loadNotifications()
-      interval = setInterval(loadNotifications, 30000)
-    })
-    return () => {
-      unsub()
-      if (interval) clearInterval(interval)
     }
+    
+    loadNotifications()
+    const interval = setInterval(loadNotifications, 30000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   const markAllRead = async () => {
@@ -242,13 +259,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="relative z-[100] flex items-center gap-3">
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  await logout()
-                } finally {
-                  window.location.href = '/admin'
-                }
-              }}
+              onClick={logout}
               className="rounded-lg border border-white/40 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
             >
               Uitloggen

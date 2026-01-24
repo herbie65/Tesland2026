@@ -1,12 +1,4 @@
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
+import { prisma } from '@/lib/prisma'
 
 export type NotificationPayload = {
   type: string
@@ -20,37 +12,41 @@ export type NotificationPayload = {
 }
 
 export const createNotification = async (payload: NotificationPayload) => {
-  const firestore = ensureFirestore()
   const nowIso = new Date().toISOString()
   const notifyAt = payload.notifyAt ? new Date(payload.notifyAt) : null
   const dayKey = notifyAt && !Number.isNaN(notifyAt.getTime()) ? notifyAt.toISOString().slice(0, 10) : nowIso.slice(0, 10)
   const workOrderId = payload.workOrderId || null
   const riskReason = payload.riskReason || null
 
+  // Check for existing notification (deduplication)
   if (workOrderId && riskReason) {
-    const existing = await firestore
-      .collection('notifications')
-      .where('workOrderId', '==', workOrderId)
-      .where('riskReason', '==', riskReason)
-      .where('dayKey', '==', dayKey)
-      .limit(1)
-      .get()
-    if (!existing.empty) {
-      return existing.docs[0].id
+    const existing = await prisma.notification.findFirst({
+      where: {
+        workOrderId,
+        type: payload.type,
+        createdAt: {
+          gte: new Date(dayKey),
+        },
+      },
+    })
+    
+    if (existing) {
+      return existing.id
     }
   }
 
-  const docRef = firestore.collection('notifications').doc()
-  await docRef.set({
-    id: docRef.id,
-    ...payload,
-    workOrderId,
-    riskReason,
-    dayKey,
-    notifyAt: notifyAt && !Number.isNaN(notifyAt.getTime()) ? notifyAt.toISOString() : null,
-    meta: payload.meta || null,
-    readBy: [],
-    created_at: nowIso
+  const notification = await prisma.notification.create({
+    data: {
+      type: payload.type,
+      title: payload.title,
+      message: payload.message,
+      userId: payload.created_by,
+      workOrderId,
+      isRead: false,
+      notifyAt: notifyAt && !Number.isNaN(notifyAt.getTime()) ? notifyAt : null,
+      metadata: payload.meta || null,
+    },
   })
-  return docRef.id
+
+  return notification.id
 }

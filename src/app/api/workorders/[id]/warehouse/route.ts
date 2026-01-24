@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
+import { getWarehouseStatuses } from '@/lib/settings'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
-}
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
 }
 
 const getIdFromRequest = async (request: NextRequest, context: RouteContext) => {
@@ -39,15 +32,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'status is required' }, { status: 400 })
     }
 
-    const firestore = ensureFirestore()
-    const statusDoc = await firestore.collection('settings').doc('warehouseStatuses').get()
-    if (!statusDoc.exists) {
-      return NextResponse.json({ success: false, error: 'Warehouse settings ontbreken' }, { status: 400 })
-    }
-    const data = statusDoc.data()?.data || statusDoc.data() || {}
-    const entries = Array.isArray(data.items) ? data.items : data.statuses || data
-    const list = Array.isArray(entries) ? entries : []
-    const entry = list.find((item: any) => String(item.code || '').trim() === nextStatus)
+    const warehouseStatuses = await getWarehouseStatuses()
+    const entry = warehouseStatuses.items.find((item: any) => String(item.code || '').trim() === nextStatus)
     if (!entry) {
       return NextResponse.json({ success: false, error: 'Onbekende status' }, { status: 400 })
     }
@@ -58,41 +44,37 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Locatie is verplicht' }, { status: 400 })
     }
 
-    const docRef = firestore.collection('workOrders').doc(id)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
+    const current = await prisma.workOrder.findUnique({ where: { id } })
+    if (!current) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    const current = docSnap.data() || {}
+    
     const nowIso = new Date().toISOString()
-    const history = Array.isArray(current.warehouseHistory) ? [...current.warehouseHistory] : []
+    const history = Array.isArray(current.warehouseHistory) ? [...(current.warehouseHistory as any[])] : []
     history.push({
       from: current.warehouseStatus || null,
       to: nextStatus,
       etaDate: etaDate || null,
       location: location || null,
-      userId: user.uid,
+      userId: user.id,
       userEmail: user.email || null,
       timestamp: nowIso
     })
 
-    await docRef.set(
-      {
+    await prisma.workOrder.update({
+      where: { id },
+      data: {
         warehouseStatus: nextStatus,
         warehouseEtaDate: etaDate || null,
         warehouseLocation: location || null,
-        warehouseUpdatedAt: nowIso,
-        warehouseUpdatedBy: user.uid,
-        warehouseUpdatedByEmail: user.email || null,
         warehouseHistory: history
-      },
-      { merge: true }
-    )
+      }
+    })
 
     await logAudit(
       {
         action: 'WAREHOUSE_STATUS_CHANGED',
-        actorUid: user.uid,
+        actorUid: user.id,
         actorEmail: user.email,
         targetUid: id,
         beforeRole: current.warehouseStatus || null,

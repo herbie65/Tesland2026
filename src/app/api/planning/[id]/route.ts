@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import {
   getDefaultsSettings,
@@ -25,14 +25,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   return segments[segments.length - 1] || ''
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
@@ -40,15 +32,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('planningItems').doc(id).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.planningItem.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        vehicle: true,
+        planningType: true,
+        workOrder: true,
+        assignee: true
+      }
+    })
+    
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    const item = { id: docSnap.id, ...docSnap.data() } as any
-    if (user.role === 'MONTEUR' && item.assigneeId !== user.uid) {
+    
+    if (user.role === 'MONTEUR' && item.assigneeId !== user.id) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
     }
+    
     return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
@@ -66,14 +69,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const body = await request.json()
 
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('planningItems').doc(id)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
+    const item = await prisma.planningItem.findUnique({ where: { id } })
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-
-    const item = { id: docSnap.id, ...docSnap.data() } as any
 
     const user = await requireRole(request, ['MANAGEMENT'])
 
@@ -94,63 +93,63 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
 
       const nowIso = new Date().toISOString()
-      const woRef = firestore.collection('workOrders').doc()
-      workOrderId = woRef.id
-      await woRef.set({
-        id: workOrderId,
-        title: body.title || item.title,
-        workOrderStatus: nextStatus,
-        createdAt: nowIso,
-        createdByUid: user.uid,
-        customerId: body.customerId || item.customerId || null,
-        vehicleId: body.vehicleId || item.vehicleId || null,
-        licensePlate: body.vehiclePlate || item.vehiclePlate || null,
-        notes: body.notes || item.notes || null,
-        scheduledAt: body.scheduledAt || item.scheduledAt || null,
-        durationMinutes: body.durationMinutes || item.durationMinutes || workOrderDefaults.defaultDurationMinutes,
-        pricingMode: nextPricingMode,
-        estimatedAmount: body.agreementAmount ? Number(body.agreementAmount) : null,
-        created_at: nowIso,
-        updated_at: nowIso,
-        created_by: user.uid,
-        updated_by: user.uid,
-        partsSummaryStatus: defaults.partsSummaryStatus,
-        planningRiskActive:
-          nextStatus === 'GEPLAND' &&
-          !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus),
-        planningRiskHistory:
-          nextStatus === 'GEPLAND' &&
-          !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus)
-            ? [
-                {
-                  userId: user.uid,
-                  timestamp: nowIso,
-                  reason: 'planned-with-incomplete-parts',
-                  partsSummaryStatus: defaults.partsSummaryStatus
-                }
-              ]
-            : [],
-        statusHistory: [
-          {
-            from: null,
-            to: nextStatus,
-            userId: user.uid,
-            timestamp: nowIso,
-            reason: 'created'
-          }
-        ]
+      const workOrder = await prisma.workOrder.create({
+        data: {
+          title: body.title || item.title,
+          workOrderStatus: nextStatus,
+          customerId: body.customerId || item.customerId || null,
+          customerName: body.customerName || item.customerName || null,
+          vehicleId: body.vehicleId || item.vehicleId || null,
+          vehiclePlate: body.vehiclePlate || item.vehiclePlate || null,
+          licensePlate: body.vehiclePlate || item.vehiclePlate || null,
+          notes: body.notes || item.notes || null,
+          scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : item.scheduledAt,
+          durationMinutes: body.durationMinutes || item.durationMinutes || workOrderDefaults.defaultDurationMinutes,
+          pricingMode: nextPricingMode,
+          estimatedAmount: body.agreementAmount ? Number(body.agreementAmount) : null,
+          partsSummaryStatus: defaults.partsSummaryStatus,
+          planningRiskActive:
+            nextStatus === 'GEPLAND' &&
+            !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus),
+          planningRiskHistory:
+            nextStatus === 'GEPLAND' &&
+            !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus)
+              ? [
+                  {
+                    userId: user.id,
+                    timestamp: nowIso,
+                    reason: 'planned-with-incomplete-parts',
+                    partsSummaryStatus: defaults.partsSummaryStatus
+                  }
+                ]
+              : [],
+          statusHistory: [
+            {
+              from: null,
+              to: nextStatus,
+              userId: user.id,
+              timestamp: nowIso,
+              reason: 'created'
+            }
+          ],
+          createdBy: user.id
+        }
       })
+      workOrderId = workOrder.id
     }
 
-    const nowIso = new Date().toISOString()
     const cleanedBody = Object.fromEntries(
       Object.entries(body || {}).filter(([, value]) => value !== undefined)
     )
-    const payload = {
-      ...cleanedBody,
-      ...(workOrderId ? { workOrderId } : {}),
-      updated_at: nowIso,
-      updated_by: user.uid
+    
+    const updateData: any = { ...cleanedBody }
+    if (workOrderId) {
+      updateData.workOrderId = workOrderId
+    }
+    
+    // Convert dates
+    if (updateData.scheduledAt) {
+      updateData.scheduledAt = new Date(updateData.scheduledAt)
     }
 
     const shouldSyncWorkOrder = [
@@ -168,39 +167,43 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       'notes'
     ].some((key) => key in body)
 
-    const batch = firestore.batch()
-    batch.set(docRef, payload, { merge: true })
+    // Update planning item
+    const updatedItem = await prisma.planningItem.update({
+      where: { id },
+      data: updateData
+    })
 
+    // Sync to work order if needed
     if (workOrderId && shouldSyncWorkOrder) {
-      const workOrderPayload = {
-        title: cleanedBody.title ?? item.title ?? null,
-        notes: cleanedBody.notes ?? item.notes ?? null,
-        scheduledAt: cleanedBody.scheduledAt ?? item.scheduledAt ?? null,
-        durationMinutes: cleanedBody.durationMinutes ?? item.durationMinutes ?? null,
-        assigneeId: cleanedBody.assigneeId ?? item.assigneeId ?? null,
-        assigneeName: cleanedBody.assigneeName ?? item.assigneeName ?? null,
-        assigneeColor: cleanedBody.assigneeColor ?? item.assigneeColor ?? null,
-        customerId: cleanedBody.customerId ?? item.customerId ?? null,
-        customerName: cleanedBody.customerName ?? item.customerName ?? null,
-        vehicleId: cleanedBody.vehicleId ?? item.vehicleId ?? null,
-        vehiclePlate: cleanedBody.vehiclePlate ?? item.vehiclePlate ?? null,
-        vehicleLabel: cleanedBody.vehicleLabel ?? item.vehicleLabel ?? null,
-        licensePlate: cleanedBody.vehiclePlate ?? item.vehiclePlate ?? null,
-        partsRequired: cleanedBody.partsRequired ?? item.partsRequired ?? null,
-        updated_at: nowIso,
-        updated_by: user.uid
+      const workOrderUpdateData: any = {}
+      if (cleanedBody.title !== undefined) workOrderUpdateData.title = cleanedBody.title ?? item.title
+      if (cleanedBody.notes !== undefined) workOrderUpdateData.notes = cleanedBody.notes ?? item.notes
+      if (cleanedBody.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = cleanedBody.scheduledAt ? new Date(cleanedBody.scheduledAt) : item.scheduledAt
+      if (cleanedBody.durationMinutes !== undefined) workOrderUpdateData.durationMinutes = cleanedBody.durationMinutes ?? item.durationMinutes
+      if (cleanedBody.assigneeId !== undefined) workOrderUpdateData.assigneeId = cleanedBody.assigneeId ?? item.assigneeId
+      if (cleanedBody.assigneeName !== undefined) workOrderUpdateData.assigneeName = cleanedBody.assigneeName ?? item.assigneeName
+      if (cleanedBody.assigneeColor !== undefined) workOrderUpdateData.assigneeColor = cleanedBody.assigneeColor ?? item.assigneeColor
+      if (cleanedBody.customerId !== undefined) workOrderUpdateData.customerId = cleanedBody.customerId ?? item.customerId
+      if (cleanedBody.customerName !== undefined) workOrderUpdateData.customerName = cleanedBody.customerName ?? item.customerName
+      if (cleanedBody.vehicleId !== undefined) workOrderUpdateData.vehicleId = cleanedBody.vehicleId ?? item.vehicleId
+      if (cleanedBody.vehiclePlate !== undefined) {
+        workOrderUpdateData.vehiclePlate = cleanedBody.vehiclePlate ?? item.vehiclePlate
+        workOrderUpdateData.licensePlate = cleanedBody.vehiclePlate ?? item.vehiclePlate
       }
-      const workOrderRef = firestore.collection('workOrders').doc(workOrderId)
-      batch.set(workOrderRef, workOrderPayload, { merge: true })
+      if (cleanedBody.vehicleLabel !== undefined) workOrderUpdateData.vehicleLabel = cleanedBody.vehicleLabel ?? item.vehicleLabel
+      if (cleanedBody.partsRequired !== undefined) workOrderUpdateData.partsRequired = cleanedBody.partsRequired ?? null
+
+      await prisma.workOrder.update({
+        where: { id: workOrderId },
+        data: workOrderUpdateData
+      })
     }
 
-    await batch.commit()
-
-    if (item.isRequest === true && cleanedBody.isRequest === false) {
+    if (item.status === 'REQUEST' && cleanedBody.status !== 'REQUEST') {
       await logAudit(
         {
           action: 'PLANNING_APPROVED',
-          actorUid: user.uid,
+          actorUid: user.id,
           actorEmail: user.email,
           targetUid: id,
           context: {
@@ -226,13 +229,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               riskReason: 'PLANNING_UPCOMING',
               notifyAt: notifyAt.toISOString(),
               meta: { scheduledAt: body.scheduledAt },
-              created_by: user.uid
+              created_by: user.id
             })
           }
         }
       }
     }
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    
+    return NextResponse.json({ success: true, item: updatedItem })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error updating planning item:', error)
@@ -247,8 +251,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    await firestore.collection('planningItems').doc(id).delete()
+    
+    await prisma.planningItem.delete({
+      where: { id }
+    })
+    
     return NextResponse.json({ success: true })
   } catch (error: any) {
     const status = error.status || 500

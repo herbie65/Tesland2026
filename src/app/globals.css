@@ -116,3 +116,18 @@ body {
   transform: scale(1.08);
   box-shadow: 0 0 8px #8bc342, 0 0 16px #8bc342;
 }
+/* Planning drag & drop styles */
+.planning-day-block {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: opacity 0.2s ease;
+}
+
+.planning-day-block:active {
+  cursor: grabbing;
+}
+
+.planning-day-block--dragging {
+  opacity: 0.3 !important;
+}

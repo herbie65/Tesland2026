@@ -153,31 +153,29 @@ export default function RolesClient() {
           </label>
           <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
             <span>Opnemen in planning</span>
-            <span className="inline-flex items-center gap-2">
+            <label className="relative inline-block h-6 w-11 cursor-pointer">
               <input
                 type="checkbox"
                 className="peer sr-only"
                 checked={includeInPlanning}
                 onChange={(event) => setIncludeInPlanning(event.target.checked)}
               />
-              <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
-                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-              </span>
-            </span>
+              <span className="absolute inset-0 rounded-full bg-slate-200 transition-all duration-300 ease-in-out peer-checked:bg-emerald-500 peer-focus:ring-2 peer-focus:ring-emerald-300 peer-focus:ring-offset-2" />
+              <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
+            </label>
           </label>
           <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
             <span>Is admin</span>
-            <span className="inline-flex items-center gap-2">
+            <label className="relative inline-block h-6 w-11 cursor-pointer">
               <input
                 type="checkbox"
                 className="peer sr-only"
                 checked={isSystemAdmin}
                 onChange={(event) => setIsSystemAdmin(event.target.checked)}
               />
-              <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
-                <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-              </span>
-            </span>
+              <span className="absolute inset-0 rounded-full bg-slate-200 transition-all duration-300 ease-in-out peer-checked:bg-emerald-500 peer-focus:ring-2 peer-focus:ring-emerald-300 peer-focus:ring-offset-2" />
+              <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
+            </label>
           </label>
           <div className="flex items-end">
             <button
@@ -242,31 +240,29 @@ export default function RolesClient() {
                       </div>
                       <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
                         <span>Opnemen in planning</span>
-                        <span className="inline-flex items-center gap-2">
+                        <label className="relative inline-block h-6 w-11 cursor-pointer">
                           <input
                             type="checkbox"
                             className="peer sr-only"
                             checked={editIncludeInPlanning}
                             onChange={(event) => setEditIncludeInPlanning(event.target.checked)}
                           />
-                          <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
-                            <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-                          </span>
-                        </span>
+                          <span className="absolute inset-0 rounded-full bg-slate-200 transition-all duration-300 ease-in-out peer-checked:bg-emerald-500 peer-focus:ring-2 peer-focus:ring-emerald-300 peer-focus:ring-offset-2" />
+                          <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
+                        </label>
                       </label>
                       <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
                         <span>Is admin</span>
-                        <span className="inline-flex items-center gap-2">
+                        <label className="relative inline-block h-6 w-11 cursor-pointer">
                           <input
                             type="checkbox"
                             className="peer sr-only"
                             checked={editIsSystemAdmin}
                             onChange={(event) => setEditIsSystemAdmin(event.target.checked)}
                           />
-                          <span className="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
-                            <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-                          </span>
-                        </span>
+                          <span className="absolute inset-0 rounded-full bg-slate-200 transition-all duration-300 ease-in-out peer-checked:bg-emerald-500 peer-focus:ring-2 peer-focus:ring-emerald-300 peer-focus:ring-offset-2" />
+                          <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
+                        </label>
                       </label>
                       <div className="flex flex-wrap gap-2">
                         <button

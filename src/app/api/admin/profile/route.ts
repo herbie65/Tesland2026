@@ -1,30 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { requireAuth } from '@/lib/auth'
-
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
+import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request)
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('users').doc(user.uid).get()
-    const data = docSnap.data() || {}
+    
+    // Get user from database
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id }
+    })
+    
+    if (!dbUser) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 })
+    }
+    
     return NextResponse.json({
       success: true,
       profile: {
-        profilePhoto: data.profilePhoto || null,
-        backgroundPhoto: data.backgroundPhoto || null,
-        transparency: typeof data.transparency === 'number' ? data.transparency : 30,
-        language: data.language || null,
-        name: data.name || user.name || null,
-        email: data.email || user.email || null
+        profilePhoto: dbUser.profilePhoto || null,
+        backgroundPhoto: dbUser.backgroundPhoto || null,
+        transparency: typeof dbUser.transparency === 'number' ? dbUser.transparency : 30,
+        language: dbUser.language || null,
+        name: dbUser.displayName || null,
+        email: dbUser.email || null
       }
     })
   } catch (error: any) {
@@ -37,7 +36,6 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const user = await requireAuth(request)
-    const firestore = ensureFirestore()
     const body = await request.json()
     const profilePhotoUrl = body?.profilePhotoUrl ?? null
     const backgroundPhotoUrl = body?.backgroundPhotoUrl ?? null
@@ -47,17 +45,36 @@ export async function PATCH(request: NextRequest) {
       : undefined
     const language = body?.language ? String(body.language).trim() : undefined
 
-    const payload = {
-      ...(profilePhotoUrl !== undefined ? { profilePhoto: profilePhotoUrl || null } : {}),
-      ...(backgroundPhotoUrl !== undefined ? { backgroundPhoto: backgroundPhotoUrl || null } : {}),
-      ...(transparency !== undefined ? { transparency } : {}),
-      ...(language ? { language } : {}),
-      updated_at: new Date().toISOString(),
-      updated_by: user.uid
+    const updateData: any = {}
+    
+    if (profilePhotoUrl !== undefined) {
+      updateData.profilePhoto = profilePhotoUrl || null
+    }
+    if (backgroundPhotoUrl !== undefined) {
+      updateData.backgroundPhoto = backgroundPhotoUrl || null
+    }
+    if (transparency !== undefined) {
+      updateData.transparency = transparency
+    }
+    if (language) {
+      updateData.language = language
     }
 
-    await firestore.collection('users').doc(user.uid).set(payload, { merge: true })
-    return NextResponse.json({ success: true, profile: payload })
+    // Update user in database
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: updateData
+    })
+    
+    return NextResponse.json({ 
+      success: true, 
+      profile: {
+        profilePhoto: updatedUser.profilePhoto,
+        backgroundPhoto: updatedUser.backgroundPhoto,
+        transparency: updatedUser.transparency,
+        language: updatedUser.language
+      }
+    })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error updating profile:', error)

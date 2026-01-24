@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
+import { apiFetch } from '@/lib/api'
 
 type Customer = {
   id: string
@@ -11,31 +12,26 @@ type Customer = {
 type Vehicle = {
   id: string
   customerId?: string | null
-  brand: string
-  model: string
+  make?: string | null
+  model?: string | null
   licensePlate?: string | null
   vin?: string | null
-  rdwChassisNumber?: string | null
-  rdwColor?: string | null
-  rdwVehicleType?: string | null
-  rdwEngineCode?: string | null
-  rdwBuildYear?: number | null
-  rdwRegistrationDatePart1?: string | null
-  rdwOwnerSince?: string | null
-  rdwOwnerCount?: number | null
-  rdwApkDueDate?: string | null
-  rdwOdometer?: number | null
-  rdwOdometerJudgement?: string | null
-  rdwFuelType?: string | null
-  rdwEmptyWeight?: number | null
-  rdwMaxTowWeightBraked?: number | null
-  rdwMaxTowWeightUnbraked?: number | null
-  rdwMaxMass?: number | null
-  ownerHistory?: Array<{
-    fromCustomerId?: string | null
-    toCustomerId?: string | null
-    transferredAt?: string | null
-  }>
+  color?: string | null
+  year?: number | null
+  mileage?: number | null
+  apkDueDate?: string | null
+  constructionDate?: string | null
+  isHistory?: boolean | null
+  deleted?: boolean | null
+  externalId?: string | null
+  notes?: string | null
+  rdwData?: any
+  createdAt?: string | null
+  updatedAt?: string | null
+  customer?: {
+    id: string
+    name: string
+  } | null
 }
 
 export default function VehiclesClient() {
@@ -61,26 +57,31 @@ export default function VehiclesClient() {
   const [rdwError, setRdwError] = useState<string | null>(null)
   const [lastRdwPlate, setLastRdwPlate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState('brand')
+  const [sortKey, setSortKey] = useState('make')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({})
+  const [columnFiltersDebounced, setColumnFiltersDebounced] = useState<Record<string, string>>({})
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showDetailView, setShowDetailView] = useState(false)
+  const [detailViewItem, setDetailViewItem] = useState<Vehicle | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(50)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
-    'brand',
+    'make',
     'model',
     'licensePlate',
     'vin',
-    'chassisNumber',
-    'customer',
-    'ownerHistory'
+    'customer'
   ])
 
   const columnOptions = [
-    { key: 'brand', label: 'Merk' },
+    { key: 'make', label: 'Merk' },
     { key: 'model', label: 'Model' },
     { key: 'licensePlate', label: 'Kenteken' },
     { key: 'vin', label: 'VIN' },
-    { key: 'chassisNumber', label: 'Chassisnummer' },
     { key: 'customer', label: 'Klant' },
-    { key: 'ownerHistory', label: 'Overdrachten' },
     { key: 'created_at', label: 'Aangemaakt' }
   ]
 
@@ -126,7 +127,7 @@ export default function VehiclesClient() {
         throw new Error(customersData.error || 'Failed to load customers')
       }
       const sorted = [...(vehiclesData.items || [])].sort((a, b) =>
-        String(a.brand || '').localeCompare(String(b.brand || ''))
+        String(a.make || '').localeCompare(String(b.make || ''))
       )
       setItems(sorted)
       setCustomers(customersData.items || [])
@@ -140,6 +141,14 @@ export default function VehiclesClient() {
   useEffect(() => {
     loadItems()
   }, [])
+
+  // Debounce column filters
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setColumnFiltersDebounced(columnFilters)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [columnFilters])
 
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -165,6 +174,7 @@ export default function VehiclesClient() {
       setLicensePlate('')
       setVin('')
       setCustomerId('none')
+      setShowCreateModal(false)
       await loadItems()
     } catch (err: any) {
       setError(err.message)
@@ -172,7 +182,7 @@ export default function VehiclesClient() {
   }
 
   const handleDelete = async (item: Vehicle) => {
-    if (!confirm(`Verwijder voertuig "${item.brand} ${item.model}"?`)) return
+    if (!confirm(`Verwijder voertuig "${item.make} ${item.model}"?`)) return
     try {
       const response = await fetch(`/api/vehicles/${item.id}`, { method: 'DELETE' })
       const data = await response.json()
@@ -211,11 +221,10 @@ export default function VehiclesClient() {
 
   const openEdit = (item: Vehicle) => {
     setEditingItem(item)
-    setEditBrand(item.brand || '')
+    setEditBrand(item.make || '')
     setEditModel(item.model || '')
     setEditLicensePlate(item.licensePlate || '')
     setEditVin(item.vin || '')
-    setEditChassisNumber(item.rdwChassisNumber || '')
     setEditCustomerId(item.customerId || 'none')
     setRdwError(null)
     setLastRdwPlate(String(item.licensePlate || '').trim().toLowerCase())
@@ -231,11 +240,10 @@ export default function VehiclesClient() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brand: editBrand,
+          make: editBrand,
           model: editModel,
           licensePlate: editLicensePlate || null,
           vin: editVin || null,
-          rdwChassisNumber: editChassisNumber || null,
           customerId: editCustomerId === 'none' ? null : editCustomerId
         })
       })
@@ -268,7 +276,7 @@ export default function VehiclesClient() {
         throw new Error(data.error || 'RDW lookup failed')
       }
       const item = data.item || {}
-      setEditBrand(item.brand || editBrand)
+      setEditBrand(item.make || editBrand)
       setEditModel(item.model || editModel)
       setEditLicensePlate(item.licensePlate || editLicensePlate)
       setEditVin(item.vin || editVin)
@@ -288,6 +296,49 @@ export default function VehiclesClient() {
     )
   }
 
+  const handleAutomaatImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      setImporting(true)
+      setImportResult(null)
+      setError(null)
+
+      const text = await file.text()
+      const response = await apiFetch('/api/admin/import-automaat-vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvContent: text })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Import failed')
+      }
+
+      const { summary } = data
+      setImportResult(
+        `✅ Import voltooid!\n\n` +
+        `📥 Geïmporteerd: ${summary.imported}\n` +
+        `♻️ Bijgewerkt: ${summary.updated}\n` +
+        `🔗 Gekoppeld aan klanten: ${summary.linked || 0}\n` +
+        `⏭️ Overgeslagen: ${summary.skipped}\n` +
+        `📊 Totaal: ${summary.total}`
+      )
+      
+      // Reload vehicles
+      await loadItems()
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setImporting(false)
+      // Reset file input
+      event.target.value = ''
+    }
+  }
+
+
   const updateSort = (key: string) => {
     if (sortKey === key) {
       setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
@@ -298,21 +349,54 @@ export default function VehiclesClient() {
   }
 
   const filteredItems = useMemo(() => {
+    let result = items
+    
+    // Global search term
     const term = searchTerm.trim().toLowerCase()
-    if (!term) return items
-    return items.filter((item) => {
-      const customerName = item.customerId ? customerLookup[item.customerId] || item.customerId : ''
-      const fields = [
-        item.brand,
-        item.model,
-        item.licensePlate,
-        item.vin,
-        item.rdwChassisNumber,
-        customerName
-      ]
-      return fields.some((value) => String(value || '').toLowerCase().includes(term))
+    if (term) {
+      result = result.filter((item) => {
+        const customerName = item.customerId ? customerLookup[item.customerId] || item.customerId : ''
+        const fields = [
+          item.make,
+          item.model,
+          item.licensePlate,
+          item.vin,
+          customerName
+        ]
+        return fields.some((value) => String(value || '').toLowerCase().includes(term))
+      })
+    }
+    
+    // Column-specific filters (DEBOUNCED)
+    Object.entries(columnFiltersDebounced).forEach(([column, filterValue]) => {
+      const filterTerm = filterValue.trim().toLowerCase()
+      if (!filterTerm) return
+      
+      result = result.filter((item) => {
+        let value = ''
+        switch (column) {
+          case 'make':
+            value = item.make || ''
+            break
+          case 'model':
+            value = item.model || ''
+            break
+          case 'licensePlate':
+            value = item.licensePlate || ''
+            break
+          case 'vin':
+            value = item.vin || ''
+            break
+          case 'customer':
+            value = item.customerId ? customerLookup[item.customerId] || '' : ''
+            break
+        }
+        return String(value).toLowerCase().includes(filterTerm)
+      })
     })
-  }, [items, searchTerm, customerLookup])
+    
+    return result
+  }, [items, searchTerm, columnFiltersDebounced, customerLookup])
 
   const sortedItems = useMemo(() => {
     const sorted = [...filteredItems]
@@ -320,20 +404,16 @@ export default function VehiclesClient() {
       const dir = sortDir === 'asc' ? 1 : -1
       const getValue = (item: Vehicle) => {
         switch (sortKey) {
-          case 'brand':
-            return item.brand || ''
+          case 'make':
+            return item.make || ''
           case 'model':
             return item.model || ''
           case 'licensePlate':
             return item.licensePlate || ''
           case 'vin':
             return item.vin || ''
-          case 'chassisNumber':
-            return item.rdwChassisNumber || ''
           case 'customer':
             return item.customerId ? customerLookup[item.customerId] || item.customerId : ''
-          case 'ownerHistory':
-            return item.ownerHistory?.length || 0
           case 'created_at':
             return (item as any).created_at ? new Date((item as any).created_at).getTime() : 0
           default:
@@ -349,6 +429,13 @@ export default function VehiclesClient() {
     })
     return sorted
   }, [filteredItems, sortKey, sortDir, customerLookup])
+
+  // Paginering
+  const totalPages = Math.ceil(sortedItems.length / itemsPerPage)
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return sortedItems.slice(startIndex, startIndex + itemsPerPage)
+  }, [sortedItems, currentPage, itemsPerPage])
 
   const formatRdwDate = (value?: string | null) => {
     if (!value) return '-'
@@ -367,95 +454,49 @@ export default function VehiclesClient() {
   }
 
   return (
-    <div className="space-y-10">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold">Nieuw voertuig</h2>
-        <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Merk
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={brand}
-              onChange={(event) => setBrand(event.target.value)}
-            />
-              <span className="text-xs text-slate-500">
-                Leeg laten vult RDW automatisch (bij kenteken).
-              </span>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Model
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-            />
-              <span className="text-xs text-slate-500">
-                Leeg laten vult RDW automatisch (bij kenteken).
-              </span>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Kenteken
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={licensePlate}
-              onChange={(event) => setLicensePlate(event.target.value)}
-              placeholder="Optioneel"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            VIN
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={vin}
-              onChange={(event) => setVin(event.target.value)}
-              placeholder="Optioneel"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-            Klant
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
-            >
-              <option value="none">Niet gekoppeld</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end">
-            <button
-              className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
-              type="submit"
-            >
-              Opslaan
-            </button>
-          </div>
-        </form>
-      </section>
-
+    <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-xl font-semibold">Voertuigen</h2>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              className="rounded-xl border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 px-4 py-1.5 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:from-purple-600/90 hover:to-purple-700/90 hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 active:scale-95"
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+            >
+              ➕ Nieuw voertuig
+            </button>
             <input
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50 focus:shadow-purple-200/30"
               placeholder="Zoeken..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
             <button
-              className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
               type="button"
               onClick={loadItems}
             >
               Verversen
             </button>
+            <label className="relative cursor-pointer rounded-xl border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 px-4 py-1.5 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:from-purple-600/90 hover:to-purple-700/90 hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 active:scale-95 disabled:opacity-50">
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleAutomaatImport}
+                disabled={importing}
+              />
+              {importing ? '⏳ Importeren...' : '🚗 Automaat importeren'}
+            </label>
           </div>
         </div>
+
+        {importResult ? (
+          <div className="mt-3 rounded-xl border border-purple-200/50 bg-gradient-to-br from-purple-50/80 to-purple-100/60 px-4 py-3 text-sm text-purple-700 shadow-md backdrop-blur-sm whitespace-pre-line">
+            {importResult}
+          </div>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
           {columnOptions.map((col) => (
@@ -481,74 +522,255 @@ export default function VehiclesClient() {
         ) : sortedItems.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">Geen voertuigen gevonden.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
+          <>
+            <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
+              <div>
+                Toont {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, sortedItems.length)} van {sortedItems.length} voertuigen
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2">
+                  Per pagina:
+                  <select
+                    className="rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-sm backdrop-blur-sm"
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value))
+                      setCurrentPage(1)
+                    }}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {visibleColumns.includes('brand') ? (
+                  {visibleColumns.includes('make') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('brand')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('make')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Merk
+                        {sortKey === 'make' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('model') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('model')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('model')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Model
+                        {sortKey === 'model' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('licensePlate') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('licensePlate')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('licensePlate')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Kenteken
+                        {sortKey === 'licensePlate' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('vin') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('vin')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('vin')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         VIN
+                        {sortKey === 'vin' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('chassisNumber') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('chassisNumber')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('chassisNumber')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Chassisnummer
+                        {sortKey === 'chassisNumber' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('customer') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('customer')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('customer')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Klant
+                        {sortKey === 'customer' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('ownerHistory') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('ownerHistory')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('ownerHistory')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Overdrachten
+                        {sortKey === 'ownerHistory' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
                   {visibleColumns.includes('created_at') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('created_at')}>
+                      <button 
+                        type="button" 
+                        onClick={() => updateSort('created_at')}
+                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+                      >
                         Aangemaakt
+                        {sortKey === 'created_at' && (
+                          <span className="text-purple-600 text-lg">
+                            {sortDir === 'asc' ? '↑' : '↓'}
+                          </span>
+                        )}
                       </button>
                     </th>
                   ) : null}
-                  <th className="px-4 py-2 text-right">Acties</th>
+                  <th className="px-4 py-2 text-right font-semibold text-slate-700">Acties</th>
+                </tr>
+                <tr className="bg-white/50">
+                  {visibleColumns.includes('make') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek merk..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.make || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, make: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('model') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek model..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.model || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, model: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('licensePlate') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek kenteken..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.licensePlate || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, licensePlate: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('vin') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek VIN..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.vin || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, vin: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('chassisNumber') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek chassis..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.chassisNumber || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, chassisNumber: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('customer') ? (
+                    <th className="px-4 py-2">
+                      <input
+                        type="text"
+                        placeholder="Zoek klant..."
+                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                        value={columnFilters.customer || ''}
+                        onChange={(e) => setColumnFilters(prev => ({ ...prev, customer: e.target.value }))}
+                      />
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('ownerHistory') ? (
+                    <th className="px-4 py-2">
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('created_at') ? (
+                    <th className="px-4 py-2">
+                    </th>
+                  ) : null}
+                  <th className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sortedItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    {visibleColumns.includes('brand') ? (
-                      <td className="px-4 py-2 font-medium text-slate-900">{item.brand}</td>
+                {paginatedItems.map((item) => (
+                  <tr 
+                    key={item.id} 
+                    className="hover:bg-slate-50 cursor-pointer"
+                    onDoubleClick={() => {
+                      setDetailViewItem(item)
+                      setShowDetailView(true)
+                    }}
+                  >
+                    {visibleColumns.includes('make') ? (
+                      <td className="px-4 py-2 font-medium text-slate-900">{item.make}</td>
                     ) : null}
                     {visibleColumns.includes('model') ? (
                       <td className="px-4 py-2 text-slate-700">{item.model}</td>
@@ -589,10 +811,10 @@ export default function VehiclesClient() {
                         {(item as any).created_at ? new Date((item as any).created_at).toLocaleString() : '-'}
                       </td>
                     ) : null}
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-1.5">
                         <select
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs"
+                          className="rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 hover:bg-white/80 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
                           value={transferTargetById[item.id] || 'none'}
                           onChange={(event) =>
                             setTransferTargetById((prev) => ({
@@ -601,7 +823,7 @@ export default function VehiclesClient() {
                             }))
                           }
                         >
-                          <option value="none">Nieuwe eigenaar</option>
+                          <option value="none">Kies klant...</option>
                           {customers.map((customer) => (
                             <option key={customer.id} value={customer.id}>
                               {customer.name}
@@ -609,25 +831,28 @@ export default function VehiclesClient() {
                           ))}
                         </select>
                         <button
-                          className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          className="rounded-lg border border-slate-300/50 bg-white/60 px-2 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
                           type="button"
                           onClick={() => openEdit(item)}
+                          title="Bewerken"
                         >
-                          Bewerken
+                          ✏️
                         </button>
                         <button
-                          className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          className="rounded-lg border border-purple-300/50 bg-gradient-to-br from-purple-500/80 to-purple-600/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm transition-all duration-200 hover:from-purple-600/80 hover:to-purple-700/80 hover:shadow-md hover:shadow-purple-500/20 active:scale-95"
                           type="button"
                           onClick={() => handleTransfer(item)}
+                          title="Overzetten naar geselecteerde klant"
                         >
-                          Overzetten
+                          ➜
                         </button>
                         <button
-                          className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                          className="rounded-lg border border-slate-400/50 bg-gradient-to-br from-slate-500/80 to-slate-600/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm transition-all duration-200 hover:from-slate-600/80 hover:to-slate-700/80 hover:shadow-md hover:shadow-slate-500/20 active:scale-95"
                           type="button"
                           onClick={() => handleDelete(item)}
+                          title="Verwijderen"
                         >
-                          Verwijderen
+                          🗑️
                         </button>
                       </div>
                     </td>
@@ -635,8 +860,67 @@ export default function VehiclesClient() {
                 ))}
               </tbody>
             </table>
+
+            <div className="mt-4 flex items-center justify-between">
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                ← Vorige
+              </button>
+              
+              <div className="flex items-center gap-2">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum
+                  if (totalPages <= 5) {
+                    pageNum = i + 1
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i
+                  } else {
+                    pageNum = currentPage - 2 + i
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium shadow-sm transition-all duration-200 ${
+                        currentPage === pageNum
+                          ? 'border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 text-white shadow-lg backdrop-blur-xl'
+                          : 'border border-slate-300/50 bg-white/60 text-slate-700 backdrop-blur-sm hover:bg-white/80'
+                      }`}
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </button>
+                  )
+                })}
+                {totalPages > 5 && currentPage < totalPages - 2 && (
+                  <>
+                    <span className="text-slate-500">...</span>
+                    <button
+                      className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm hover:bg-white/80"
+                      onClick={() => setCurrentPage(totalPages)}
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Volgende →
+              </button>
+            </div>
           </div>
-        )}
+        </>
+      )}
       </section>
 
       {showEdit && editingItem ? (
@@ -645,11 +929,11 @@ export default function VehiclesClient() {
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-lg font-semibold">Voertuig bewerken</h3>
               <button
-                className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
                 type="button"
                 onClick={() => setShowEdit(false)}
               >
-                Sluiten
+                ✕
               </button>
             </div>
             <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleUpdate}>
@@ -681,12 +965,12 @@ export default function VehiclesClient() {
                   placeholder="Optioneel"
                 />
                 <button
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  className="rounded-lg border border-purple-300/50 bg-gradient-to-br from-purple-500/80 to-purple-600/80 px-3 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-sm transition-all duration-200 hover:from-purple-600/80 hover:to-purple-700/80 hover:shadow-xl hover:shadow-purple-500/20 active:scale-95 disabled:opacity-60"
                   type="button"
                   onClick={handleRdwLookup}
                   disabled={rdwLoading || !editLicensePlate.trim()}
                 >
-                  {rdwLoading ? 'RDW ophalen...' : 'RDW ophalen'}
+                  {rdwLoading ? '⏳ Ophalen...' : '🔍 RDW ophalen'}
                 </button>
                 {rdwError ? <span className="text-xs text-red-600">{rdwError}</span> : null}
               </label>
@@ -745,13 +1029,248 @@ export default function VehiclesClient() {
             </div>
               <div className="sm:col-span-2">
                 <button
-                  className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+                  className="w-full rounded-xl border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:from-purple-600/90 hover:to-purple-700/90 hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 active:scale-95"
                   type="submit"
                 >
-                  Opslaan
+                  ✓ Opslaan
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showCreateModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+          <div className="relative w-full max-w-2xl rounded-2xl border border-white/20 bg-gradient-to-br from-white/95 to-slate-50/95 p-6 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-slate-800">➕ Nieuw voertuig</h3>
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md active:scale-95"
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                Merk
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-2 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                  value={brand}
+                  onChange={(event) => setBrand(event.target.value)}
+                  placeholder="Bijv. Tesla"
+                />
+                <span className="text-xs text-slate-500">Leeg laten vult RDW auto (bij kenteken)</span>
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                Model
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-2 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                  value={model}
+                  onChange={(event) => setModel(event.target.value)}
+                  placeholder="Bijv. Model 3"
+                />
+                <span className="text-xs text-slate-500">Leeg laten vult RDW auto (bij kenteken)</span>
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                Kenteken
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-2 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                  value={licensePlate}
+                  onChange={(event) => setLicensePlate(event.target.value)}
+                  placeholder="Bijv. 1-ABC-23"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                VIN
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-2 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                  value={vin}
+                  onChange={(event) => setVin(event.target.value)}
+                  placeholder="Optioneel"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
+                Klant
+                <select
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-2 text-sm backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                  value={customerId}
+                  onChange={(event) => setCustomerId(event.target.value)}
+                >
+                  <option value="none">Niet gekoppeld</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  className="flex-1 rounded-xl border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:from-purple-600/90 hover:to-purple-700/90 hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 active:scale-95"
+                  type="submit"
+                >
+                  ✓ Opslaan
+                </button>
+                <button
+                  className="rounded-lg border border-slate-300/50 bg-white/60 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                >
+                  Annuleren
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {showDetailView && detailViewItem ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDetailView(false)}>
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/20 bg-gradient-to-br from-white/95 to-slate-50/95 p-6 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-slate-800">🚗 Voertuig Details</h3>
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md active:scale-95"
+                type="button"
+                onClick={() => setShowDetailView(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Basisgegevens</h4>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Merk:</dt>
+                    <dd className="text-slate-900">{detailViewItem.make || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Model:</dt>
+                    <dd className="text-slate-900">{detailViewItem.model || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Kenteken:</dt>
+                    <dd className="text-slate-900 font-mono">{detailViewItem.licensePlate || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Kleur:</dt>
+                    <dd className="text-slate-900">{detailViewItem.color || '-'}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Identificatie</h4>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">VIN:</dt>
+                    <dd className="text-slate-900 font-mono text-xs">{detailViewItem.vin || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Automaat ID:</dt>
+                    <dd className="text-slate-900">{detailViewItem.externalId || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Systeem ID:</dt>
+                    <dd className="text-slate-900 font-mono text-xs">{detailViewItem.id}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Datum Informatie</h4>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Bouwjaar:</dt>
+                    <dd className="text-slate-900">{detailViewItem.year || '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Bouwdatum:</dt>
+                    <dd className="text-slate-900">{detailViewItem.constructionDate ? new Date(detailViewItem.constructionDate).toLocaleDateString('nl-NL') : '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">APK Vervaldatum:</dt>
+                    <dd className={`font-semibold ${detailViewItem.apkDueDate && new Date(detailViewItem.apkDueDate) < new Date() ? 'text-red-600' : 'text-slate-900'}`}>
+                      {detailViewItem.apkDueDate ? new Date(detailViewItem.apkDueDate).toLocaleDateString('nl-NL') : '-'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Status</h4>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Kilometerstand:</dt>
+                    <dd className="text-slate-900">{detailViewItem.mileage ? `${detailViewItem.mileage.toLocaleString()} km` : '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Historie:</dt>
+                    <dd className="text-slate-900">{detailViewItem.isHistory ? '✓ Ja' : '✗ Nee'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Verwijderd:</dt>
+                    <dd className="text-slate-900">{detailViewItem.deleted ? '✓ Ja' : '✗ Nee'}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm sm:col-span-2">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Eigenaar</h4>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Klant:</dt>
+                    <dd className="text-slate-900">{detailViewItem.customer?.name || 'Geen klant gekoppeld'}</dd>
+                  </div>
+                </dl>
+              </div>
+
+              {detailViewItem.notes && (
+                <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm sm:col-span-2">
+                  <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Notities</h4>
+                  <p className="text-sm text-slate-900 whitespace-pre-wrap">{detailViewItem.notes}</p>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm sm:col-span-2">
+                <h4 className="text-xs font-semibold text-slate-600 uppercase mb-2">Systeem Info</h4>
+                <dl className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Aangemaakt:</dt>
+                    <dd className="text-slate-900">{detailViewItem.createdAt ? new Date(detailViewItem.createdAt).toLocaleString('nl-NL') : '-'}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="font-medium text-slate-700">Laatst gewijzigd:</dt>
+                    <dd className="text-slate-900">{detailViewItem.updatedAt ? new Date(detailViewItem.updatedAt).toLocaleString('nl-NL') : '-'}</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                className="flex-1 rounded-xl border border-purple-300/50 bg-gradient-to-br from-purple-500/90 to-purple-600/90 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-xl transition-all duration-300 hover:from-purple-600/90 hover:to-purple-700/90 hover:shadow-xl hover:shadow-purple-500/20 hover:scale-105 active:scale-95"
+                type="button"
+                onClick={() => {
+                  setShowDetailView(false)
+                  openEdit(detailViewItem)
+                }}
+              >
+                ✏️ Bewerken
+              </button>
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
+                type="button"
+                onClick={() => setShowDetailView(false)}
+              >
+                Sluiten
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -112,15 +112,6 @@ export default function PlanningTypes() {
         <h2 className="text-xl font-semibold">Planningstypes</h2>
       </div>
 
-      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        <p className="font-semibold">Notitie</p>
-        <p>
-          Voor demo- of testdata kun je afspraken toevoegen met het script
-          <span className="font-medium"> scripts/seed-planning-week.js</span> (8-12 per dag, verdeeld over monteurs).
-          Als dit niet meer nodig is, kan het script later verwijderd worden.
-        </p>
-      </div>
-
       <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
         <label className="grid gap-2 text-sm font-medium text-slate-700">
           Naam

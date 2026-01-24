@@ -1,16 +1,18 @@
 import { NextRequest } from 'next/server'
-import { adminFirestore, ensureAdmin, getAdminApp } from '@/lib/firebase-admin'
-import { getAuth } from 'firebase-admin/auth'
+import { prisma } from '@/lib/prisma'
+import jwt from 'jsonwebtoken'
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production'
 
 export type AuthUser = {
-  uid: string
+  id: string
+  email: string
   role?: string | null
   roleId?: string | null
   roleName?: string | null
   permissions: string[]
   isSystemAdmin: boolean
-  name?: string | null
-  email?: string | null
+  displayName?: string | null
   isActive: boolean
 }
 
@@ -31,73 +33,67 @@ const getBearerToken = (request: NextRequest) => {
 }
 
 export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
-  ensureAdmin()
   const token = getBearerToken(request)
   if (!token) {
     throw buildAuthError('Missing Authorization Bearer token')
   }
 
-  const auth = getAuth(getAdminApp())
-  let decoded
+  // Verify JWT token
+  let decoded: any
   try {
-    decoded = await auth.verifyIdToken(token)
+    decoded = jwt.verify(token, JWT_SECRET)
   } catch (error) {
-    throw buildAuthError('Invalid auth token')
+    throw buildAuthError('Invalid or expired token')
   }
 
-  if (!adminFirestore) {
-    throw buildAuthError('Firebase Admin not initialized', 500)
+  // Get user from PostgreSQL
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    include: {
+      roleRef: true, // Include role details
+    },
+  })
+  
+  if (!user) {
+    throw buildAuthError('User not found', 403)
   }
 
-  const userSnap = await adminFirestore.collection('users').doc(decoded.uid).get()
-  if (!userSnap.exists) {
-    throw buildAuthError('User record not found', 403)
+  if (!user.isActive) {
+    throw buildAuthError('User account is disabled', 403)
   }
 
-  const data = userSnap.data() || {}
-  const roleId = data.roleId || null
-  const fallbackRole = data.role || null
-  if (!roleId && !fallbackRole) {
-    throw buildAuthError('User role missing', 403)
-  }
+  const roleId = user.roleId || null
+  const fallbackRole = user.role || null
 
   let permissions: string[] = []
   let roleName: string | null = null
   let resolvedRole: string | null = fallbackRole
-  let isSystemAdmin = false
-  if (roleId || fallbackRole) {
-    const lookupId = String(roleId || fallbackRole)
-    const roleSnap = await adminFirestore.collection('roles').doc(lookupId).get()
-    if (roleSnap.exists) {
-      const roleData = roleSnap.data() || {}
-      roleName = roleData.name ? String(roleData.name) : null
-      isSystemAdmin = roleData.isSystemAdmin === true
-      const perms = roleData.permissions
-      permissions = Array.isArray(perms)
-        ? perms.map((entry) => String(entry || '').trim()).filter(Boolean)
-        : []
-      resolvedRole = lookupId
-    } else if (fallbackRole) {
-      permissions = [String(fallbackRole)]
-      resolvedRole = String(fallbackRole)
+  let isSystemAdmin = user.isSystemAdmin || false
+  
+  if (user.roleRef) {
+    roleName = user.roleRef.name
+    isSystemAdmin = user.roleRef.isSystemAdmin
+    // Extract permissions from JSONB field
+    const perms = user.roleRef.permissions as any
+    if (perms && typeof perms === 'object') {
+      permissions = Object.keys(perms).filter(key => perms[key] === true)
     }
-  }
-
-  const isActive = data.active !== false
-  if (!isActive) {
-    throw buildAuthError('User is inactive', 403)
+    resolvedRole = user.roleRef.name // FIX: Use name instead of id
+  } else if (fallbackRole) {
+    permissions = [fallbackRole]
+    resolvedRole = fallbackRole
   }
 
   return {
-    uid: decoded.uid,
+    id: user.id,
+    email: user.email,
     role: resolvedRole,
     roleId: roleId ? String(roleId) : resolvedRole,
     roleName,
     permissions,
     isSystemAdmin,
-    name: data.name || null,
-    email: data.email || decoded.email || null,
-    isActive
+    displayName: user.displayName || null,
+    isActive: user.isActive || true,
   }
 }
 
@@ -111,4 +107,9 @@ export const requireRole = async (request: NextRequest, roles: string[]) => {
     throw buildAuthError('Insufficient permissions', 403)
   }
   return user
+}
+
+// Helper to generate JWT token
+export const generateToken = (userId: string): string => {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' })
 }

@@ -31,6 +31,7 @@ export default function UsersClient() {
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [photoUrl, setPhotoUrl] = useState("")
   const [roleId, setRoleId] = useState("none")
   const [active, setActive] = useState(true)
@@ -112,8 +113,9 @@ export default function UsersClient() {
       const response = await apiFetch("/api/users", {
         method: "POST",
         body: JSON.stringify({
-          name,
+          displayName: name,
           email,
+          password,
           photoUrl: photoUrl || null,
           roleId: roleId === "none" ? null : roleId,
           active,
@@ -128,6 +130,7 @@ export default function UsersClient() {
       }
       setName("")
       setEmail("")
+      setPassword("")
       setPhotoUrl("")
       setRoleId("none")
       setActive(true)
@@ -221,9 +224,9 @@ export default function UsersClient() {
       const response = await apiFetch(`/api/users/${editingId}`, {
         method: "PATCH",
         body: JSON.stringify({
-          name: editName,
+          displayName: editName,
           email: editEmail,
-          photoUrl: editPhotoUrl || null,
+          photoURL: editPhotoUrl || null,
           roleId: editRoleId === "none" ? null : editRoleId,
           active: editActive,
           color: editColor,
@@ -247,13 +250,30 @@ export default function UsersClient() {
     return roles.find((entry) => entry.id === item.roleId)?.name || item.roleId
   }
 
-  const getInitials = (value: string) =>
-    value
+  const getInitials = (value?: string | null) => {
+    if (!value) return "?"
+    return value
       .trim()
       .split(/\s+/)
       .slice(0, 2)
       .map((part) => part.charAt(0).toUpperCase())
       .join("") || "?"
+  }
+
+  const formatAddress = (address: any): string => {
+    if (!address) return '-'
+    if (typeof address === 'string') return address
+    if (typeof address === 'object') {
+      const parts = [
+        address.street,
+        address.postalCode,
+        address.city,
+        address.country
+      ].filter(Boolean)
+      return parts.join(', ') || '-'
+    }
+    return '-'
+  }
 
   const renderUserAvatar = (item: User) => {
     if (item.photoUrl) {
@@ -305,6 +325,17 @@ export default function UsersClient() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
+            Wachtwoord
+            <input
+              type="password"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              placeholder="Minimaal 6 tekens"
             />
           </label>
           <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
@@ -552,13 +583,18 @@ export default function UsersClient() {
                             }
                           />
                         </label>
-                        <label className="flex items-center gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={editActive}
-                            onChange={(event) => setEditActive(event.target.checked)}
-                          />
-                          Actief
+                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>Actief</span>
+                          <label className="relative inline-block h-6 w-11 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="peer sr-only"
+                              checked={editActive}
+                              onChange={(event) => setEditActive(event.target.checked)}
+                            />
+                            <span className="absolute inset-0 rounded-full bg-slate-200 transition-all duration-300 ease-in-out peer-checked:bg-emerald-500 peer-focus:ring-2 peer-focus:ring-emerald-300 peer-focus:ring-offset-2" />
+                            <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
+                          </label>
                         </label>
                       </div>
                       <div className="grid gap-2 text-sm font-medium text-slate-700">

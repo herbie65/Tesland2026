@@ -1,0 +1,54 @@
+# Dependencies
+node_modules
+npm-debug.log
+
+# Next.js
+.next
+out
+dist
+build
+
+# Testing
+coverage
+.nyc_output
+
+# Env files (will be set separately)
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+logs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# CSV data files
+*.csv
+import/
+
+# Documentation
+*.md
+!README.md
+
+# Scripts (except needed ones)
+scripts/
+!scripts/db-tunnel.sh
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore

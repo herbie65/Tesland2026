@@ -17,27 +17,210 @@ const previewData: Record<string, Record<string, string>> = {
   workorder_created: {
     klantNaam: "Jan de Vries",
     kenteken: "SG716B",
-    workorderId: "WO-260001"
+    workorderId: "WO-260001",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  workorder_planned: {
+    klantNaam: "Jan de Vries",
+    workorderId: "WO-260001",
+    datum: "12-02-2026",
+    tijd: "09:30",
+    monteur: "S. Klaassen",
+    kenteken: "SG716B",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  workorder_updated: {
+    klantNaam: "Jan de Vries",
+    workorderId: "WO-260001",
+    wijziging: "Planning verplaatst naar 12-02-2026 09:30",
+    werkplaatsNaam: "Tesland Werkplaats"
   },
   appointment_confirmed: {
     klantNaam: "Sanne Jansen",
     kenteken: "T492HH",
     datum: "12-02-2026",
-    tijd: "09:30"
+    tijd: "09:30",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  appointment_reminder: {
+    klantNaam: "Sanne Jansen",
+    kenteken: "T492HH",
+    datum: "12-02-2026",
+    tijd: "09:30",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  appointment_cancelled: {
+    klantNaam: "Sanne Jansen",
+    datum: "12-02-2026",
+    tijd: "09:30",
+    reden: "Monteur ziek",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  appointment_rescheduled: {
+    klantNaam: "Sanne Jansen",
+    kenteken: "T492HH",
+    datum: "13-02-2026",
+    tijd: "10:00",
+    werkplaatsNaam: "Tesland Werkplaats"
   },
   extra_work_approval_required: {
     klantNaam: "Pieter Bakker",
-    kenteken: "KX193L"
+    kenteken: "KX193L",
+    extraWerk: "Remmen vervangen",
+    bedrag: "€ 245,00",
+    akkoordLink: "https://tesland.nl/akkoord/WO-260004",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  extra_work_approved: {
+    klantNaam: "Pieter Bakker",
+    kenteken: "KX193L",
+    workorderId: "WO-260004",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  extra_work_declined: {
+    klantNaam: "Pieter Bakker",
+    kenteken: "KX193L",
+    workorderId: "WO-260004",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  parts_required: {
+    klantNaam: "Pieter Bakker",
+    workorderId: "WO-260004",
+    onderdelen: "Remschijven, remblokken",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  parts_ready: {
+    klantNaam: "Pieter Bakker",
+    workorderId: "WO-260004",
+    werkplaatsNaam: "Tesland Werkplaats"
   },
   work_completed: {
     klantNaam: "Lotte Visser",
     kenteken: "NB740P",
-    workorderId: "WO-260014"
+    workorderId: "WO-260014",
+    pickupDatum: "13-02-2026",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  pickup_ready: {
+    klantNaam: "Lotte Visser",
+    kenteken: "NB740P",
+    workorderId: "WO-260014",
+    werkplaatsNaam: "Tesland Werkplaats"
   },
   invoice_available: {
     klantNaam: "Mohamed El Amrani",
     kenteken: "RF620D",
-    factuurNummer: "TLI-2600123"
+    factuurNummer: "TLI-2600123",
+    betaalLink: "https://tesland.nl/betaal/TLI-2600123",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  payment_received: {
+    klantNaam: "Mohamed El Amrani",
+    factuurNummer: "TLI-2600123",
+    bedrag: "€ 489,00",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  payment_failed: {
+    klantNaam: "Mohamed El Amrani",
+    factuurNummer: "TLI-2600123",
+    betaalLink: "https://tesland.nl/betaal/TLI-2600123",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  review_request: {
+    klantNaam: "Lotte Visser",
+    reviewLink: "https://tesland.nl/review",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  service_due_reminder: {
+    klantNaam: "Lotte Visser",
+    kenteken: "NB740P",
+    planningLink: "https://tesland.nl/afspraak",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  apk_reminder: {
+    klantNaam: "Lotte Visser",
+    kenteken: "NB740P",
+    merk: "Volkswagen",
+    type: "Golf",
+    apkDatum: "28-02-2026",
+    planningLink: "https://tesland.nl/afspraak",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  replacement_transport: {
+    klantNaam: "Lotte Visser",
+    vervoerType: "Leenauto",
+    vervoerDetails: "Ophalen bij balie, rijbewijs meenemen",
+    datum: "12-02-2026",
+    tijd: "08:45",
+    werkplaatsNaam: "Tesland Werkplaats"
+  },
+  order_confirmed: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    bedrag: "€ 129,95",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_paid: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_processing: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_shipped: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    trackingUrl: "https://track.example.com/ABC123",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_delivered: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_cancelled: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    reden: "Betaling niet voltooid",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_refund: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    bedrag: "€ 129,95",
+    webshopNaam: "Tesland Webshop"
+  },
+  order_backorder: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    productNaam: "Oliefilter XL",
+    webshopNaam: "Tesland Webshop"
+  },
+  return_received: {
+    klantNaam: "Tom de Jong",
+    orderNummer: "WEB-260045",
+    productNaam: "Oliefilter XL",
+    retourStatus: "In behandeling",
+    webshopNaam: "Tesland Webshop"
+  },
+  stock_back_in: {
+    klantNaam: "Tom de Jong",
+    productNaam: "Oliefilter XL",
+    productUrl: "https://tesland.nl/product/oliefilter-xl",
+    webshopNaam: "Tesland Webshop"
+  },
+  account_created: {
+    klantNaam: "Tom de Jong",
+    accountUrl: "https://tesland.nl/account",
+    webshopNaam: "Tesland Webshop"
+  },
+  password_reset: {
+    klantNaam: "Tom de Jong",
+    resetLink: "https://tesland.nl/reset/abc123",
+    webshopNaam: "Tesland Webshop"
   }
 }
 

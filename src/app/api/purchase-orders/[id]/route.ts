@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 
 type RouteContext = {
@@ -14,14 +14,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   return segments[segments.length - 1] || ''
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
@@ -29,12 +21,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    const docSnap = await firestore.collection('purchaseOrders').doc(id).get()
-    if (!docSnap.exists) {
+    
+    const item = await prisma.purchaseOrder.findUnique({ where: { id } })
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    return NextResponse.json({ success: true, item: { id: docSnap.id, ...docSnap.data() } })
+    
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error fetching purchase order:', error)
@@ -49,15 +42,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
+    
     const body = await request.json()
-    const firestore = ensureFirestore()
-    const payload = {
-      ...body,
-      updated_at: new Date().toISOString(),
-      updated_by: user.uid
-    }
-    await firestore.collection('purchaseOrders').doc(id).set(payload, { merge: true })
-    return NextResponse.json({ success: true, item: { id, ...payload } })
+    const updateData: any = {}
+    if (body.supplierName !== undefined) updateData.supplierName = body.supplierName
+    if (body.items !== undefined) updateData.items = body.items
+    if (body.status !== undefined) updateData.status = body.status
+    if (body.notes !== undefined) updateData.notes = body.notes
+    if (body.expectedAt !== undefined) updateData.expectedAt = body.expectedAt ? new Date(body.expectedAt) : null
+
+    const item = await prisma.purchaseOrder.update({
+      where: { id },
+      data: updateData
+    })
+
+    return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error updating purchase order:', error)
@@ -67,13 +66,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    await requireRole(request, ['MANAGEMENT'])
+    await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
     const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const firestore = ensureFirestore()
-    await firestore.collection('purchaseOrders').doc(id).delete()
+    
+    await prisma.purchaseOrder.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error: any) {
     const status = error.status || 500

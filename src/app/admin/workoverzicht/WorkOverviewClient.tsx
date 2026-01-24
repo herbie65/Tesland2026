@@ -45,18 +45,22 @@ type PlanningType = {
   })
 
    useEffect(() => {
-     const loadSettings = async () => {
+    const loadSettings = async () => {
        try {
          setLoading(true)
          setError(null)
          const response = await apiFetch('/api/settings/workoverview')
-         const data = await response.json()
-         if (!response.ok || !data.success) {
-           throw new Error(data.error || 'Werkoverzicht instellingen ontbreken.')
-         }
-         const settings = data.item?.data || data.item || {}
-         const nextColumns = Array.isArray(settings.columns) ? settings.columns : []
-         setColumns(nextColumns)
+        const data = await response.json()
+        if (!response.ok || !data.success) {
+          if (response.status === 404) {
+            setColumns((SETTINGS_DEFAULTS as any)?.workoverview?.columns || [])
+            return
+          }
+          throw new Error(data.error || 'Werkoverzicht instellingen ontbreken.')
+        }
+        const settings = data.item?.data || data.item || {}
+        const nextColumns = Array.isArray(settings.columns) ? settings.columns : []
+        setColumns(nextColumns)
        } catch (err: any) {
          setError(err.message)
        } finally {
@@ -108,13 +112,22 @@ type PlanningType = {
     })
   }, [workOrders, selectedDate])
 
+  const normalizePlanningKey = (value?: string | null) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+
   const planningTypeMap = useMemo(() => {
-    return new Map(
-      planningTypes.map((entry) => [
-        entry.id,
-        { name: entry.name || '', color: entry.color || '' }
-      ])
-    )
+    const map = new Map<string, { name?: string | null; color?: string | null }>()
+    planningTypes.forEach((entry) => {
+      map.set(entry.id, { name: entry.name, color: entry.color })
+      const normalizedName = normalizePlanningKey(entry.name)
+      if (normalizedName) {
+        map.set(normalizedName, { name: entry.name, color: entry.color })
+      }
+    })
+    return map
   }, [planningTypes])
 
   const formatTimeRange = (scheduledAt?: string | null, durationMinutes?: number | null) => {
@@ -131,10 +144,10 @@ type PlanningType = {
 
    return (
      <div className="space-y-6">
-       <header className="space-y-1">
-         <h2 className="text-2xl font-semibold text-slate-900">Werkoverzicht</h2>
-         <p className="text-sm text-slate-600">Overzicht van werkstatussen per kolom.</p>
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-700">
+      <header className="space-y-1">
+        <h2 className="text-2xl font-semibold text-slate-900">Werkoverzicht</h2>
+        <p className="text-sm text-slate-600">Overzicht van werkstatussen per kolom.</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
           <label className="flex items-center gap-2">
             Datum
             <input
@@ -144,8 +157,21 @@ type PlanningType = {
               onChange={(event) => setSelectedDate(event.target.value)}
             />
           </label>
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
+            {planningTypes
+              .filter((type) => Boolean(type.color) && Boolean(type.name))
+              .map((type) => (
+              <span key={type.id} className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-flex h-2.5 w-2.5 rounded-full border"
+                  style={{ backgroundColor: type.color || undefined, borderColor: type.color || undefined }}
+                />
+                <span>{type.name}</span>
+              </span>
+            ))}
+          </div>
         </div>
-       </header>
+      </header>
 
        {error ? (
          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -200,20 +226,30 @@ type PlanningType = {
                           {formatTimeRange(item.scheduledAt, item.durationMinutes)}
                         </div>
                         {(() => {
-                          const type = item.planningTypeId
+                          const typeById = item.planningTypeId
                             ? planningTypeMap.get(item.planningTypeId)
                             : null
-                          const typeName = item.planningTypeName || type?.name || item.title || 'Werkzaamheden'
-                          const typeColor = item.planningTypeColor || type?.color || ''
+                          const typeByName = item.planningTypeName
+                            ? planningTypeMap.get(normalizePlanningKey(item.planningTypeName))
+                            : null
+                          const typeName =
+                            item.planningTypeName || typeById?.name || typeByName?.name || item.title || ''
+                          const typeColor =
+                            item.planningTypeColor || typeById?.color || typeByName?.color || null
                           return (
                             <div
-                              className="mt-3 rounded-full px-3 py-1 text-xs font-semibold"
+                              className="mt-3 flex items-center gap-2"
                               style={{
-                                backgroundColor: typeColor ? `${typeColor}33` : 'rgba(148, 163, 184, 0.2)',
-                                color: typeColor || '#475569'
+                                color: typeColor || undefined
                               }}
                             >
-                              {typeName}
+                              {typeColor ? (
+                                <span
+                                  className="h-2.5 w-6 rounded-full"
+                                  style={{ backgroundColor: typeColor }}
+                                />
+                              ) : null}
+                              <span className="text-xs font-semibold">{typeName}</span>
                             </div>
                           )
                         })()}

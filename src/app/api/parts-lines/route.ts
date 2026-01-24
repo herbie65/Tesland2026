@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import {
   getDefaultsSettings,
@@ -11,21 +11,15 @@ import {
 import { calculatePartsSummaryStatus, resolveExecutionStatus } from '@/lib/workorders'
 import { createNotification } from '@/lib/notifications'
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 const recalcPartsSummary = async (workOrderId: string, userId: string) => {
-  const firestore = ensureFirestore()
   const statusSettings = await getStatusSettings()
   const defaults = await getDefaultsSettings()
   const partsLogic = await getPartsLogicSettings()
-  const linesSnap = await firestore.collection('partsLines').where('workOrderId', '==', workOrderId).get()
-  const lines = linesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as any[]
+  
+  const lines = await prisma.partsLine.findMany({
+    where: { workOrderId }
+  })
+  
   const summary = calculatePartsSummaryStatus(
     lines.map((line) => ({ id: line.id, status: line.status })),
     statusSettings.partsLine,
@@ -33,15 +27,15 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
     defaults.partsSummaryStatus
   )
 
-  const workOrderRef = firestore.collection('workOrders').doc(workOrderId)
-  const workOrderSnap = await workOrderRef.get()
-  if (!workOrderSnap.exists) return
-  const current = workOrderSnap.data()?.partsSummaryStatus
+  const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId } })
+  if (!workOrder) return
+  
+  const current = workOrder.partsSummaryStatus
   if (current === summary.status) return
 
   const nowIso = new Date().toISOString()
-  const history = Array.isArray(workOrderSnap.data()?.partsSummaryHistory)
-    ? [...(workOrderSnap.data()?.partsSummaryHistory || [])]
+  const history = Array.isArray(workOrder.partsSummaryHistory)
+    ? [...(workOrder.partsSummaryHistory as any[])]
     : []
   history.push({
     from: current || null,
@@ -51,14 +45,13 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
     reason: 'auto'
   })
 
-  const planningRiskHistory = Array.isArray(workOrderSnap.data()?.planningRiskHistory)
-    ? [...(workOrderSnap.data()?.planningRiskHistory || [])]
+  const planningRiskHistory = Array.isArray(workOrder.planningRiskHistory)
+    ? [...(workOrder.planningRiskHistory as any[])]
     : []
-  const workOrderData = workOrderSnap.data() || {}
-  const workOrderStatus = workOrderData.workOrderStatus || defaults.workOrderStatus
+  const workOrderStatus = workOrder.workOrderStatus || defaults.workOrderStatus
   const isPlanned = workOrderStatus === 'GEPLAND'
   const isComplete = partsLogic.completeSummaryStatuses.includes(summary.status)
-  const scheduledStart = workOrderData.scheduledStart ? new Date(workOrderData.scheduledStart) : null
+  const scheduledStart = workOrder.scheduledAt ? new Date(workOrder.scheduledAt) : null
   const etaDates = lines
     .map((line) => (line.etaDate ? new Date(line.etaDate) : null))
     .filter((date) => date && !Number.isNaN(date.getTime())) as Date[]
@@ -90,7 +83,7 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
         userId,
         timestamp: nowIso,
         reason: 'eta-after-scheduled-start',
-        scheduledStart: workOrderData.scheduledStart || null
+        scheduledStart: workOrder.scheduledAt?.toISOString() || null
       })
       await createNotification({
         type: 'planning-risk',
@@ -98,7 +91,7 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
         message: `Werkorder ${workOrderId} heeft onderdelen met ETA na geplande start.`,
         workOrderId,
         riskReason: 'ETA_DELAY',
-        meta: { scheduledStart: workOrderData.scheduledStart || null },
+        meta: { scheduledStart: workOrder.scheduledAt?.toISOString() || null },
         created_by: userId
       })
     }
@@ -111,32 +104,21 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
     partsSummaryStatus: summary.status
   })
 
-  await workOrderRef.set(
-    {
+  await prisma.workOrder.update({
+    where: { id: workOrderId },
+    data: {
       partsSummaryStatus: summary.status,
       partsSummaryHistory: history,
       planningRiskActive: isPlanned ? !isComplete || hasEtaDelay : false,
       planningRiskHistory,
-      ...(executionStatus ? { executionStatus } : {}),
-      updated_at: nowIso,
-      updated_by: userId
-    },
-    { merge: true }
-  )
-}
-
-const chunk = <T,>(items: T[], size: number) => {
-  const result: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    result.push(items.slice(i, i + size))
-  }
-  return result
+      executionStatus: executionStatus || undefined
+    }
+  })
 }
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
-    const firestore = ensureFirestore()
     const workOrderId = request.nextUrl.searchParams.get('workOrderId')
 
     if (user.role === 'MONTEUR') {
@@ -144,31 +126,44 @@ export async function GET(request: NextRequest) {
       if (workOrderId) {
         workOrderIds = [workOrderId]
       } else {
-        const workOrdersSnap = await firestore
-          .collection('workOrders')
-          .where('assigneeId', '==', user.uid)
-          .get()
-        workOrderIds = workOrdersSnap.docs.map((doc) => doc.id)
+        const workOrders = await prisma.workOrder.findMany({
+          where: { assigneeId: user.id },
+          select: { id: true }
+        })
+        workOrderIds = workOrders.map((wo) => wo.id)
       }
+      
       if (!workOrderIds.length) {
         return NextResponse.json({ success: true, items: [] })
       }
-      const batches = chunk(workOrderIds, 10)
-      const items: any[] = []
-      for (const batch of batches) {
-        const linesSnap = await firestore
-          .collection('partsLines')
-          .where('workOrderId', 'in', batch)
-          .get()
-        linesSnap.docs.forEach((doc) => items.push({ id: doc.id, ...doc.data() }))
-      }
+      
+      const items = await prisma.partsLine.findMany({
+        where: { workOrderId: { in: workOrderIds } },
+        include: {
+          product: true,
+          workOrder: true,
+          location: true
+        }
+      })
+      
       return NextResponse.json({ success: true, items })
     }
 
-    const snapshot = workOrderId
-      ? await firestore.collection('partsLines').where('workOrderId', '==', workOrderId).get()
-      : await firestore.collection('partsLines').get()
-    const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    const where: any = {}
+    if (workOrderId) {
+      where.workOrderId = workOrderId
+    }
+
+    const items = await prisma.partsLine.findMany({
+      where,
+      include: {
+        product: true,
+        workOrder: true,
+        location: true
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+    
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     const status = error.status || 500
@@ -180,7 +175,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
-    const firestore = ensureFirestore()
     const body = await request.json()
     const {
       workOrderId,
@@ -189,7 +183,8 @@ export async function POST(request: NextRequest) {
       quantity,
       status,
       locationId,
-      notes
+      notes,
+      etaDate
     } = body || {}
 
     if (!workOrderId || !quantity) {
@@ -214,33 +209,32 @@ export async function POST(request: NextRequest) {
     }
 
     const nowIso = new Date().toISOString()
-    const payload = {
-      workOrderId,
-      productId: productId || null,
-      productName: productName || null,
-      quantity: Number(quantity),
-      status: nextStatus,
-      locationId: locationId || null,
-      notes: notes || null,
-      created_at: nowIso,
-      updated_at: nowIso,
-      created_by: user.uid,
-      updated_by: user.uid,
-      statusHistory: [
-        {
-          from: null,
-          to: nextStatus,
-          userId: user.uid,
-          timestamp: nowIso,
-          reason: 'created'
-        }
-      ]
-    }
-
-    const docRef = firestore.collection('partsLines').doc()
-    await docRef.set({ id: docRef.id, ...payload })
-    await recalcPartsSummary(workOrderId, user.uid)
-    return NextResponse.json({ success: true, item: { id: docRef.id, ...payload } }, { status: 201 })
+    
+    const item = await prisma.partsLine.create({
+      data: {
+        workOrderId,
+        productId: productId || null,
+        productName: productName || null,
+        quantity: Number(quantity),
+        status: nextStatus,
+        locationId: locationId || null,
+        notes: notes || null,
+        etaDate: etaDate ? new Date(etaDate) : null,
+        statusHistory: [
+          {
+            from: null,
+            to: nextStatus,
+            userId: user.id,
+            timestamp: nowIso,
+            reason: 'created'
+          }
+        ]
+      }
+    })
+    
+    await recalcPartsSummary(workOrderId, user.id)
+    
+    return NextResponse.json({ success: true, item }, { status: 201 })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error creating parts line:', error)

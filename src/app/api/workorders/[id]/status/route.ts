@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
+import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import {
   getDefaultsSettings,
@@ -24,14 +24,6 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   return segments[segments.length - 2] || ''
 }
 
-const ensureFirestore = () => {
-  ensureAdmin()
-  if (!adminFirestore) {
-    throw new Error('Firebase Admin not initialized')
-  }
-  return adminFirestore
-}
-
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MONTEUR'])
@@ -52,14 +44,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Status not allowed for monteur' }, { status: 403 })
     }
 
-    const firestore = ensureFirestore()
-    const docRef = firestore.collection('workOrders').doc(id)
-    const docSnap = await docRef.get()
-    if (!docSnap.exists) {
+    const item = await prisma.workOrder.findUnique({ where: { id } })
+    if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 
-    const item = { id: docSnap.id, ...docSnap.data() } as any
     if (
       user.role === 'MONTEUR' &&
       nextStatus === 'IN_UITVOERING' &&
@@ -71,6 +60,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 403 }
       )
     }
+    
     const statusSettings = await getStatusSettings()
     const defaults = await getDefaultsSettings()
     const partsLogic = await getPartsLogicSettings()
@@ -80,7 +70,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const currentStatus = item.workOrderStatus || defaults.workOrderStatus
     const transitionRule = transitionSettings.transitions.find(
-      (entry) => entry.from === currentStatus && entry.to === nextStatus
+      (entry: any) => entry.from === currentStatus && entry.to === nextStatus
     )
     if (!transitionRule) {
       return NextResponse.json(
@@ -113,7 +103,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     })
 
     const nowIso = new Date().toISOString()
-    const history = Array.isArray(item.statusHistory) ? [...item.statusHistory] : []
+    const history = Array.isArray(item.statusHistory) ? [...(item.statusHistory as any[])] : []
     history.push({
       from: currentStatus,
       to: transition.finalStatus,
@@ -121,16 +111,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       redirected: transition.finalStatus !== nextStatus,
       override: transition.overrideUsed || false,
       reason: overrideReason || null,
-      userId: user.uid,
+      userId: user.id,
       timestamp: nowIso
     })
 
     const planningRiskHistory = Array.isArray(item.planningRiskHistory)
-      ? [...item.planningRiskHistory]
+      ? [...(item.planningRiskHistory as any[])]
       : []
     if (transition.finalStatus === 'GEPLAND' && transition.planningRisk) {
       planningRiskHistory.push({
-        userId: user.uid,
+        userId: user.id,
         timestamp: nowIso,
         reason: 'planned-with-incomplete-parts',
         partsSummaryStatus
@@ -142,7 +132,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         workOrderId: id,
         riskReason: 'PARTS_MISSING',
         meta: { partsSummaryStatus },
-        created_by: user.uid
+        created_by: user.id
       })
     }
 
@@ -152,23 +142,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       partsSummaryStatus
     })
 
-    await docRef.set(
-      {
+    await prisma.workOrder.update({
+      where: { id },
+      data: {
         workOrderStatus: transition.finalStatus,
         planningRiskActive: transition.finalStatus === 'GEPLAND' ? transition.planningRisk : false,
         planningRiskHistory,
-        ...(executionStatus ? { executionStatus } : {}),
-        updated_at: nowIso,
-        updated_by: user.uid,
+        executionStatus: executionStatus || undefined,
         statusHistory: history
-      },
-      { merge: true }
-    )
+      }
+    })
 
     await logAudit(
       {
         action: 'WORKORDER_STATUS_CHANGED',
-        actorUid: user.uid,
+        actorUid: user.id,
         actorEmail: user.email,
         targetUid: id,
         beforeRole: currentStatus,
@@ -186,7 +174,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       await logAudit(
         {
           action: 'WORKORDER_STATUS_OVERRIDE',
-          actorUid: user.uid,
+          actorUid: user.id,
           actorEmail: user.email,
           targetUid: id,
           beforeRole: currentStatus,
