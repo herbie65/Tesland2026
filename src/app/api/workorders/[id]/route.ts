@@ -188,7 +188,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const defaults = await getWorkOrderDefaults()
       const duration = Number.isFinite(Number(body.durationMinutes))
         ? Number(body.durationMinutes)
-        : Number(existing.durationMinutes) || defaults.defaultDurationMinutes
+        : defaults.defaultDurationMinutes || 60
       const scheduledDate = new Date(body.scheduledAt)
       const startMinutes = scheduledDate.getHours() * 60 + scheduledDate.getMinutes()
       const endMinutes = startMinutes + duration
@@ -228,14 +228,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         workOrderId: id,
         title: body.title ?? existing.title ?? planningItem.title,
         scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : existing.scheduledAt ?? planningItem.scheduledAt,
-        durationMinutes: body.durationMinutes ?? existing.durationMinutes ?? planningItem.durationMinutes,
+        durationMinutes: body.durationMinutes ?? planningItem.durationMinutes,
         assigneeId: body.assigneeId ?? existing.assigneeId ?? planningItem.assigneeId,
         assigneeName: body.assigneeName ?? existing.assigneeName ?? planningItem.assigneeName,
-        assigneeColor: body.assigneeColor ?? existing.assigneeColor ?? planningItem.assigneeColor,
+        assigneeColor: body.assigneeColor ?? planningItem.assigneeColor,
         customerId: body.customerId ?? existing.customerId ?? planningItem.customerId,
         customerName: body.customerName ?? existing.customerName ?? planningItem.customerName,
         vehicleId: body.vehicleId ?? existing.vehicleId ?? planningItem.vehicleId,
-        vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? body.licensePlate ?? existing.licensePlate ?? planningItem.vehiclePlate,
+        vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? existing.licensePlate ?? planningItem.vehiclePlate,
         vehicleLabel: body.vehicleLabel ?? existing.vehicleLabel ?? planningItem.vehicleLabel,
         notes: body.notes ?? existing.notes ?? planningItem.notes,
       }
@@ -246,20 +246,26 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
     } else if (!planningItem && shouldUpdatePlanning) {
       // Create new planning item if it doesn't exist
+      const now = new Date()
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+      const planningId = `PLN-${dateStr}-${timeStr}-${random}`
+      
       await prisma.planningItem.create({
         data: {
-          id,
+          id: planningId,
           workOrderId: id,
           title: body.title ?? existing.title ?? 'Werk',
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : existing.scheduledAt ?? new Date(),
-          durationMinutes: body.durationMinutes ?? existing.durationMinutes ?? 60,
+          durationMinutes: body.durationMinutes ?? 60,
           assigneeId: body.assigneeId ?? existing.assigneeId,
           assigneeName: body.assigneeName ?? existing.assigneeName,
-          assigneeColor: body.assigneeColor ?? existing.assigneeColor,
+          assigneeColor: body.assigneeColor ?? null,
           customerId: body.customerId ?? existing.customerId,
           customerName: body.customerName ?? existing.customerName,
           vehicleId: body.vehicleId ?? existing.vehicleId,
-          vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? body.licensePlate ?? existing.licensePlate,
+          vehiclePlate: body.vehiclePlate ?? existing.vehiclePlate ?? existing.licensePlate,
           vehicleLabel: body.vehicleLabel ?? existing.vehicleLabel,
           notes: body.notes ?? existing.notes,
         }

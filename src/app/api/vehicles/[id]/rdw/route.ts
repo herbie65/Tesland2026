@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { getRdwData, mapRdwFields, normalizeRdwPlate } from '@/lib/rdw'
 
 type RouteContext = {
@@ -20,10 +21,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
     const body = await request.json().catch(() => ({}))
-    const existing = (await FirebaseAdminService.getCollectionItem('vehicles', id)) as any
+    
+    const existing = await prisma.vehicle.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
+    
     const plateInput = body.licensePlate || existing.licensePlate
     const normalizedPlate = normalizeRdwPlate(plateInput || '')
     if (!normalizedPlate) {
@@ -35,21 +38,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!baseRecord) {
       return NextResponse.json({ success: false, error: 'Kenteken niet gevonden' }, { status: 404 })
     }
+    
     const mapped = mapRdwFields(baseRecord, rdwResult.fuel)
-    const nowIso = new Date().toISOString()
-    const nextBrand = existing.brand || baseRecord.merk || null
+    const nextBrand = existing.make || baseRecord.merk || null
     const nextModel = existing.model || baseRecord.handelsbenaming || null
-    const nextLicensePlate = normalizedPlate
-    const updated = await FirebaseAdminService.updateCollectionItem('vehicles', id, {
-      brand: nextBrand || existing.brand || null,
-      model: nextModel || existing.model || null,
-      licensePlate: nextLicensePlate,
-      rdwData: baseRecord,
-      rdwFuelData: rdwResult.fuel,
-      rdwSource: rdwResult.sources,
-      rdwSyncedAt: nowIso,
-      ...mapped
+    
+    const updated = await prisma.vehicle.update({
+      where: { id },
+      data: {
+        make: nextBrand,
+        model: nextModel,
+        licensePlate: normalizedPlate,
+        rdwData: baseRecord as any
+      }
     })
+    
     return NextResponse.json({ success: true, item: updated })
   } catch (error: any) {
     console.error('Error fetching RDW data:', error)

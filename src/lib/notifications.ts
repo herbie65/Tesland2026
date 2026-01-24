@@ -44,7 +44,7 @@ export const createNotification = async (payload: NotificationPayload) => {
       workOrderId,
       isRead: false,
       notifyAt: notifyAt && !Number.isNaN(notifyAt.getTime()) ? notifyAt : null,
-      metadata: payload.meta || null,
+      meta: payload.meta || undefined,
     },
   })
 

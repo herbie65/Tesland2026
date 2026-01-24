@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 
+function generatePONumber(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  return `PO-${year}-${random}`
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
@@ -18,21 +25,22 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
+    await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
     const body = await request.json()
-    const { supplierName, items, status, notes, expectedAt } = body || {}
+    const { supplier, status, notes, expectedDate, totalAmount } = body || {}
 
-    if (!supplierName) {
-      return NextResponse.json({ success: false, error: 'supplierName is required' }, { status: 400 })
+    if (!supplier) {
+      return NextResponse.json({ success: false, error: 'supplier is required' }, { status: 400 })
     }
 
     const item = await prisma.purchaseOrder.create({
       data: {
-        supplierName,
-        items: Array.isArray(items) ? items : [],
-        status: status || null,
+        poNumber: generatePONumber(),
+        supplier,
+        status: status || 'DRAFT',
         notes: notes || null,
-        expectedAt: expectedAt ? new Date(expectedAt) : null
+        expectedDate: expectedDate ? new Date(expectedDate) : null,
+        totalAmount: totalAmount ? Number(totalAmount) : null
       }
     })
 

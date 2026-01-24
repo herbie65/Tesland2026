@@ -118,7 +118,7 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
     return { success: false, error: 'Template not found' }
   }
 
-  if (template.enabled === false) {
+  if (template.isActive === false) {
     await logEmail({
       templateId,
       mode,
@@ -154,7 +154,7 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
   }
 
   const subject = renderTemplate(template.subject || '', variables)
-  const text = renderTemplate(template.bodyText || '', variables)
+  const text = renderTemplate(template.body || '', variables)
 
   try {
     if (settings.provider === 'SENDGRID') {

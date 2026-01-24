@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
-import { getSalesStatusSettings } from '@/lib/settings'
-import { generateSalesNumber } from '@/lib/numbering'
+
+function generateRmaNumber(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
+  return `RMA-${year}-${random}`
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,16 +28,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = await requireRole(request, ['MANAGEMENT'])
+    await requireRole(request, ['MANAGEMENT'])
     const body = await request.json()
-    const { orderId, customerId, status, items, notes } = body || {}
-    
-    const statuses = await getSalesStatusSettings()
-    if (status && !statuses.rmaStatus.some((s) => s.code === status)) {
-      return NextResponse.json({ success: false, error: 'Invalid rmaStatus' }, { status: 400 })
-    }
+    const { orderId, customerId, status, productSku, productName, reason, quantity, notes } = body || {}
 
-    const rmaNumber = await generateSalesNumber('rmas')
+    const rmaNumber = generateRmaNumber()
     
     const existing = await prisma.rma.findUnique({ where: { rmaNumber } })
     if (existing) {
@@ -44,8 +44,11 @@ export async function POST(request: NextRequest) {
         rmaNumber,
         orderId: orderId || null,
         customerId: customerId || null,
-        status: status || null,
-        items: Array.isArray(items) ? items : [],
+        status: status || 'PENDING',
+        productSku: productSku || null,
+        productName: productName || null,
+        reason: reason || null,
+        quantity: quantity ? Number(quantity) : 1,
         notes: notes || null
       }
     })

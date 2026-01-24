@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
-// import { getWarehouseStatuses } from '@/lib/settings' // TODO: Function doesn't exist yet
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -15,6 +14,15 @@ const getIdFromRequest = async (request: NextRequest, context: RouteContext) => 
   const segments = request.nextUrl.pathname.split('/').filter(Boolean)
   return segments[segments.length - 2] || ''
 }
+
+// Default warehouse statuses
+const WAREHOUSE_STATUSES = [
+  { code: 'PENDING', label: 'Wachten op onderdelen' },
+  { code: 'ORDERED', label: 'Besteld' },
+  { code: 'RECEIVED', label: 'Ontvangen' },
+  { code: 'IN_STOCK', label: 'Op voorraad' },
+  { code: 'DELIVERED', label: 'Afgeleverd' }
+]
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
@@ -32,16 +40,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'status is required' }, { status: 400 })
     }
 
-    const warehouseStatuses = await getWarehouseStatuses()
-    const entry = warehouseStatuses.items.find((item: any) => String(item.code || '').trim() === nextStatus)
+    const entry = WAREHOUSE_STATUSES.find(s => s.code === nextStatus)
     if (!entry) {
       return NextResponse.json({ success: false, error: 'Onbekende status' }, { status: 400 })
-    }
-    if (entry.requiresEta && !etaDate) {
-      return NextResponse.json({ success: false, error: 'Verwachte datum is verplicht' }, { status: 400 })
-    }
-    if (entry.requiresLocation && !location) {
-      return NextResponse.json({ success: false, error: 'Locatie is verplicht' }, { status: 400 })
     }
 
     const current = await prisma.workOrder.findUnique({ where: { id } })
@@ -65,8 +66,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       where: { id },
       data: {
         warehouseStatus: nextStatus,
-        warehouseEtaDate: etaDate || null,
-        warehouseLocation: location || null,
         warehouseHistory: history
       }
     })

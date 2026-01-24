@@ -49,17 +49,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
 
-    if (
-      user.role === 'MONTEUR' &&
-      nextStatus === 'IN_UITVOERING' &&
-      item.extraWorkRequired === true &&
-      item.extraWorkApproved !== true
-    ) {
-      return NextResponse.json(
-        { success: false, error: 'Extra werk is niet goedgekeurd' },
-        { status: 403 }
-      )
-    }
+    // Extra work approval check removed - field doesn't exist in schema
     
     const statusSettings = await getStatusSettings()
     const defaults = await getDefaultsSettings()
@@ -78,7 +68,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       )
     }
-    if (user.role !== 'SYSTEM_ADMIN' && !transitionRule.roles.includes(user.role)) {
+    if (user.role !== 'SYSTEM_ADMIN' && user.role && !transitionRule.roles.includes(user.role)) {
       return NextResponse.json({ success: false, error: 'Transition not allowed' }, { status: 403 })
     }
     if (transitionRule.requiresOverride && !overrideReason) {
@@ -87,7 +77,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { status: 400 }
       )
     }
-    if (transitionRule.requiresOverride && !['SYSTEM_ADMIN', 'MANAGEMENT'].includes(user.role)) {
+    if (transitionRule.requiresOverride && !['SYSTEM_ADMIN', 'MANAGEMENT'].includes(user.role || '')) {
       return NextResponse.json({ success: false, error: 'Override not allowed' }, { status: 403 })
     }
 

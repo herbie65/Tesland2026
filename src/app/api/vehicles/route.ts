@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         vin: vin || null,
         color: color || null,
         notes: notes || null,
-        rdwData: rdwData || null,
+        rdwData: rdwData || undefined,
       },
     })
 
