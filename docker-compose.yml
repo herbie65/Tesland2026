@@ -1,24 +1,15 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: tesland-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: tesland_user
-      POSTGRES_PASSWORD: tesland_dev_password
-      POSTGRES_DB: tesland_dev
+  tladmin:
+    build: .
+    container_name: tladmin
+    restart: always
+    env_file:
+      - .env.production
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tesland_user -d tesland_dev"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "127.0.0.1:3000:3000"
+    networks:
+      - tladmin-network
 
-volumes:
-  postgres_data:
-    driver: local
+networks:
+  tladmin-network:
+    driver: bridge
