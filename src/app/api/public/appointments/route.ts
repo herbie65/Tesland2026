@@ -3,6 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { normalizeLicensePlate } from '@/lib/license-plate'
 import { sendTemplatedEmail } from '@/lib/email'
 
+function generatePlanningId(): string {
+  const now = new Date()
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+  return `PLN-${dateStr}-${timeStr}-${random}`
+}
+
 const getPlanningSettings = async () => {
   const settings = await prisma.setting.findUnique({ where: { group: 'planning' } })
   const data = settings?.data as any || {}
