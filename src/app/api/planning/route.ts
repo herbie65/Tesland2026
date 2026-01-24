@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
     const item = await prisma.planningItem.create({
       data: {
         title,
-        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : new Date(),
         assigneeId: assigneeId || null,
         assigneeName: assigneeName || null,
         assigneeColor: assigneeColor || null,
