@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
-import { getFirebaseAuth } from '@/lib/firebase-auth'
-import { onAuthStateChanged } from 'firebase/auth'
+// import { getFirebaseAuth } from '@/lib/firebase-auth'
+// import { onAuthStateChanged } from 'firebase/auth'
 import {
   addDays,
   addMinutes,
