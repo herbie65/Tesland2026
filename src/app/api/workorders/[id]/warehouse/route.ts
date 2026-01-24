@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
-import { getWarehouseStatuses } from '@/lib/settings'
+// import { getWarehouseStatuses } from '@/lib/settings' // TODO: Function doesn't exist yet
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
