@@ -131,10 +131,7 @@ export async function POST(request: NextRequest) {
           notes: notes || ''
         }
       })
-      await prisma.planningItem.update({
-        where: { id: appointment.id },
-        data: { confirmationSent: true }
-      })
+
     } catch (emailError) {
       console.error('Failed to send confirmation email:', emailError)
     }
