@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
           phone: phone || null,
           company: company || null,
           address: address ? { street: address, postalCode, city } : undefined,
-          postalCode: postalCode || null,
+          street: address || null,
+          zipCode: postalCode || null,
           city: city || null
         }
       })
