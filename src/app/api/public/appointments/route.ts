@@ -95,17 +95,16 @@ export async function POST(request: NextRequest) {
 
     const appointment = await prisma.planningItem.create({
       data: {
+        id: generatePlanningId(),
         title: titleBase,
         scheduledAt,
-        duration,
-        endAt,
+        durationMinutes: duration || 60,
         customerId: resolvedCustomerId,
         vehicleId: resolvedVehicleId,
         planningTypeId: planningTypeId || null,
-        notes: notes || null,
-        isPublicBooking: true,
-        confirmationSent: false,
-        planningTypeColor: planningTypeColor || null
+        planningTypeName: planningTypeName || null,
+        planningTypeColor: planningTypeColor || null,
+        notes: notes || null
       }
     })
 
