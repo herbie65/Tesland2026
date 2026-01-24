@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-// import { FirebaseAdminService } from '@/lib/firebase-admin-service'
 import { getRdwData, mapRdwFields, normalizeRdwPlate } from '@/lib/rdw'
 
 type RouteContext = {

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-// import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { addDays, endOfMonth, format, startOfMonth } from 'date-fns'
 
 const ensureFirestore = () => {

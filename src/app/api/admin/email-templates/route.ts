@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-// import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { requireRole } from '@/lib/auth'
 
 const ensureFirestore = () => {

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-// import { adminFirestore, ensureAdmin } from '@/lib/firebase-admin'
 import { SETTINGS_DEFAULTS } from '@/lib/settings-defaults'
 
 const ensureFirestore = () => {
