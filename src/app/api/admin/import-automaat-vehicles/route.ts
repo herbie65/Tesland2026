@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
         notes: row.customerName 
           ? `Imported from Automaat. Original customer: ${row.customerName}` 
           : 'Imported from Automaat',
-        rdwData: null
+        rdwData: undefined
       }
       
       try {

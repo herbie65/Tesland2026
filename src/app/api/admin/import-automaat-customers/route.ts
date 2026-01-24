@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
           emailDestinations: emailDestinations || null,
           branchId: branchId || null,
           extra1: extra1 || null,
-          address: fullAddress ? fullAddress : null,
+          address: fullAddress || undefined,
           externalId: externalId || null
         }
 

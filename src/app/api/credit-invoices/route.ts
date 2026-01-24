@@ -38,7 +38,8 @@ export async function POST(request: NextRequest) {
         creditNumber,
         orderId: orderId || null,
         customerId: customerId || null,
-        amount: Number.isFinite(Number(amount)) ? Number(amount) : null,
+        totalAmount: Number.isFinite(Number(amount)) ? Number(amount) : 0,
+        creditDate: new Date(),
         reason: reason || null
       }
     })

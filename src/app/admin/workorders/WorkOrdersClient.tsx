@@ -100,6 +100,7 @@ export default function WorkOrdersClient() {
   const [vehicleFocused, setVehicleFocused] = useState(false)
   const [descriptionMode, setDescriptionMode] = useState<'preset' | 'free'>('preset')
   const [dateWarning, setDateWarning] = useState<string | null>(null)
+  const [partsRequired, setPartsRequired] = useState(false)
 
   const statusesReady = statuses.length > 0
 

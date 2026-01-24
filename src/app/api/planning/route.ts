@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
+import { generateWorkOrderNumber } from '@/lib/numbering'
 import {
   getDefaultsSettings,
   getPricingModes,
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
       const settingsDoc = await prisma.setting.findUnique({
         where: { id: 'planning' }
       })
-      const defaultDurationMinutes = Number(settingsDoc?.data?.defaultDurationMinutes ?? 60)
+      const defaultDurationMinutes = Number((settingsDoc?.data as any)?.defaultDurationMinutes ?? 60)
       const duration = Number.isFinite(Number(durationMinutes))
         ? Number(durationMinutes)
         : defaultDurationMinutes
@@ -164,8 +165,10 @@ export async function POST(request: NextRequest) {
         throw new Error(`Unknown pricingMode "${nextPricingMode}"`)
       }
 
+      const workOrderNumber = await generateWorkOrderNumber()
       const workOrder = await prisma.workOrder.create({
         data: {
+          workOrderNumber,
           title,
           workOrderStatus: nextStatus,
           customerId: customerId || null,
@@ -175,7 +178,6 @@ export async function POST(request: NextRequest) {
           licensePlate: vehiclePlate || null,
           notes: notes || null,
           scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-          durationMinutes: resolvedDuration,
           partsRequired: typeof body?.partsRequired === 'boolean' ? body.partsRequired : null,
           pricingMode: nextPricingMode,
           estimatedAmount: agreementAmount ? Number(agreementAmount) : null,

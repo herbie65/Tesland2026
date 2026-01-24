@@ -48,11 +48,7 @@ export async function PATCH(request: NextRequest) {
       // Mark all notifications as read
       const notifications = await prisma.notification.findMany({
         where: {
-          readBy: {
-            not: {
-              has: user.id
-            }
-          }
+          isRead: false
         }
       })
       

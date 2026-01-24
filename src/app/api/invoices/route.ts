@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
         invoiceNumber,
         orderId: orderId || null,
         customerId: customerId || null,
-        amount: Number.isFinite(Number(amount)) ? Number(amount) : null,
-        vatAmount: Number.isFinite(Number(vatAmount)) ? Number(vatAmount) : null,
-        total: Number.isFinite(Number(total)) ? Number(total) : null,
+        totalAmount: Number.isFinite(Number(total)) ? Number(total) : 0,
+        taxAmount: Number.isFinite(Number(vatAmount)) ? Number(vatAmount) : undefined,
         paymentStatus: paymentStatus || null,
-        dueAt: dueAt ? new Date(dueAt) : null
+        invoiceDate: new Date(),
+        dueDate: dueAt ? new Date(dueAt) : null
       }
     })
     

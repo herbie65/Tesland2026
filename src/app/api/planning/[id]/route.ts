@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
+import { generateWorkOrderNumber } from '@/lib/numbering'
 import {
   getDefaultsSettings,
   getPartsLogicSettings,
@@ -93,46 +94,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
 
       const nowIso = new Date().toISOString()
+      const workOrderNumber = await generateWorkOrderNumber()
       const workOrder = await prisma.workOrder.create({
         data: {
+          workOrderNumber,
           title: body.title || item.title,
           workOrderStatus: nextStatus,
-          customerId: body.customerId || item.customerId || null,
-          customerName: body.customerName || item.customerName || null,
-          vehicleId: body.vehicleId || item.vehicleId || null,
-          vehiclePlate: body.vehiclePlate || item.vehiclePlate || null,
-          licensePlate: body.vehiclePlate || item.vehiclePlate || null,
-          notes: body.notes || item.notes || null,
+          customerId: body.customerId || item.customerId || undefined,
+          customerName: body.customerName || item.customerName || undefined,
+          vehicleId: body.vehicleId || item.vehicleId || undefined,
+          vehiclePlate: body.vehiclePlate || item.vehiclePlate || undefined,
+          licensePlate: body.vehiclePlate || item.vehiclePlate || undefined,
+          notes: body.notes || item.notes || undefined,
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : item.scheduledAt,
-          durationMinutes: body.durationMinutes || item.durationMinutes || workOrderDefaults.defaultDurationMinutes,
           pricingMode: nextPricingMode,
-          estimatedAmount: body.agreementAmount ? Number(body.agreementAmount) : null,
+          estimatedAmount: body.agreementAmount ? Number(body.agreementAmount) : undefined,
           partsSummaryStatus: defaults.partsSummaryStatus,
-          planningRiskActive:
-            nextStatus === 'GEPLAND' &&
-            !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus),
-          planningRiskHistory:
-            nextStatus === 'GEPLAND' &&
-            !partsLogic.completeSummaryStatuses.includes(defaults.partsSummaryStatus)
-              ? [
-                  {
-                    userId: user.id,
-                    timestamp: nowIso,
-                    reason: 'planned-with-incomplete-parts',
-                    partsSummaryStatus: defaults.partsSummaryStatus
-                  }
-                ]
-              : [],
-          statusHistory: [
-            {
-              from: null,
-              to: nextStatus,
-              userId: user.id,
-              timestamp: nowIso,
-              reason: 'created'
-            }
-          ],
-          createdBy: user.id
+          createdBy: user.id || undefined
         }
       })
       workOrderId = workOrder.id
@@ -178,7 +156,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       const workOrderUpdateData: any = {}
       if (cleanedBody.title !== undefined) workOrderUpdateData.title = cleanedBody.title ?? item.title
       if (cleanedBody.notes !== undefined) workOrderUpdateData.notes = cleanedBody.notes ?? item.notes
-      if (cleanedBody.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = cleanedBody.scheduledAt ? new Date(cleanedBody.scheduledAt) : item.scheduledAt
+      if (cleanedBody.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = cleanedBody.scheduledAt ? new Date(String(cleanedBody.scheduledAt)) : item.scheduledAt
       if (cleanedBody.durationMinutes !== undefined) workOrderUpdateData.durationMinutes = cleanedBody.durationMinutes ?? item.durationMinutes
       if (cleanedBody.assigneeId !== undefined) workOrderUpdateData.assigneeId = cleanedBody.assigneeId ?? item.assigneeId
       if (cleanedBody.assigneeName !== undefined) workOrderUpdateData.assigneeName = cleanedBody.assigneeName ?? item.assigneeName

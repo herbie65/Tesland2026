@@ -32,6 +32,23 @@ type Vehicle = {
     id: string
     name: string
   } | null
+  // RDW fields (flattened from rdwData)
+  rdwColor?: string | null
+  rdwVehicleType?: string | null
+  rdwEngineCode?: string | null
+  rdwBuildYear?: number | null
+  rdwRegistrationDatePart1?: string | null
+  rdwOwnerSince?: string | null
+  rdwOwnerCount?: number | null
+  rdwApkDueDate?: string | null
+  rdwOdometer?: number | null
+  rdwOdometerJudgement?: string | null
+  rdwFuelType?: string | null
+  rdwEmptyWeight?: number | null
+  rdwMaxTowWeightBraked?: number | null
+  rdwMaxTowWeightUnbraked?: number | null
+  rdwMaxMass?: number | null
+  rdwChassisNumber?: string | null
 }
 
 export default function VehiclesClient() {
@@ -794,7 +811,7 @@ export default function VehiclesClient() {
                       <td className="px-4 py-2 text-slate-700">{item.vin || '-'}</td>
                     ) : null}
                     {visibleColumns.includes('chassisNumber') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.rdwChassisNumber || '-'}</td>
+                      <td className="px-4 py-2 text-slate-700">{item.vin || '-'}</td>
                     ) : null}
                     {visibleColumns.includes('customer') ? (
                       <td className="px-4 py-2 text-slate-700">
@@ -803,7 +820,7 @@ export default function VehiclesClient() {
                     ) : null}
                     {visibleColumns.includes('ownerHistory') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {item.ownerHistory?.length || 0}
+                        -
                       </td>
                     ) : null}
                     {visibleColumns.includes('created_at') ? (

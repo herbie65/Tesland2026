@@ -862,12 +862,10 @@ export default function PlanningClient() {
   }
 
   useEffect(() => {
-    const auth = getFirebaseAuth()
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setHasUser(Boolean(user))
-      setAuthReady(true)
-    })
-    return () => unsub()
+    // Check if user is logged in via localStorage
+    const token = localStorage.getItem('token')
+    setHasUser(Boolean(token))
+    setAuthReady(true)
   }, [])
 
   useEffect(() => {

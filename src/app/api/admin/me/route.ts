@@ -7,14 +7,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: {
-        uid: user.uid,
+        id: user.id,
         role: user.role || null,
         roleId: user.roleId || null,
         roleName: user.roleName || null,
         permissions: user.permissions || [],
         isSystemAdmin: user.isSystemAdmin,
-        name: user.name || null,
-        email: user.email || null
+        displayName: user.displayName || null,
+        email: user.email
       }
     })
   } catch (error: any) {
