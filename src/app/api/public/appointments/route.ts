@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       await sendTemplatedEmail({
         to: email,
         templateId: 'appointment-confirmation',
-        data: {
+        variables: {
           name,
           date,
           time,
