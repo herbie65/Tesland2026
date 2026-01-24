@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
           email,
           phone: phone || null,
           company: company || null,
-          address: address ? { street: address, postalCode, city } : null,
+          address: address ? { street: address, postalCode, city } : undefined,
           postalCode: postalCode || null,
           city: city || null
         }
