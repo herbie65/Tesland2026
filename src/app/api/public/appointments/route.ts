@@ -76,18 +76,21 @@ export async function POST(request: NextRequest) {
       resolvedCustomerId = createdCustomer.id
     }
 
-    if (licensePlate && !resolvedVehicleId) {
-      const createdVehicle = await prisma.vehicle.create({
-        data: {
-          customerId: resolvedCustomerId,
-          licensePlate: normalizedPlate || null,
-          make: null,
-          model: null
-        }
-      })
-      resolvedVehicleId = createdVehicle.id
-    }
-
+   if (licensePlate && !resolvedVehicleId) {
+  const normalizedPlate = licensePlate.replace(/\s+/g, '').toUpperCase()
+  
+  if (normalizedPlate) {  // Only create if we have a valid plate
+    const createdVehicle = await prisma.vehicle.create({
+      data: {
+        customerId: resolvedCustomerId,
+        licensePlate: normalizedPlate,
+        make: null,
+        model: null
+      }
+    })
+    resolvedVehicleId = createdVehicle.id
+  }
+}
     const endAt = new Date(scheduledAt.getTime() + duration * 60 * 1000)
 
     const appointment = await prisma.planningItem.create({
