@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
           name,
           date,
           time,
-          duration,
+          duration: `${duration} minuten`,
           planningType: planningTypeName || 'Afspraak',
           licensePlate: licensePlate || '',
           notes: notes || ''
