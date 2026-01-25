@@ -14,6 +14,12 @@ RUN npm ci --legacy-peer-deps
 FROM node:20-alpine AS builder
 WORKDIR /app
 
+# Install OpenSSL for Prisma generate
+RUN apk add --no-cache \
+    libc6-compat \
+    openssl \
+    && apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/v3.16/main openssl1.1-compat-libs
+
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -27,6 +33,12 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 RUN apk add --no-cache openssl1.1-compat
+
+# Install dependencies including OpenSSL 1.1 compatibility
+RUN apk add --no-cache \
+    libc6-compat \
+    openssl \
+    && apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/v3.16/main openssl1.1-compat-libs
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
