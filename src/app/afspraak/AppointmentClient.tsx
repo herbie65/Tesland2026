@@ -403,7 +403,7 @@ export default function AppointmentClient({ locale = 'nl' }: { locale?: Supporte
 
   const loadPlanningTypes = async () => {
     try {
-      const response = await fetch('/api/planning-types')
+      const response = await fetch('/api/public/appointments/planning-types')
       const data = await response.json()
       if (!response.ok || !data.success) {
         throw new Error(data.error || copy.errorPlanningTypes)

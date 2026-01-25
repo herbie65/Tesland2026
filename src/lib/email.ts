@@ -53,26 +53,37 @@ const sendViaSmtp = async (payload: {
   fromName: string
   subject: string
   text: string
+  html?: string
 }) => {
-  const host = process.env.SMTP_HOST
-  const port = Number(process.env.SMTP_PORT || 587)
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  const secure = process.env.SMTP_SECURE === 'true'
-  if (!host || !user || !pass) {
-    throw new Error('Missing SMTP credentials')
+  const settings = await getEmailSettings()
+  
+  if (!settings) {
+    throw new Error('Email instellingen niet gevonden. Configureer deze via Instellingen.')
   }
+  
+  const host = settings.smtpHost
+  const port = Number(settings.smtpPort || 587)
+  const user = settings.smtpUser
+  const pass = settings.smtpPassword
+  const secure = settings.smtpSecure === 'true' || settings.smtpSecure === true
+  
+  if (!host || !user || !pass) {
+    throw new Error('SMTP credentials zijn niet compleet. Vul SMTP Host, Gebruiker en Wachtwoord in.')
+  }
+  
   const transporter = nodemailer.createTransport({
     host,
     port,
     secure,
     auth: { user, pass }
   })
+  
   await transporter.sendMail({
     from: `"${payload.fromName}" <${payload.fromEmail}>`,
     to: payload.to.join(','),
     subject: payload.subject,
-    text: payload.text
+    text: payload.text,
+    html: payload.html || payload.text.replace(/\n/g, '<br>')
   })
 }
 
@@ -82,17 +93,27 @@ const sendViaSendgrid = async (payload: {
   fromName: string
   subject: string
   text: string
+  html?: string
 }) => {
-  const apiKey = process.env.SENDGRID_API_KEY
-  if (!apiKey) {
-    throw new Error('Missing SENDGRID_API_KEY')
+  const settings = await getEmailSettings()
+  
+  if (!settings) {
+    throw new Error('Email instellingen niet gevonden. Configureer deze via Instellingen.')
   }
+  
+  const apiKey = settings.sendgridApiKey
+  
+  if (!apiKey) {
+    throw new Error('SendGrid API Key is niet ingevuld. Vul deze in bij de email instellingen.')
+  }
+  
   sgMail.setApiKey(apiKey)
   await sgMail.send({
     to: payload.to,
     from: { email: payload.fromEmail, name: payload.fromName },
     subject: payload.subject,
-    text: payload.text
+    text: payload.text,
+    html: payload.html || payload.text.replace(/\n/g, '<br>')
   })
 }
 
@@ -107,12 +128,10 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
 
   if (!template) {
     await logEmail({
+      to: toOriginal.join(', '),
       templateId,
-      mode,
-      toOriginal,
-      toActual: [],
       subject: '',
-      success: false,
+      status: 'failed',
       error: 'Template not found'
     })
     return { success: false, error: 'Template not found' }
@@ -120,12 +139,10 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
 
   if (template.isActive === false) {
     await logEmail({
+      to: toOriginal.join(', '),
       templateId,
-      mode,
-      toOriginal,
-      toActual: [],
       subject: template.subject || '',
-      success: false,
+      status: 'failed',
       error: 'Template disabled'
     })
     return { success: false, error: 'Template disabled' }
@@ -142,19 +159,33 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
 
   if (!toActual.length) {
     await logEmail({
+      to: toOriginal.join(', '),
       templateId,
-      mode,
-      toOriginal,
-      toActual: [],
       subject: template.subject || '',
-      success: false,
+      status: 'failed',
       error: 'No recipients'
     })
     return { success: false, error: 'No recipients' }
   }
 
   const subject = renderTemplate(template.subject || '', variables)
-  const text = renderTemplate(template.body || '', variables)
+  const bodyHtml = renderTemplate(template.body || '', variables)
+  
+  // Convert paragraph tags to line breaks for better email formatting
+  const cleanHtml = bodyHtml
+    .replace(/<\/p><p>/g, '</p><br><p>') // Add break between paragraphs
+    .replace(/<p><\/p>/g, '<br>') // Empty paragraphs become line breaks
+    .replace(/<p>/g, '') // Remove opening p tags
+    .replace(/<\/p>/g, '<br>') // Convert closing p tags to breaks
+  
+  // Generate HTML version with signature
+  let html = cleanHtml
+  if (settings.signature) {
+    html = `${html}<br><br>---<br>${settings.signature}`
+  }
+  
+  // Plain text version (strip HTML tags)
+  const text = bodyHtml.replace(/<[^>]*>/g, '').replace(/\n\n+/g, '\n\n')
 
   try {
     if (settings.provider === 'SENDGRID') {
@@ -163,7 +194,8 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
         fromEmail: settings.fromEmail,
         fromName: settings.fromName,
         subject,
-        text
+        text,
+        html
       })
     } else {
       await sendViaSmtp({
@@ -171,27 +203,26 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
         fromEmail: settings.fromEmail,
         fromName: settings.fromName,
         subject,
-        text
+        text,
+        html
       })
     }
 
     await logEmail({
+      to: toActual.join(', '),
+      from: `${settings.fromName} <${settings.fromEmail}>`,
       templateId,
-      mode,
-      toOriginal,
-      toActual,
       subject,
-      success: true
+      status: 'sent'
     })
     return { success: true }
   } catch (error: any) {
     await logEmail({
+      to: toActual.join(', '),
+      from: `${settings.fromName} <${settings.fromEmail}>`,
       templateId,
-      mode,
-      toOriginal,
-      toActual,
       subject,
-      success: false,
+      status: 'failed',
       error: error.message
     })
     return { success: false, error: error.message }

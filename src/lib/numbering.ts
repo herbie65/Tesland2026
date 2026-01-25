@@ -44,23 +44,46 @@ export const generateWorkOrderNumber = async (date = new Date()) => {
   const now = date
   const year = String(now.getFullYear()).slice(-2)
 
-  // Use Prisma transaction for atomic counter increment
-  const result = await prisma.$transaction(async (tx) => {
-    const counter = await tx.counter.findUnique({
-      where: { id: 'workorders' },
-    })
+  // Use Prisma transaction for atomic counter increment with retries
+  let attempts = 0
+  const maxAttempts = 5
+  
+  while (attempts < maxAttempts) {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const counter = await tx.counter.findUnique({
+          where: { id: 'workorders' },
+        })
 
-    const storedYear = String((counter?.format || '').match(/\d{2}/)?.[0] || '')
-    const currentSeq = counter?.currentValue || 0
-    const nextSeq = storedYear === year ? currentSeq + 1 : 1
+        const storedYear = String((counter?.format || '').match(/\d{2}/)?.[0] || '')
+        const currentSeq = counter?.currentValue || 0
+        const nextSeq = storedYear === year ? currentSeq + 1 : 1
 
-    await tx.counter.update({
-      where: { id: 'workorders' },
-      data: { currentValue: nextSeq },
-    })
+        await tx.counter.update({
+          where: { id: 'workorders' },
+          data: { 
+            currentValue: nextSeq,
+            format: `WO${year}-{seq}`
+          },
+        })
 
-    return nextSeq
-  })
+        return nextSeq
+      }, {
+        maxWait: 5000,
+        timeout: 10000,
+        isolationLevel: 'Serializable'
+      })
 
-  return `WO${year}-${pad(result, 5)}`
+      return `WO${year}-${pad(result, 5)}`
+    } catch (err: any) {
+      attempts++
+      if (attempts >= maxAttempts) {
+        throw new Error(`Failed to generate work order number after ${maxAttempts} attempts: ${err.message}`)
+      }
+      // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, 50 * Math.pow(2, attempts)))
+    }
+  }
+  
+  throw new Error('Failed to generate work order number')
 }

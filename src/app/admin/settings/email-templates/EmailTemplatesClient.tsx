@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { apiFetch } from "@/lib/api"
+import dynamic from 'next/dynamic'
+
+const RichTextEditor = dynamic(() => import('@/components/RichTextEditor'), { ssr: false })
 
 type Template = {
   id: string
@@ -38,6 +41,8 @@ const previewData: Record<string, Record<string, string>> = {
   appointment_confirmed: {
     klantNaam: "Sanne Jansen",
     kenteken: "T492HH",
+    merk: "Tesla",
+    model: "Model 3",
     datum: "12-02-2026",
     tijd: "09:30",
     werkplaatsNaam: "Tesland Werkplaats"
@@ -302,8 +307,16 @@ export default function EmailTemplatesClient() {
     if (!selected) return
     const vars = previewData[selected.id] || {}
     const previewSubject = renderTemplate(subject, vars)
-    const previewBody = renderTemplate(bodyText, vars)
-    setPreview(`${previewSubject}\n\n${previewBody}`)
+    const previewBodyHtml = renderTemplate(bodyText, vars)
+    
+    // Convert paragraph tags to line breaks (same as email sending)
+    const cleanHtml = previewBodyHtml
+      .replace(/<\/p><p>/g, '</p><br><p>') // Add break between paragraphs
+      .replace(/<p><\/p>/g, '<br>') // Empty paragraphs become line breaks
+      .replace(/<p>/g, '') // Remove opening p tags
+      .replace(/<\/p>/g, '<br>') // Convert closing p tags to breaks
+    
+    setPreview(`<div style="border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; background: white;"><strong>Onderwerp:</strong> ${previewSubject}<br><br>${cleanHtml}</div>`)
   }
 
   return (
@@ -381,10 +394,11 @@ export default function EmailTemplatesClient() {
                     </label>
                     <label className="mt-4 grid gap-2 text-sm font-medium text-slate-700">
                       Tekst
-                      <textarea
-                        className="min-h-[180px] rounded-lg border border-slate-200 px-3 py-2 text-base"
+                      <RichTextEditor
                         value={bodyText}
-                        onChange={(event) => setBodyText(event.target.value)}
+                        onChange={setBodyText}
+                        placeholder="Email inhoud..."
+                        className="min-h-[180px]"
                       />
                     </label>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -421,9 +435,10 @@ export default function EmailTemplatesClient() {
                   </div>
 
                   {preview ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 whitespace-pre-wrap">
-                      {preview}
-                    </div>
+                    <div 
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"
+                      dangerouslySetInnerHTML={{ __html: preview }}
+                    />
                   ) : null}
                 </>
               ) : (

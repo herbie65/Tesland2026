@@ -47,7 +47,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
         customer: true,
         vehicle: true,
         assignee: true,
-        partsLines: true,
+        partsLines: {
+          include: {
+            product: true,
+            location: true
+          }
+        },
+        laborLines: {
+          include: {
+            user: true
+          }
+        },
+        photos: {
+          include: {
+            uploader: true
+          },
+          orderBy: { createdAt: 'desc' }
+        }
       }
     })
     
@@ -132,6 +148,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.title !== undefined) updateData.title = body.title
     if (body.licensePlate !== undefined) updateData.licensePlate = body.licensePlate
     if (body.notes !== undefined) updateData.notes = body.notes
+    if (body.internalNotes !== undefined) updateData.internalNotes = body.internalNotes
+    if (body.customerNotes !== undefined) updateData.customerNotes = body.customerNotes
     if (body.scheduledAt !== undefined) updateData.scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null
     // NOTE: durationMinutes and assigneeColor belong to PlanningItem, not WorkOrder
     if (body.assigneeId !== undefined) updateData.assigneeId = body.assigneeId

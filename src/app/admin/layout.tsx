@@ -75,10 +75,54 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     null
   )
   const [portalReady, setPortalReady] = useState(false)
+  
+  // Sidebar resize state
+  const [sidebarWidth, setSidebarWidth] = useState<number>(256) // Default 64 * 4 = 256px (w-64)
+  const [isResizing, setIsResizing] = useState(false)
+  const [isHovering, setIsHovering] = useState(false)
 
   const unreadCount = notifications.filter(
     (item) => !Array.isArray(item.readBy) || !currentUserId || !item.readBy.includes(currentUserId)
   ).length
+
+  // Load sidebar width from localStorage
+  useEffect(() => {
+    const savedWidth = localStorage.getItem('admin-sidebar-width')
+    if (savedWidth) {
+      const width = parseInt(savedWidth, 10)
+      if (width >= 60 && width <= 400) {
+        setSidebarWidth(width)
+      }
+    }
+  }, [])
+
+  // Handle resize
+  useEffect(() => {
+    if (!isResizing) return
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = e.clientX - 16 // Subtract left margin
+      const clampedWidth = Math.max(60, Math.min(400, newWidth))
+      setSidebarWidth(clampedWidth)
+    }
+    
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      localStorage.setItem('admin-sidebar-width', sidebarWidth.toString())
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ew-resize'
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizing, sidebarWidth])
 
   useEffect(() => {
     const user = getCurrentUser()
@@ -349,7 +393,135 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </header>
 
       <div className="m-4 flex flex-col gap-4 lg:flex-row">
-        <aside className="glass-sidebar w-full rounded-2xl lg:w-64">
+        <div className="relative hidden lg:block">
+          <aside 
+            className="glass-sidebar rounded-2xl transition-all duration-300 ease-in-out"
+            style={{ 
+              width: isHovering && sidebarWidth < 150 ? '256px' : `${sidebarWidth}px`,
+              transitionProperty: isResizing ? 'none' : 'width'
+            }}
+            onMouseEnter={() => setIsHovering(true)}
+            onMouseLeave={() => setIsHovering(false)}
+          >
+            <div className="px-6 pt-6">
+              {profilePhoto ? (
+                <img
+                  src={profilePhoto}
+                  alt="Profielfoto"
+                  className="h-14 w-14 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-200 text-sm text-slate-600">
+                  TL
+                </div>
+              )}
+            </div>
+            <nav className="px-4 py-4">
+              <div className="space-y-1">
+                {NAV_ITEMS.map((item) => {
+                  if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
+                    return null
+                  }
+                  if (item.type === 'group') {
+                    const isActive = item.children.some((child) => child.href === pathname)
+                    const showText = sidebarWidth >= 150 || isHovering
+                    return (
+                      <div key={item.name} className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => setSalesOpen((prev) => !prev)}
+                          className={`flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
+                            isActive ? 'active' : ''
+                          } ${!showText ? 'justify-center' : ''}`}
+                          title={!showText ? item.name : undefined}
+                        >
+                          <div
+                            className={`${showText ? 'mr-3' : ''} flex h-8 w-8 items-center justify-center rounded-full ${
+                              isActive ? 'bg-purple-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <item.icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-gray-600'}`} />
+                          </div>
+                          {showText && (
+                            <>
+                              <span className="flex-1 text-left whitespace-nowrap overflow-hidden">{item.name}</span>
+                              <ChevronDownIcon
+                                className={`h-4 w-4 transition-transform ${salesOpen ? 'rotate-180' : ''}`}
+                              />
+                            </>
+                          )}
+                        </button>
+                        {salesOpen && showText ? (
+                          <div className="ml-6 space-y-1 border-l border-slate-200 pl-3">
+                            {item.children.map((child) => {
+                              const childActive = pathname === child.href
+                              return (
+                                <Link
+                                  key={child.href}
+                                  href={child.href}
+                                  className={`flex items-center px-4 py-2 text-sm font-medium glass-nav-item ${
+                                    childActive ? 'active' : ''
+                                  }`}
+                                >
+                                  <div
+                                    className={`mr-3 flex h-7 w-7 items-center justify-center rounded-full ${
+                                      childActive ? 'bg-purple-600' : 'bg-gray-200'
+                                    }`}
+                                  >
+                                    <child.icon
+                                      className={`h-4 w-4 ${childActive ? 'text-white' : 'text-gray-600'}`}
+                                    />
+                                  </div>
+                                  <span className="whitespace-nowrap overflow-hidden">{child.name}</span>
+                                </Link>
+                              )
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  }
+                  const isActive = pathname === item.href
+                  const showText = sidebarWidth >= 150 || isHovering
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`flex items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
+                        isActive ? 'active' : ''
+                      } ${!showText ? 'justify-center' : ''}`}
+                      title={!showText ? item.name : undefined}
+                    >
+                      <div
+                        className={`${showText ? 'mr-3' : ''} flex h-8 w-8 items-center justify-center rounded-full ${
+                          isActive ? 'bg-purple-600' : 'bg-gray-200'
+                        }`}
+                      >
+                        <item.icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-gray-600'}`} />
+                      </div>
+                      {showText && <span className="whitespace-nowrap overflow-hidden">{item.name}</span>}
+                    </Link>
+                  )
+                })}
+              </div>
+            </nav>
+          </aside>
+          
+          {/* Resize handle */}
+          <div
+            className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-400 hover:w-1.5 transition-all group"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              setIsResizing(true)
+            }}
+            style={{ zIndex: 90 }}
+          >
+            <div className="absolute inset-y-0 -right-2 w-4" />
+          </div>
+        </div>
+        
+        {/* Mobile sidebar - full width */}
+        <aside className="glass-sidebar w-full rounded-2xl lg:hidden">
           <div className="px-6 pt-6">
             {profilePhoto ? (
               <img

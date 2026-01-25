@@ -77,5 +77,15 @@ export const SETTINGS_DEFAULTS = {
   integrations: {
     webhookUrl: "",
     externalSystem: ""
+  },
+  absenceTypes: {
+    items: [
+      { code: "ZIEK", label: "Ziek", color: "#ef4444" },
+      { code: "VERLOF", label: "Verlof", color: "#f59e0b" },
+      { code: "BUITENGEWOON_VERLOF", label: "Buitengewoon verlof", color: "#8b5cf6" },
+      { code: "VERGADERING", label: "Vergadering", color: "#3b82f6" },
+      { code: "AFSPRAAK", label: "Afspraak", color: "#06b6d4" },
+      { code: "VAKANTIE", label: "Vakantie", color: "#22c55e" }
+    ]
   }
 }

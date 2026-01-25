@@ -1,133 +1,64 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --tesland-green: #8bc342;
-  --tesland-green-dark: #7db335;
+/* Tiptap Editor Styles */
+.ProseMirror {
+  min-height: 200px;
+  padding: 1rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.ProseMirror:focus {
+  outline: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.ProseMirror p {
+  margin: 0.5rem 0;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.ProseMirror h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 1rem 0 0.5rem;
 }
 
-.public-site .accent-text {
-  color: var(--tesland-green);
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 1rem 0 0.5rem;
 }
 
-.public-site .accent-bg {
-  background-color: var(--tesland-green);
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
 }
 
-.public-site .accent-bg:hover {
-  background-color: var(--tesland-green-dark);
+.ProseMirror li {
+  margin: 0.25rem 0;
 }
 
-.public-site .nav-link:hover {
-  color: var(--tesland-green);
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  margin: 0.5rem 0;
 }
 
-.footer-links a,
-.opening-status {
-  color: #8bc342;
-  text-decoration: none;
-  transition: all 0.3s ease;
+.ProseMirror a {
+  color: #2563eb;
+  text-decoration: underline;
 }
 
-.footer-links a:hover,
-.opening-status:hover {
-  color: #c8ff88;
-  transform: scale(1.07);
-  text-shadow: 0 0 6px #8bc342, 0 0 12px #8bc342, 0 0 20px #8bc342;
+.ProseMirror strong {
+  font-weight: bold;
 }
 
-.opening-status-container {
-  position: relative;
-  display: inline-block;
+.ProseMirror em {
+  font-style: italic;
 }
 
-.opening-tooltip {
-  visibility: hidden;
-  opacity: 0;
-  background-color: #222;
-  color: #c8ff88;
-  text-align: center;
-  border-radius: 10px;
-  padding: 12px 18px;
-  position: absolute;
-  bottom: 120%;
-  left: 60%;
-  transform: translateX(-50%);
-  z-index: 10;
-  transition: opacity 0.3s ease;
-  font-size: 14px;
-  line-height: 1.4;
-  white-space: nowrap;
-  box-shadow: 0 0 14px rgba(139, 195, 66, 0.7);
-  max-width: 300px;
+.ProseMirror u {
+  text-decoration: underline;
 }
 
-.opening-status-container:hover .opening-tooltip {
-  visibility: visible;
-  opacity: 1;
-}
-
-.footer-review-logo {
-  height: 60px;
-  width: auto;
-  display: block;
-}
-
-.footer-social {
-  display: inline-flex;
-  height: 36px;
-  width: 36px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  color: #ffffff;
-  transition: transform 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
-}
-
-.footer-social svg {
-  height: 18px;
-  width: 18px;
-  fill: currentColor;
-}
-
-.footer-social:hover {
-  color: #c8ff88;
-  transform: scale(1.08);
-  box-shadow: 0 0 8px #8bc342, 0 0 16px #8bc342;
-}
-/* Planning drag & drop styles */
-.planning-day-block {
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  transition: opacity 0.2s ease;
-}
-
-.planning-day-block:active {
-  cursor: grabbing;
-}
-
-.planning-day-block--dragging {
-  opacity: 0.3 !important;
+.ProseMirror s {
+  text-decoration: line-through;
 }

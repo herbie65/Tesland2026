@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
         planningType: true,
         workOrder: {
           select: {
+            workOrderNumber: true,
             workOrderStatus: true,
             partsSummaryStatus: true,
             partsRequired: true,
@@ -55,20 +56,37 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Merge work order data into planning items for frontend compatibility
-    const merged = items.map((item) => ({
-      ...item,
-      workOrderStatus: item.workOrder?.workOrderStatus || null,
-      partsSummaryStatus: item.workOrder?.partsSummaryStatus || null,
-      partsRequired: item.workOrder?.partsRequired ?? null,
-      pricingMode: item.workOrder?.pricingMode || null,
-      priceAmount: item.workOrder?.priceAmount ?? null,
-      customerApproved: item.workOrder?.customerApproved ?? null,
-      approvalDate: item.workOrder?.approvalDate || null,
-      warehouseStatus: item.workOrder?.warehouseStatus || null,
-      warehouseEtaDate: item.workOrder?.warehouseEtaDate || null,
-      warehouseLocation: item.workOrder?.warehouseLocation || null
-    }))
+    // Merge work order data and resolve relation fields for frontend compatibility
+    const merged = items.map((item) => {
+      // Resolve customer name from relation if not stored directly
+      const resolvedCustomerName = item.customerName || item.customer?.name || null
+      
+      // Resolve vehicle info from relation if not stored directly
+      const resolvedVehiclePlate = item.vehiclePlate || item.vehicle?.licensePlate || null
+      const resolvedVehicleLabel = item.vehicleLabel || (item.vehicle 
+        ? `${item.vehicle.make || ''} ${item.vehicle.model || ''}${item.vehicle.licensePlate ? ` (${item.vehicle.licensePlate})` : ''}`.trim()
+        : null)
+      
+      return {
+        ...item,
+        // Resolved relation fields
+        customerName: resolvedCustomerName,
+        vehiclePlate: resolvedVehiclePlate,
+        vehicleLabel: resolvedVehicleLabel,
+        // Work order fields
+        workOrderNumber: item.workOrder?.workOrderNumber || null,
+        workOrderStatus: item.workOrder?.workOrderStatus || null,
+        partsSummaryStatus: item.workOrder?.partsSummaryStatus || null,
+        partsRequired: item.workOrder?.partsRequired ?? null,
+        pricingMode: item.workOrder?.pricingMode || null,
+        priceAmount: item.workOrder?.priceAmount ?? null,
+        customerApproved: item.workOrder?.customerApproved ?? null,
+        approvalDate: item.workOrder?.approvalDate || null,
+        warehouseStatus: item.workOrder?.warehouseStatus || null,
+        warehouseEtaDate: item.workOrder?.warehouseEtaDate || null,
+        warehouseLocation: item.workOrder?.warehouseLocation || null
+      }
+    })
 
     return NextResponse.json({ success: true, items: merged })
   } catch (error: any) {
@@ -183,6 +201,7 @@ export async function POST(request: NextRequest) {
           customerName: customerName || null,
           vehicleId: vehicleId || null,
           vehiclePlate: vehiclePlate || null,
+          vehicleLabel: vehicleLabel || null,
           licensePlate: vehiclePlate || null,
           notes: notes || null,
           scheduledAt: scheduledAt ? new Date(scheduledAt) : null,

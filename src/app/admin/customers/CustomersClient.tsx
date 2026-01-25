@@ -1,7 +1,26 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { apiFetch } from '@/lib/api'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type Customer = {
   id: string
@@ -25,6 +44,7 @@ type Customer = {
   externalId?: string | null
   createdAt?: string | null
   updatedAt?: string | null
+  vehicles?: Vehicle[] // Include related vehicles
 }
 
 type Vehicle = {
@@ -33,6 +53,117 @@ type Vehicle = {
   licensePlate?: string | null
   brand?: string | null
   model?: string | null
+  make?: string | null
+  year?: number | null
+  color?: string | null
+  vin?: string | null
+  mileage?: number | null
+  apkDueDate?: string | null
+}
+
+// Column options constant - defined outside component
+const COLUMN_OPTIONS = [
+  { key: 'externalId', label: 'Automaat ID', defaultWidth: 120 },
+  { key: 'name', label: 'Naam', defaultWidth: 200 },
+  { key: 'company', label: 'Bedrijf', defaultWidth: 180 },
+  { key: 'email', label: 'Email', defaultWidth: 200 },
+  { key: 'phone', label: 'Telefoon', defaultWidth: 130 },
+  { key: 'mobile', label: 'Mobiel', defaultWidth: 130 },
+  { key: 'address', label: 'Adres', defaultWidth: 250 },
+  { key: 'city', label: 'Plaats', defaultWidth: 150 },
+  { key: 'zipCode', label: 'Postcode', defaultWidth: 100 },
+  { key: 'customerNumber', label: 'Klantnummer', defaultWidth: 120 },
+  { key: 'contact', label: 'Contactpersoon', defaultWidth: 180 },
+  { key: 'vehicles', label: "Auto's", defaultWidth: 150 },
+  { key: 'createdAt', label: 'Aangemaakt', defaultWidth: 150 }
+]
+
+// Sortable column header component
+function SortableColumnHeader({
+  columnKey,
+  label,
+  width,
+  sortKey,
+  sortDir,
+  onSort,
+  onResizeStart,
+  resizingColumn
+}: {
+  columnKey: string
+  label: string
+  width: number
+  sortKey: string
+  sortDir: 'asc' | 'desc'
+  onSort: (key: string) => void
+  onResizeStart: (columnKey: string, e: React.MouseEvent) => void
+  resizingColumn: string | null
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: columnKey })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    width: `${width}px`,
+    minWidth: '80px',
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <th
+      ref={setNodeRef}
+      style={style}
+      className={`relative px-4 py-2 text-left select-none bg-slate-50 ${
+        isDragging ? 'z-50 shadow-lg' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing flex-shrink-0"
+        >
+          <svg 
+            className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+          </svg>
+        </div>
+        
+        {/* Sort button */}
+        <button 
+          type="button" 
+          onClick={() => onSort(columnKey)}
+          className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+        >
+          {label}
+          {sortKey === columnKey && (
+            <span className="text-purple-600 text-lg">
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </span>
+          )}
+        </button>
+      </div>
+      
+      {/* Resize handle */}
+      <div
+        className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-purple-400 hover:w-2 transition-all ${
+          resizingColumn === columnKey ? 'bg-purple-600 w-2' : ''
+        }`}
+        onMouseDown={(e) => onResizeStart(columnKey, e)}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </th>
+  )
 }
 
 export default function CustomersClient() {
@@ -64,7 +195,10 @@ export default function CustomersClient() {
   const [columnFiltersDebounced, setColumnFiltersDebounced] = useState<Record<string, string>>({})
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(50)
+  const [showVehiclesModal, setShowVehiclesModal] = useState(false)
+  const [selectedCustomerForVehicles, setSelectedCustomerForVehicles] = useState<Customer | null>(null)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    'externalId',
     'name',
     'company',
     'email',
@@ -72,6 +206,29 @@ export default function CustomersClient() {
     'address',
     'vehicles'
   ])
+  
+  // Advanced table features
+  const [columnOrder, setColumnOrder] = useState<string[]>(
+    COLUMN_OPTIONS.map(col => col.key)
+  )
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null)
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
+  const [showColumnSelector, setShowColumnSelector] = useState(false)
+  const resizeStartX = useRef<number>(0)
+  const resizeStartWidth = useRef<number>(0)
+  
+  // DnD Kit sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 3,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const formatAddress = (address: any): string => {
     if (!address) return '-'
@@ -88,55 +245,209 @@ export default function CustomersClient() {
     return '-'
   }
 
-  const columnOptions = [
-    { key: 'name', label: 'Naam' },
-    { key: 'company', label: 'Bedrijf' },
-    { key: 'email', label: 'Email' },
-    { key: 'phone', label: 'Telefoon' },
-    { key: 'address', label: 'Adres' },
-    { key: 'vehicles', label: "Auto's" },
-    { key: 'createdAt', label: 'Aangemaakt' }
-  ]
-
+  // Load preferences from database
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-customers-columns')
-    if (stored) {
+    const loadPreferences = async () => {
       try {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.length) {
-          setVisibleColumns(parsed)
+        const [visibleRes, orderRes, widthsRes] = await Promise.all([
+          fetch('/api/user-preferences?key=customers-columns'),
+          fetch('/api/user-preferences?key=customers-column-order'),
+          fetch('/api/user-preferences?key=customers-column-widths')
+        ])
+        
+        const [visibleData, orderData, widthsData] = await Promise.all([
+          visibleRes.json(),
+          orderRes.json(),
+          widthsRes.json()
+        ])
+        
+        if (visibleData.success && visibleData.value) {
+          setVisibleColumns(visibleData.value)
         }
-      } catch {
-        // ignore
+        
+        if (orderData.success && orderData.value) {
+          const allColumnKeys = COLUMN_OPTIONS.map(col => col.key)
+          const existingColumns = orderData.value.filter((key: string) => allColumnKeys.includes(key))
+          const newColumns = allColumnKeys.filter((key: string) => !orderData.value.includes(key))
+          setColumnOrder([...existingColumns, ...newColumns])
+        }
+        
+        if (widthsData.success && widthsData.value) {
+          setColumnWidths(widthsData.value)
+        }
+      } catch (error) {
+        console.error('Error loading preferences:', error)
       }
     }
+    
+    loadPreferences()
   }, [])
 
+  // Save visible columns to database
   useEffect(() => {
-    window.localStorage.setItem('tladmin-customers-columns', JSON.stringify(visibleColumns))
+    if (visibleColumns.length > 0) {
+      fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'customers-columns', value: visibleColumns })
+      }).catch(err => console.error('Error saving visible columns:', err))
+    }
   }, [visibleColumns])
+  
+  // Save column order to database
+  useEffect(() => {
+    if (columnOrder.length > 0 && columnOrder.length === COLUMN_OPTIONS.length) {
+      fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'customers-column-order', value: columnOrder })
+      }).catch(err => console.error('Error saving column order:', err))
+    }
+  }, [columnOrder])
+  
+  // Save column widths to database
+  useEffect(() => {
+    if (Object.keys(columnWidths).length > 0) {
+      fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'customers-column-widths', value: columnWidths })
+      }).catch(err => console.error('Error saving column widths:', err))
+    }
+  }, [columnWidths])
+
+  // Advanced table handlers
+  const handleResizeStart = (columnKey: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+    setResizingColumn(columnKey)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = columnWidths[columnKey] || col?.defaultWidth || 150
+  }
+  
+  useEffect(() => {
+    if (!resizingColumn) return
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - resizeStartX.current
+      const newWidth = Math.max(80, resizeStartWidth.current + diff)
+      setColumnWidths(prev => ({
+        ...prev,
+        [resizingColumn]: newWidth
+      }))
+    }
+    
+    const handleMouseUp = () => {
+      setResizingColumn(null)
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [resizingColumn])
+  
+  // DnD Kit handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveColumnId(event.active.id as string)
+  }
+  
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    
+    if (over && active.id !== over.id) {
+      setColumnOrder((items) => {
+        const oldIndex = items.indexOf(active.id as string)
+        const newIndex = items.indexOf(over.id as string)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+    
+    setActiveColumnId(null)
+  }
+  
+  const getColumnWidth = (columnKey: string) => {
+    if (columnWidths[columnKey]) return columnWidths[columnKey]
+    const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+    return col?.defaultWidth || 150
+  }
+  
+  const orderedVisibleColumns = useMemo(() => {
+    return columnOrder.filter(key => visibleColumns.includes(key))
+  }, [columnOrder, visibleColumns])
+  
+  const renderCellContent = (item: Customer, columnKey: string) => {
+    switch (columnKey) {
+      case 'externalId':
+        return item.externalId || '-'
+      case 'name':
+        return item.name || '-'
+      case 'company':
+        return item.company || '-'
+      case 'email':
+        return item.email || '-'
+      case 'phone':
+        return item.phone || '-'
+      case 'mobile':
+        return item.mobile || '-'
+      case 'address':
+        return formatAddress(item.address)
+      case 'city':
+        return item.city || '-'
+      case 'zipCode':
+        return item.zipCode || '-'
+      case 'customerNumber':
+        return item.customerNumber || '-'
+      case 'contact':
+        return item.contact || '-'
+      case 'vehicles':
+        const customerVehicles = item.vehicles || []
+        const vehicleCount = customerVehicles.length
+        if (vehicleCount === 0) return '-'
+        
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation() // Prevent row double-click
+              setSelectedCustomerForVehicles(item)
+              setShowVehiclesModal(true)
+            }}
+            className="text-purple-600 hover:text-purple-800 hover:underline font-medium flex items-center gap-1"
+          >
+            🚗 {vehicleCount} {vehicleCount === 1 ? 'voertuig' : 'voertuigen'}
+          </button>
+        )
+      case 'createdAt':
+        return item.createdAt ? new Date(item.createdAt).toLocaleString('nl-NL') : '-'
+      default:
+        return '-'
+    }
+  }
 
   const loadItems = async () => {
     try {
       setLoading(true)
       setError(null)
-      const [customersResponse, vehiclesResponse] = await Promise.all([
-        fetch('/api/customers'),
-        fetch('/api/vehicles')
-      ])
+      const customersResponse = await fetch('/api/customers')
       const data = await customersResponse.json()
-      const vehiclesData = await vehiclesResponse.json()
       if (!customersResponse.ok || !data.success) {
         throw new Error(data.error || 'Failed to load customers')
-      }
-      if (!vehiclesResponse.ok || !vehiclesData.success) {
-        throw new Error(vehiclesData.error || 'Failed to load vehicles')
       }
       const sorted = [...(data.items || [])].sort((a, b) =>
         String(a.name || '').localeCompare(String(b.name || ''))
       )
       setItems(sorted)
-      setVehicles(vehiclesData.items || [])
+      
+      // Extract all vehicles from customers for the vehicles state
+      const allVehicles = sorted.flatMap(customer => customer.vehicles || [])
+      setVehicles(allVehicles)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -313,7 +624,7 @@ export default function CustomersClient() {
     const term = searchTerm.trim().toLowerCase()
     if (term) {
       result = result.filter((item) => {
-        const fields = [item.name, item.company, item.email, item.phone, formatAddress(item.address)]
+        const fields = [item.externalId, item.name, item.company, item.email, item.phone, formatAddress(item.address)]
         return fields.some((value) => String(value || '').toLowerCase().includes(term))
       })
     }
@@ -361,6 +672,8 @@ export default function CustomersClient() {
       const dir = sortDir === 'asc' ? 1 : -1
       const getValue = (item: Customer) => {
         switch (sortKey) {
+          case 'externalId':
+            return item.externalId || ''
           case 'name':
             return item.name || ''
           case 'company':
@@ -441,8 +754,65 @@ export default function CustomersClient() {
           </div>
         ) : null}
 
+        <div className="mt-3 relative">
+          <button
+            onClick={() => setShowColumnSelector(!showColumnSelector)}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 transition-all"
+          >
+            📊 Kolommen ({visibleColumns.length}/{COLUMN_OPTIONS.length})
+          </button>
+          
+          {showColumnSelector && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowColumnSelector(false)}
+              />
+              <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                <h3 className="text-sm font-semibold mb-3 text-slate-900">Kolommen selecteren</h3>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {COLUMN_OPTIONS.map((col) => (
+                    <label
+                      key={col.key}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.includes(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between">
+                  <button
+                    onClick={() => {
+                      COLUMN_OPTIONS.forEach(col => {
+                        if (!visibleColumns.includes(col.key)) {
+                          toggleColumn(col.key)
+                        }
+                      })
+                    }}
+                    className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                  >
+                    Alles selecteren
+                  </button>
+                  <button
+                    onClick={() => setShowColumnSelector(false)}
+                    className="text-sm text-slate-600 hover:text-slate-700"
+                  >
+                    Sluiten
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-          {columnOptions.map((col) => (
+          {COLUMN_OPTIONS.map((col) => (
             <label key={col.key} className="flex items-center gap-1">
               <input
                 type="checkbox"
@@ -491,194 +861,57 @@ export default function CustomersClient() {
             </div>
 
             <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  {visibleColumns.includes('name') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('name')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Naam
-                        {sortKey === 'name' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('company') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('company')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Bedrijf
-                        {sortKey === 'company' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('email') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('email')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Email
-                        {sortKey === 'email' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('phone') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('phone')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Telefoon
-                        {sortKey === 'phone' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('address') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('address')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Adres
-                        {sortKey === 'address' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('vehicles') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('vehicles')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Auto's
-                        {sortKey === 'vehicles' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('createdAt') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('createdAt')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Aangemaakt
-                        {sortKey === 'createdAt' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  <th className="px-4 py-2 text-left font-semibold text-slate-700">Acties</th>
-                </tr>
-                <tr>
-                  {visibleColumns.includes('name') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.name || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, name: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('company') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.company || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, company: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('email') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.email || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, email: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('phone') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.phone || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, phone: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('address') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.address || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, address: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('vehicles') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Filter..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.vehicles || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, vehicles: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('createdAt') ? <th className="px-4 py-2"></th> : null}
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <SortableContext 
+                    items={orderedVisibleColumns}
+                    strategy={horizontalListSortingStrategy}
+                  >
+                    <tr>
+                      {orderedVisibleColumns.map((columnKey) => {
+                        const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+                        if (!col) return null
+                        
+                        return (
+                          <SortableColumnHeader
+                            key={columnKey}
+                            columnKey={columnKey}
+                            label={col.label}
+                            width={getColumnWidth(columnKey)}
+                            sortKey={sortKey}
+                            sortDir={sortDir}
+                            onSort={updateSort}
+                            onResizeStart={handleResizeStart}
+                            resizingColumn={resizingColumn}
+                          />
+                        )
+                      })}
+                      <th className="px-4 py-2 text-right font-semibold text-slate-700 bg-slate-50">Acties</th>
+                    </tr>
+                  </SortableContext>
+                  
+                  {/* Filter row */}
+                  <tr className="bg-white/50">
+                    {orderedVisibleColumns.map((columnKey) => (
+                      <th key={columnKey} className="px-4 py-2">
+                        <input
+                          type="text"
+                          placeholder={`Zoek ${COLUMN_OPTIONS.find(c => c.key === columnKey)?.label.toLowerCase()}...`}
+                          className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                          value={columnFilters[columnKey] || ''}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, [columnKey]: e.target.value }))}
+                        />
+                      </th>
+                    ))}
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {paginatedItems.map((item) => (
                   <tr 
@@ -689,31 +922,15 @@ export default function CustomersClient() {
                       setShowDetailView(true)
                     }}
                   >
-                    {visibleColumns.includes('name') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.name}</td>
-                    ) : null}
-                    {visibleColumns.includes('company') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.company || '-'}</td>
-                    ) : null}
-                    {visibleColumns.includes('email') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.email || '-'}</td>
-                    ) : null}
-                    {visibleColumns.includes('phone') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.phone || '-'}</td>
-                    ) : null}
-                    {visibleColumns.includes('address') ? (
-                      <td className="px-4 py-2 text-slate-700">{formatAddress(item.address)}</td>
-                    ) : null}
-                    {visibleColumns.includes('vehicles') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        {vehiclesByCustomer[item.id]?.length || 0}
+                    {orderedVisibleColumns.map((columnKey) => (
+                      <td
+                        key={columnKey}
+                        className="px-4 py-2 text-slate-700"
+                        style={{ width: `${getColumnWidth(columnKey)}px` }}
+                      >
+                        {renderCellContent(item, columnKey)}
                       </td>
-                    ) : null}
-                    {visibleColumns.includes('createdAt') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
-                      </td>
-                    ) : null}
+                    ))}
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1.5">
                         <button
@@ -738,6 +955,34 @@ export default function CustomersClient() {
                 ))}
               </tbody>
             </table>
+            
+            {/* DragOverlay for smooth ghost effect */}
+            <DragOverlay dropAnimation={null} adjustScale={false}>
+              {activeColumnId ? (
+                <div 
+                  className="bg-white shadow-2xl rounded-lg px-4 py-2 border-2 border-purple-400 opacity-90 pointer-events-none"
+                  style={{ 
+                    width: `${getColumnWidth(activeColumnId)}px`,
+                    minWidth: '80px',
+                    cursor: 'grabbing'
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg 
+                      className="h-4 w-4 text-slate-400 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+                    </svg>
+                    <span className="font-semibold text-slate-700 whitespace-nowrap">
+                      {COLUMN_OPTIONS.find(c => c.key === activeColumnId)?.label}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
             <div className="mt-4 flex items-center justify-between">
               <button
@@ -1122,6 +1367,98 @@ export default function CustomersClient() {
                 className="rounded-lg border border-slate-300/50 bg-white/60 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
                 type="button"
                 onClick={() => setShowDetailView(false)}
+              >
+                Sluiten
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Vehicles Modal */}
+      {showVehiclesModal && selectedCustomerForVehicles ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowVehiclesModal(false)}>
+          <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-2xl border border-white/20 bg-gradient-to-br from-white/95 to-slate-50/95 p-6 shadow-2xl backdrop-blur-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-slate-800">
+                🚗 Voertuigen van {selectedCustomerForVehicles.name}
+              </h3>
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md active:scale-95"
+                type="button"
+                onClick={() => setShowVehiclesModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {selectedCustomerForVehicles.vehicles && selectedCustomerForVehicles.vehicles.length > 0 ? (
+              <div className="space-y-3">
+                {selectedCustomerForVehicles.vehicles.map((vehicle) => (
+                  <div
+                    key={vehicle.id}
+                    className="rounded-xl border border-slate-200/50 bg-white/70 p-4 backdrop-blur-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <dt className="font-medium text-slate-600">Kenteken:</dt>
+                        <dd className="text-slate-900 font-semibold text-lg">
+                          {vehicle.licensePlate || '-'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium text-slate-600">Merk & Model:</dt>
+                        <dd className="text-slate-900 font-semibold">
+                          {[vehicle.brand, vehicle.model].filter(Boolean).join(' ') || '-'}
+                        </dd>
+                      </div>
+                      {vehicle.year && (
+                        <div>
+                          <dt className="font-medium text-slate-600">Bouwjaar:</dt>
+                          <dd className="text-slate-900">{vehicle.year}</dd>
+                        </div>
+                      )}
+                      {vehicle.color && (
+                        <div>
+                          <dt className="font-medium text-slate-600">Kleur:</dt>
+                          <dd className="text-slate-900">{vehicle.color}</dd>
+                        </div>
+                      )}
+                      {vehicle.vin && (
+                        <div className="col-span-2">
+                          <dt className="font-medium text-slate-600">VIN:</dt>
+                          <dd className="text-slate-900 font-mono text-xs">{vehicle.vin}</dd>
+                        </div>
+                      )}
+                      {vehicle.mileage && (
+                        <div>
+                          <dt className="font-medium text-slate-600">Kilometerstand:</dt>
+                          <dd className="text-slate-900">{vehicle.mileage.toLocaleString()} km</dd>
+                        </div>
+                      )}
+                      {vehicle.apkDueDate && (
+                        <div>
+                          <dt className="font-medium text-slate-600">APK vervaldatum:</dt>
+                          <dd className="text-slate-900">
+                            {new Date(vehicle.apkDueDate).toLocaleDateString('nl-NL')}
+                          </dd>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-slate-500">
+                <p>Geen voertuigen gevonden voor deze klant.</p>
+              </div>
+            )}
+            
+            <div className="mt-6 flex justify-end">
+              <button
+                className="rounded-lg border border-slate-300/50 bg-white/60 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
+                type="button"
+                onClick={() => setShowVehiclesModal(false)}
               >
                 Sluiten
               </button>

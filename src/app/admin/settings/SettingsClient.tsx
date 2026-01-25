@@ -28,6 +28,7 @@ export default function SettingsClient() {
   const [showProfilePicker, setShowProfilePicker] = useState(false)
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false)
   const [emailSaving, setEmailSaving] = useState(false)
+  const [emailTesting, setEmailTesting] = useState(false)
   const [rdwSaving, setRdwSaving] = useState(false)
 
   const loadSettings = async () => {
@@ -190,6 +191,27 @@ export default function SettingsClient() {
       setError(err.message)
     } finally {
       setEmailSaving(false)
+    }
+  }
+
+  const testEmailSettings = async () => {
+    try {
+      setError(null)
+      setSuccess(null)
+      setEmailTesting(true)
+      const response = await apiFetch("/api/settings/email/test", {
+        method: "POST"
+      })
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Test email versturen mislukt")
+      }
+      setSuccess(`Test email verzonden naar ${data.recipient}. Check je inbox!`)
+      setTimeout(() => setSuccess(null), 5000)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setEmailTesting(false)
     }
   }
 
@@ -417,14 +439,111 @@ export default function SettingsClient() {
               }
             />
           </label>
-          <div className="sm:col-span-2">
+
+          {/* SMTP Credentials Section */}
+          {settings.email?.provider === "SMTP" ? (
+            <>
+              <div className="sm:col-span-2 mt-2 pt-3 border-t border-slate-200">
+                <p className="text-xs font-semibold text-slate-700 mb-2">SMTP Server Instellingen</p>
+              </div>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                SMTP Host
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.smtpHost || ""}
+                  onChange={(event) => updateGroup("email", "smtpHost", event.target.value)}
+                  placeholder="smtp.gmail.com"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                SMTP Port
+                <input
+                  type="number"
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.smtpPort || "587"}
+                  onChange={(event) => updateGroup("email", "smtpPort", event.target.value)}
+                  placeholder="587"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                SMTP Gebruiker
+                <input
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.smtpUser || ""}
+                  onChange={(event) => updateGroup("email", "smtpUser", event.target.value)}
+                  placeholder="jouw@email.nl"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                SMTP Wachtwoord
+                <input
+                  type="password"
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.smtpPassword || ""}
+                  onChange={(event) => updateGroup("email", "smtpPassword", event.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+                SMTP Secure (SSL/TLS)
+                <select
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.smtpSecure || "false"}
+                  onChange={(event) => updateGroup("email", "smtpSecure", event.target.value)}
+                >
+                  <option value="false">Nee (port 587)</option>
+                  <option value="true">Ja (port 465)</option>
+                </select>
+              </label>
+            </>
+          ) : settings.email?.provider === "SENDGRID" ? (
+            <>
+              <div className="sm:col-span-2 mt-2 pt-3 border-t border-slate-200">
+                <p className="text-xs font-semibold text-slate-700 mb-2">SendGrid Instellingen</p>
+              </div>
+              <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
+                SendGrid API Key
+                <input
+                  type="password"
+                  className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                  value={settings.email?.sendgridApiKey || ""}
+                  onChange={(event) => updateGroup("email", "sendgridApiKey", event.target.value)}
+                  placeholder="SG.••••••••"
+                />
+              </label>
+            </>
+          ) : null}
+
+          <label className="sm:col-span-2 grid gap-2 text-sm font-medium text-slate-700">
+            Handtekening (wordt automatisch aan elke email toegevoegd)
+            <textarea
+              className="min-h-[120px] rounded-lg border border-slate-200 px-3 py-2 text-base font-normal"
+              value={settings.email?.signature || ""}
+              onChange={(event) => updateGroup("email", "signature", event.target.value)}
+              placeholder="Met vriendelijke groet,&#10;&#10;Tesland Klantenservice&#10;info@tesland.com&#10;+31 (0)12 345 6789"
+            />
+            <p className="text-xs text-slate-500">
+              Tip: Gebruik HTML voor opmaak zoals &lt;b&gt;vet&lt;/b&gt;, &lt;i&gt;cursief&lt;/i&gt;, of &lt;img src="..."&gt; voor een logo
+            </p>
+          </label>
+
+          <div className="sm:col-span-2 flex flex-wrap gap-2">
             <button
               className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
               type="button"
               onClick={saveEmailSettings}
-              disabled={emailSaving}
+              disabled={emailSaving || emailTesting}
             >
               {emailSaving ? "Opslaan..." : "E-mail instellingen opslaan"}
+            </button>
+            <button
+              className="rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
+              type="button"
+              onClick={testEmailSettings}
+              disabled={emailSaving || emailTesting || settings.email?.mode === 'OFF'}
+              title={settings.email?.mode === 'OFF' ? 'Zet email mode op TEST of LIVE' : 'Verstuur een test email'}
+            >
+              {emailTesting ? "Versturen..." : "📧 Test email versturen"}
             </button>
           </div>
         </div>
@@ -549,6 +668,103 @@ export default function SettingsClient() {
       ) : null}
 
       <PlanningTypes />
+
+      {/* Afwezigheidstypes sectie */}
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Afwezigheidstypes</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Types voor overige medewerkers (ziek, verlof, vakantie, etc.)
+            </p>
+          </div>
+          <button
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
+            type="button"
+            onClick={() => saveGroup("absenceTypes")}
+          >
+            Opslaan
+          </button>
+        </div>
+        <div className="mt-4">
+          <div className="grid gap-3">
+            {(settings.absenceTypes?.items || []).map((item: any, index: number) => (
+              <div
+                key={`absence-${index}`}
+                className="grid gap-3 sm:grid-cols-[1fr_1fr_120px_auto] items-end rounded-lg border border-slate-200/50 bg-white/50 p-3"
+              >
+                <label className="grid gap-1 text-xs font-medium text-slate-700">
+                  Code
+                  <input
+                    className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                    value={item.code || ""}
+                    onChange={(event) => {
+                      const items = [...(settings.absenceTypes?.items || [])]
+                      items[index] = { ...items[index], code: event.target.value }
+                      updateGroup("absenceTypes", "items", items)
+                    }}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-700">
+                  Label
+                  <input
+                    className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                    value={item.label || ""}
+                    onChange={(event) => {
+                      const items = [...(settings.absenceTypes?.items || [])]
+                      items[index] = { ...items[index], label: event.target.value }
+                      updateGroup("absenceTypes", "items", items)
+                    }}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-700">
+                  Kleur
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      className="h-8 w-12 rounded border border-slate-200 cursor-pointer"
+                      value={item.color || "#94a3b8"}
+                      onChange={(event) => {
+                        const items = [...(settings.absenceTypes?.items || [])]
+                        items[index] = { ...items[index], color: event.target.value }
+                        updateGroup("absenceTypes", "items", items)
+                      }}
+                    />
+                    <span 
+                      className="flex-1 rounded px-2 py-1 text-xs text-white font-medium"
+                      style={{ backgroundColor: item.color || "#94a3b8" }}
+                    >
+                      {item.label || "Voorbeeld"}
+                    </span>
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                  onClick={() => {
+                    const items = (settings.absenceTypes?.items || []).filter(
+                      (_: any, idx: number) => idx !== index
+                    )
+                    updateGroup("absenceTypes", "items", items)
+                  }}
+                >
+                  Verwijder
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="mt-3 rounded-lg bg-slate-100 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200 transition-colors"
+            onClick={() => {
+              const items = [...(settings.absenceTypes?.items || []), { code: "", label: "", color: "#94a3b8" }]
+              updateGroup("absenceTypes", "items", items)
+            }}
+          >
+            + Nieuw afwezigheidstype
+          </button>
+        </div>
+      </section>
 
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">

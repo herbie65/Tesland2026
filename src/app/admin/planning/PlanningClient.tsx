@@ -28,6 +28,7 @@ type PlanningItem = {
   status: string
   workOrderStatus?: string | null
   workOrderId?: string | null
+  workOrderNumber?: string | null
   isRequest?: boolean
   partsSummaryStatus?: string | null
   partsRequired?: boolean | null
@@ -81,6 +82,20 @@ type User = {
   planningHoursPerDay?: number | null
   workingDays?: string[]
   roleId?: string | null
+  icalUrl?: string | null
+}
+
+type ICalEvent = {
+  uid: string
+  summary: string
+  description?: string
+  location?: string
+  start: string
+  end: string
+  allDay: boolean
+  userId: string
+  userName?: string
+  userColor?: string
 }
 
 type PlanningSettings = {
@@ -143,6 +158,8 @@ export default function PlanningClient() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [otherUsers, setOtherUsers] = useState<User[]>([]) // Non-plannable users (vrij, ziek, etc.)
+  const [icalEvents, setIcalEvents] = useState<ICalEvent[]>([])
   const [planningTypes, setPlanningTypes] = useState<PlanningType[]>([])
   const [roles, setRoles] = useState<
     Array<{ id: string; name?: string; includeInPlanning?: boolean }>
@@ -644,21 +661,33 @@ export default function PlanningClient() {
   const renderBrandLogo = (label?: string | null) => {
     const brand = label ? String(label).split(' ')[0] || '' : ''
     const logoUrl = getBrandLogoUrl(label)
+    const brandInitial = brand ? brand.charAt(0).toUpperCase() : '🚗'
+    
     return (
       <span
-        className="relative flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 text-[0.6rem] font-semibold text-slate-700"
-        style={{ background: 'rgba(255,255,255,0.7)' }}
+        className="relative flex h-6 w-6 items-center justify-center rounded-full border-2 border-slate-400 text-[0.7rem] font-bold text-slate-900 bg-white shadow-sm"
       >
         {logoUrl ? (
-          <img
-            src={logoUrl}
-            alt={brand}
-            className="absolute inset-0 h-full w-full rounded-full object-contain"
-            onError={(event) => {
-              event.currentTarget.style.display = 'none'
-            }}
-          />
-        ) : null}
+          <>
+            <img
+              src={logoUrl}
+              alt={brand}
+              className="absolute inset-0 h-full w-full rounded-full object-contain p-0.5"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none'
+                const parent = event.currentTarget.parentElement
+                if (parent) {
+                  parent.setAttribute('data-show-fallback', 'true')
+                }
+              }}
+            />
+            <span className="hidden data-[show-fallback=true]:inline">
+              {brandInitial}
+            </span>
+          </>
+        ) : (
+          <span>{brandInitial}</span>
+        )}
       </span>
     )
   }
@@ -816,11 +845,27 @@ export default function PlanningClient() {
         const roleLookup = new Map(
           (rolesData.items || []).map((role: any) => [role.id, role.includeInPlanning])
         )
+        const allUsers = (usersData.items || []) as User[]
+        
+        // Plannable users: active and have a role with includeInPlanning
         setUsers(
-          (usersData.items || []).filter((user: User) => {
+          allUsers.filter((user: User) => {
             if (user.active === false) return false
             if (!user.roleId) return false
             return roleLookup.get(user.roleId) === true
+          })
+        )
+        
+        // Other users: active but NOT plannable (for vrij, ziek, etc.)
+        // Exclude the system "Admin" user by name (not all SYSTEM_ADMIN users)
+        setOtherUsers(
+          allUsers.filter((user: User) => {
+            if (user.active === false) return false
+            // Exclude the system admin user named "Admin"
+            if (user.name === 'Admin') return false
+            // Include users without role OR with non-plannable role
+            if (!user.roleId) return true
+            return roleLookup.get(user.roleId) !== true
           })
         )
       }
@@ -861,6 +906,57 @@ export default function PlanningClient() {
     }
   }
 
+  const loadIcalEvents = async (usersWithIcal: User[]) => {
+    if (usersWithIcal.length === 0) {
+      setIcalEvents([])
+      return
+    }
+    
+    console.log('Loading iCal events for users:', usersWithIcal.map(u => u.name))
+    
+    try {
+      // Calculate date range based on current view
+      const start = new Date(currentDate)
+      start.setDate(start.getDate() - 7) // Load 1 week before
+      const end = new Date(currentDate)
+      end.setDate(end.getDate() + 30) // Load 30 days ahead
+      
+      console.log('Date range:', start.toISOString(), 'to', end.toISOString())
+      
+      const allEvents: ICalEvent[] = []
+      
+      for (const user of usersWithIcal) {
+        if (!user.icalUrl) continue
+        
+        try {
+          console.log(`Fetching iCal for ${user.name} (${user.icalUrl})`)
+          const response = await apiFetch(`/api/ical?userId=${user.id}&start=${start.toISOString()}&end=${end.toISOString()}`)
+          const data = await response.json()
+          
+          console.log(`iCal response for ${user.name}:`, data)
+          
+          if (data.success && data.events) {
+            const eventsWithUser = data.events.map((event: any) => ({
+              ...event,
+              userId: user.id,
+              userName: user.name,
+              userColor: user.color || '#4f46e5'
+            }))
+            allEvents.push(...eventsWithUser)
+            console.log(`Added ${eventsWithUser.length} events for ${user.name}`)
+          }
+        } catch (err) {
+          console.error(`Failed to load iCal for user ${user.name}:`, err)
+        }
+      }
+      
+      console.log('Total iCal events loaded:', allEvents.length)
+      setIcalEvents(allEvents)
+    } catch (err) {
+      console.error('Failed to load iCal events:', err)
+    }
+  }
+
     useEffect(() => {
         // Auth check removed after Prisma migration
         setHasUser(true)
@@ -873,6 +969,18 @@ export default function PlanningClient() {
     loadLookups()
     loadPlanningSettings()
   }, [authReady, hasUser])
+  
+  // Load iCal events when users change (check both plannable and other users)
+  useEffect(() => {
+    const allActiveUsers = [...users, ...otherUsers]
+    const usersWithIcal = allActiveUsers.filter(u => u.icalUrl)
+    console.log('Users with iCal:', usersWithIcal.map(u => ({ name: u.name, icalUrl: u.icalUrl })))
+    if (usersWithIcal.length > 0) {
+      loadIcalEvents(usersWithIcal)
+    } else {
+      console.log('No users with iCal URLs found')
+    }
+  }, [users, otherUsers, currentDate])
 
   const loadPlanningSettings = async () => {
     try {
@@ -930,13 +1038,13 @@ export default function PlanningClient() {
 
   const goPrev = () => {
     if (viewMode === 'day') setCurrentDate(addDays(currentDate, -1))
-    if (viewMode === 'week') setCurrentDate(subWeeks(currentDate, 1))
+    if (viewMode === 'week') setCurrentDate(addDays(currentDate, -1))
     if (viewMode === 'month') setCurrentDate(subMonths(currentDate, 1))
   }
 
   const goNext = () => {
     if (viewMode === 'day') setCurrentDate(addDays(currentDate, 1))
-    if (viewMode === 'week') setCurrentDate(addWeeks(currentDate, 1))
+    if (viewMode === 'week') setCurrentDate(addDays(currentDate, 1))
     if (viewMode === 'month') setCurrentDate(addMonths(currentDate, 1))
   }
 
@@ -1294,6 +1402,114 @@ export default function PlanningClient() {
     return result
   }
 
+  // Assign lanes to overlapping items so they stack vertically instead of overlapping
+  type ItemWithSegment = {
+    item: PlanningItem
+    segment: { start: number; end: number }
+    segmentIndex: number
+  }
+  
+  const assignLanes = (itemsWithSegments: ItemWithSegment[]): Map<string, number> => {
+    // Sort by start time, then by end time
+    const sorted = [...itemsWithSegments].sort((a, b) => {
+      if (a.segment.start !== b.segment.start) return a.segment.start - b.segment.start
+      return a.segment.end - b.segment.end
+    })
+    
+    const laneMap = new Map<string, number>() // itemId-segmentIndex -> lane
+    const lanes: Array<{ end: number }> = [] // Track end time for each lane
+    
+    for (const entry of sorted) {
+      const key = `${entry.item.id}-${entry.segmentIndex}`
+      
+      // Find the first available lane (one that ends before this segment starts)
+      let assignedLane = -1
+      for (let i = 0; i < lanes.length; i++) {
+        if (lanes[i].end <= entry.segment.start) {
+          assignedLane = i
+          lanes[i].end = entry.segment.end
+          break
+        }
+      }
+      
+      // If no existing lane is available, create a new one
+      if (assignedLane === -1) {
+        assignedLane = lanes.length
+        lanes.push({ end: entry.segment.end })
+      }
+      
+      laneMap.set(key, assignedLane)
+    }
+    
+    return laneMap
+  }
+  
+  const getMaxLanes = (laneMap: Map<string, number>): number => {
+    if (laneMap.size === 0) return 1
+    return Math.max(...Array.from(laneMap.values())) + 1
+  }
+
+  // Calculate max lanes per user across ALL days in the view for consistent row heights
+  const userMaxLanes = useMemo(() => {
+    const maxLanesMap = new Map<string, number>()
+    
+    // Initialize all users with 1 lane
+    users.forEach(user => maxLanesMap.set(user.id, 1))
+    maxLanesMap.set('unassigned', 1)
+    
+    // Calculate max lanes for each day in the view window
+    dayViewDates.forEach(day => {
+      const dayKey = format(day, 'yyyy-MM-dd')
+      
+      // For each user, calculate lanes needed for this day
+      users.forEach(user => {
+        const userItems = filteredItems.filter(item => item.assigneeId === user.id && item.scheduledAt)
+        const itemsWithSegments: ItemWithSegment[] = []
+        
+        userItems.forEach(item => {
+          const start = new Date(item.scheduledAt)
+          const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
+          const workingDays = getWorkingDaysForUser(user)
+          const segmentsByDay = buildSegmentsByDay(start, duration, workingDays)
+          const segments = segmentsByDay.get(dayKey) || []
+          segments.forEach((segment, segmentIndex) => {
+            itemsWithSegments.push({ item, segment, segmentIndex })
+          })
+        })
+        
+        if (itemsWithSegments.length > 0) {
+          const laneMap = assignLanes(itemsWithSegments)
+          const lanesNeeded = getMaxLanes(laneMap)
+          const currentMax = maxLanesMap.get(user.id) || 1
+          maxLanesMap.set(user.id, Math.max(currentMax, lanesNeeded))
+        }
+      })
+      
+      // For unassigned items
+      const unassignedItems = filteredItems.filter(item => !item.assigneeId && item.scheduledAt)
+      const unassignedWithSegments: ItemWithSegment[] = []
+      
+      unassignedItems.forEach(item => {
+        const start = new Date(item.scheduledAt)
+        const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
+        const segmentsByDay = buildSegmentsByDay(start, duration, getDefaultWorkingDays())
+        const segments = segmentsByDay.get(dayKey) || []
+        segments.forEach((segment, segmentIndex) => {
+          unassignedWithSegments.push({ item, segment, segmentIndex })
+        })
+      })
+      
+      if (unassignedWithSegments.length > 0) {
+        const laneMap = assignLanes(unassignedWithSegments)
+        const lanesNeeded = getMaxLanes(laneMap)
+        const currentMax = maxLanesMap.get('unassigned') || 1
+        maxLanesMap.set('unassigned', Math.max(currentMax, lanesNeeded))
+      }
+    })
+    
+    return maxLanesMap
+  }, [users, filteredItems, dayViewDates, planningSettings.defaultDurationMinutes])
+
   const getItemsForDay = (day: Date) =>
     filteredItems.filter((item) => isSameDay(new Date(item.scheduledAt), day))
 
@@ -1431,74 +1647,168 @@ export default function PlanningClient() {
 
   const renderWeekList = (day: Date) => {
     const dayItems = getItemsForDay(day)
-    if (dayItems.length === 0) {
+    
+    // Get iCal events for this day
+    const dayIcalEvents = icalEvents.filter(event => {
+      const eventStart = new Date(event.start)
+      const eventEnd = new Date(event.end)
+      const dayStart = new Date(day)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(day)
+      dayEnd.setHours(23, 59, 59, 999)
+      return eventStart <= dayEnd && eventEnd >= dayStart
+    })
+    
+    if (dayItems.length === 0 && dayIcalEvents.length === 0) {
       return <p className="p-2 text-xs text-slate-400">Geen items</p>
     }
     return (
       <div className="flex flex-col gap-2 p-2">
         {dayItems.map((item) => {
-          const background = item.planningTypeColor || undefined
-          const textColor = getReadableTextColor(background)
-          const subTextColor =
-            textColor === '#ffffff' ? 'rgba(255,255,255,0.85)' : 'rgba(15,23,42,0.75)'
+          const background = item.planningTypeColor || '#f8fafc'
+          
+          // Build a better title with fallback
+          const displayTitle = item.title || item.planningTypeName || 'Planning'
+          const customerDisplay = item.customerName || '-'
+          const vehicleDisplay = formatVehicleLabel(item.vehicleLabel) || '-'
+          
           return (
             <div
               key={item.id}
-              className="rounded-lg border border-slate-200 bg-white/90 p-2 text-xs shadow-sm"
+              className="rounded-lg border border-slate-300 bg-white p-2.5 text-xs shadow-sm hover:shadow-md transition-shadow cursor-pointer"
               style={{
-                background
+                backgroundColor: background
               }}
               onClick={(event) => {
                 event.stopPropagation()
                 handlePlanningClick(item)
               }}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-1.5">
                 {item.isRequest ? (
                   <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[0.55rem] font-semibold uppercase text-white">
                     Nieuw
                   </span>
                 ) : null}
-                <p className="font-semibold" style={{ color: textColor }}>
-                  {item.title}
+                <p className="font-bold text-[0.8rem] truncate text-slate-900">
+                  {displayTitle}
                 </p>
               </div>
-              <p style={{ color: subTextColor }}>👤 {item.customerName || '-'}</p>
-              <p style={{ color: subTextColor }}>
-                📅 {format(new Date(item.scheduledAt), 'HH:mm', { locale: nl })}{' '}
-                <span className="text-slate-400">·</span> ⏱ {formatDuration(item.durationMinutes)}
-              </p>
-              <p style={{ color: subTextColor }}>
-                <span
-                  className={`license-plate text-[0.7rem] ${
-                    item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                  }`}
-                >
-                  {item.vehiclePlate ? normalizeLicensePlate(item.vehiclePlate) : '-'}
-                </span>
-              </p>
+              
+              <div className="space-y-1">
+                <p className="flex items-center gap-1.5 text-slate-800">
+                  <span className="text-[0.75rem]">👤</span>
+                  <span className="font-bold truncate">{customerDisplay}</span>
+                </p>
+                
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[0.75rem]">🚗</span>
+                  <span
+                    className={`license-plate ${
+                      item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                    }`}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    {item.vehiclePlate ? normalizeLicensePlate(item.vehiclePlate) : '-'}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 bg-white/70 p-1.5 rounded">
+                  <span className="flex-shrink-0">
+                    {renderBrandLogo(item.vehicleLabel)}
+                  </span>
+                  <span className="truncate font-semibold text-slate-900 text-[0.75rem]">
+                    {vehicleDisplay}
+                  </span>
+                </div>
+                
+                <p className="flex items-center gap-1.5 text-slate-700">
+                  <span className="text-[0.75rem]">📅</span>
+                  <span className="font-medium">{format(new Date(item.scheduledAt), 'HH:mm', { locale: nl })}</span>
+                  <span className="text-slate-400">·</span>
+                  <span className="text-[0.75rem]">⏱</span>
+                  <span className="font-medium">{formatDuration(item.durationMinutes)}</span>
+                </p>
+                
+                {item.notes ? (
+                  <p className="text-[0.7rem] italic mt-1 line-clamp-2 text-slate-700 bg-white/50 p-1.5 rounded">
+                    {item.notes}
+                  </p>
+                ) : null}
+              </div>
+              
               {item.partsRequired === true ? (
-                <p className="flex items-center gap-2" style={{ color: subTextColor }}>
+                <p className="flex items-center gap-2 mt-2 text-slate-800">
                   <span
                     className="inline-flex h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
                   />
-                  Onderdelen vereist
+                  <span className="text-[0.7rem] font-bold">Onderdelen vereist</span>
                 </p>
               ) : null}
+              
               {item.warehouseStatus || item.warehouseEtaDate || item.warehouseLocation ? (
-                <p className="flex items-center gap-2" style={{ color: subTextColor }}>
-                  <span>Magazijn: {warehouseLabel(item.warehouseStatus)}</span>
+                <p className="flex items-center gap-2 mt-1.5 text-slate-700">
+                  <span className="text-[0.7rem]">Magazijn: {warehouseLabel(item.warehouseStatus)}</span>
                   {item.warehouseEtaDate ? (
-                    <span>· ETA {formatWarehouseEta(item.warehouseEtaDate)}</span>
+                    <span className="text-[0.7rem]">· ETA {formatWarehouseEta(item.warehouseEtaDate)}</span>
                   ) : null}
-                  {item.warehouseLocation ? <span>· Locatie {item.warehouseLocation}</span> : null}
+                  {item.warehouseLocation ? <span className="text-[0.7rem]">· Locatie {item.warehouseLocation}</span> : null}
                 </p>
               ) : null}
-              <p className="flex items-center gap-2" style={{ color: subTextColor }}>
-                {renderBrandLogo(item.vehicleLabel)}
-                <span>{formatVehicleLabel(item.vehicleLabel)}</span>
-              </p>
+            </div>
+          )
+        })}
+        {dayIcalEvents.map((event) => {
+          const eventStart = new Date(event.start)
+          const eventEnd = new Date(event.end)
+          const backgroundColor = event.userColor || '#6366f1'
+          
+          return (
+            <div
+              key={`ical-${event.uid}`}
+              className="rounded-lg border border-slate-300 bg-white p-2.5 text-xs shadow-sm"
+              style={{
+                backgroundColor: backgroundColor,
+                opacity: 0.85,
+                borderStyle: 'dashed'
+              }}
+              title={event.description || ''}
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[0.75rem]">📅</span>
+                <p className="font-bold text-[0.8rem] truncate text-white">
+                  {event.summary}
+                </p>
+              </div>
+              
+              <div className="space-y-1">
+                <p className="flex items-center gap-1.5 text-white/90">
+                  <span className="text-[0.75rem]">👤</span>
+                  <span className="font-medium truncate">{event.userName}</span>
+                </p>
+                
+                {!event.allDay ? (
+                  <p className="flex items-center gap-1.5 text-white/90">
+                    <span className="text-[0.75rem]">⏰</span>
+                    <span className="font-medium">
+                      {format(eventStart, 'HH:mm', { locale: nl })} - {format(eventEnd, 'HH:mm', { locale: nl })}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="flex items-center gap-1.5 text-white/90">
+                    <span className="text-[0.75rem]">📆</span>
+                    <span className="font-medium">Hele dag</span>
+                  </p>
+                )}
+                
+                {event.location ? (
+                  <p className="flex items-center gap-1.5 text-white/80">
+                    <span className="text-[0.75rem]">📍</span>
+                    <span className="truncate text-[0.7rem]">{event.location}</span>
+                  </p>
+                ) : null}
+              </div>
             </div>
           )
         })}
@@ -1577,73 +1887,90 @@ export default function PlanningClient() {
           </div>
         </div>
         <div className="planning-day-rows">
-          {users.map((user) => (
-            <div key={user.id} className="planning-day-row">
-              <div className="planning-day-label">
-                <span className="inline-flex items-center gap-2">
-                  {renderAvatar(user.name, user.photoUrl, user.color)}
-                  <span>{user.name}</span>
-                </span>
-              </div>
-              <div
-                className="planning-day-axis"
-                data-planning-axis="1"
-                data-day={format(day, 'yyyy-MM-dd')}
-                data-user-id={user.id}
-                style={{ gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))` }}
-                onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
-              >
-                {isUserAssignableForDay(user, day) ? (
-                  <div
-                    className="planning-day-availability"
-                    aria-hidden="true"
-                    style={{
-                      left: `${availabilityLeft}%`,
-                      width: `${availabilityWidth}%`
-                    }}
-                  >
-                    {breakSegments.map((segment, index) => (
-                      <div
-                        key={`break-${index}`}
-                        className="planning-day-break"
-                        style={{
-                          left: `${segment.left}%`,
-                          width: `${segment.width}%`
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                {gridSlots.map((slot, index) => (
-                  <div key={slot.toISOString()} className="planning-day-axis-slot" />
-                ))}
-                {getRowItems(user.id).flatMap((item) => {
-                  const start = new Date(item.scheduledAt)
-                  const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                  const workingDays = getWorkingDaysForUser(users.find((entry) => entry.id === item.assigneeId))
-                  const segmentsByDay = buildSegmentsByDay(start, duration, workingDays)
-                  const dayKey = format(day, 'yyyy-MM-dd')
-                  const segments = segmentsByDay.get(dayKey) || []
-                  if (segments.length === 0) return []
-                  const backgroundColor =
-                    item.planningTypeColor || item.assigneeColor || '#94a3b8'
-                  const textColor = getReadableTextColor(backgroundColor)
-                  return segments.map((segment, index) => {
+          {users.map((user) => {
+            // Collect all items with their segments for this user
+            const dayKey = format(day, 'yyyy-MM-dd')
+            const userItems = getRowItems(user.id)
+            const itemsWithSegments: ItemWithSegment[] = []
+            
+            userItems.forEach((item) => {
+              const start = new Date(item.scheduledAt)
+              const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
+              const workingDays = getWorkingDaysForUser(users.find((entry) => entry.id === item.assigneeId))
+              const segmentsByDay = buildSegmentsByDay(start, duration, workingDays)
+              const segments = segmentsByDay.get(dayKey) || []
+              segments.forEach((segment, segmentIndex) => {
+                itemsWithSegments.push({ item, segment, segmentIndex })
+              })
+            })
+            
+            // Assign lanes to overlapping items
+            const laneMap = assignLanes(itemsWithSegments)
+            const laneHeight = 40 // Height per lane in pixels
+            const baseRowHeight = 78 // Minimum row height (original CSS value)
+            
+            // Use consistent max lanes across all days for this user
+            const maxLanesForUser = userMaxLanes.get(user.id) || 1
+            const rowHeight = Math.max(baseRowHeight, maxLanesForUser * laneHeight)
+            
+            return (
+              <div key={user.id} className="planning-day-row" style={{ minHeight: `${rowHeight}px` }}>
+                <div className="planning-day-label">
+                  <span className="inline-flex items-center gap-2">
+                    {renderAvatar(user.name, user.photoUrl, user.color)}
+                    <span>{user.name}</span>
+                  </span>
+                </div>
+                <div
+                  className="planning-day-axis"
+                  data-planning-axis="1"
+                  data-day={dayKey}
+                  data-user-id={user.id}
+                  style={{ 
+                    gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
+                    minHeight: `${rowHeight}px`
+                  }}
+                  onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
+                >
+                  {isUserAssignableForDay(user, day) ? (
+                    <div
+                      className="planning-day-availability"
+                      aria-hidden="true"
+                      style={{
+                        left: `${availabilityLeft}%`,
+                        width: `${availabilityWidth}%`,
+                        height: `${rowHeight}px`
+                      }}
+                    >
+                      {breakSegments.map((segment, index) => (
+                        <div
+                          key={`break-${index}`}
+                          className="planning-day-break"
+                          style={{
+                            left: `${segment.left}%`,
+                            width: `${segment.width}%`
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {gridSlots.map((slot) => (
+                    <div key={slot.toISOString()} className="planning-day-axis-slot" style={{ minHeight: `${rowHeight}px` }} />
+                  ))}
+                  {itemsWithSegments.map(({ item, segment, segmentIndex }) => {
+                    const laneKey = `${item.id}-${segmentIndex}`
+                    const lane = laneMap.get(laneKey) || 0
                     const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
                     const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
-                    const hoverId = `${item.id}-${dayKey}-${index}-assigned`
-                    const placement =
-                      hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
+                    const hoverId = `${item.id}-${dayKey}-${segmentIndex}-assigned`
+                    const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
+                    const backgroundColor = item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                    const textColor = getReadableTextColor(backgroundColor)
                     const showCustomer = widthPercent >= 18
                     const showPlate = widthPercent >= 10
-                    const plate =
-                      item.vehiclePlate && showPlate
-                        ? normalizeLicensePlate(item.vehiclePlate)
-                        : null
-                    const customer =
-                      item.customerName && showCustomer
-                        ? truncateText(item.customerName, 16)
-                        : null
+                    const plate = item.vehiclePlate && showPlate ? normalizeLicensePlate(item.vehiclePlate) : null
+                    const customer = item.customerName && showCustomer ? truncateText(item.customerName, 16) : null
+                    
                     return (
                       <div
                         key={hoverId}
@@ -1653,6 +1980,8 @@ export default function PlanningClient() {
                         style={{
                           left: `${leftPercent}%`,
                           width: `${widthPercent}%`,
+                          top: `${lane * laneHeight + 2}px`,
+                          height: `${laneHeight - 4}px`,
                           borderColor: backgroundColor,
                           background: backgroundColor,
                           color: textColor,
@@ -1694,104 +2023,294 @@ export default function PlanningClient() {
                         {renderDayPopover(item)}
                       </div>
                     )
-                  })
-                })}
-              </div>
-            </div>
-          ))}
-          <div className="planning-day-row">
-            <div className="planning-day-label">Nog niet ingepland</div>
-            <div
-              className="planning-day-axis"
-              data-planning-axis="1"
-              data-day={format(day, 'yyyy-MM-dd')}
-              data-user-id=""
-              style={{ gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))` }}
-              onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
-            >
-              {gridSlots.map((slot) => (
-                <div key={slot.toISOString()} className="planning-day-axis-slot" />
-              ))}
-              {unassignedItems.flatMap((item) => {
-                const start = new Date(item.scheduledAt)
-                const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
-                const segmentsByDay = buildSegmentsByDay(start, duration, getDefaultWorkingDays())
-                const dayKey = format(day, 'yyyy-MM-dd')
-                const segments = segmentsByDay.get(dayKey) || []
-                if (segments.length === 0) return []
-                const backgroundColor =
-                  item.planningTypeColor || item.assigneeColor || '#94a3b8'
-                const textColor = getReadableTextColor(backgroundColor)
-                return segments.map((segment, index) => {
-                  const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
-                  const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
-                  const hoverId = `${item.id}-${dayKey}-${index}-unassigned`
-                  const placement =
-                    hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
-                  const showCustomer = widthPercent >= 18
-                  const showPlate = widthPercent >= 10
-                  const plate =
-                    item.vehiclePlate && showPlate
-                      ? normalizeLicensePlate(item.vehiclePlate)
-                      : null
-                  const customer =
-                    item.customerName && showCustomer
-                      ? truncateText(item.customerName, 16)
-                      : null
-                  return (
-                    <div
-                      key={hoverId}
-                      className={`planning-day-block${
-                        placement ? ` planning-day-block--${placement}` : ''
-                      }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
-                      style={{
-                        left: `${leftPercent}%`,
-                        width: `${widthPercent}%`,
-                        borderColor: backgroundColor,
-                        background: backgroundColor,
-                        color: textColor,
-                      }}
-                      onPointerDown={(event) => handleBlockPointerDown(event, item)}
-                      onPointerMove={handleBlockPointerMove}
-                      onPointerUp={(event) => handleBlockPointerUp(event, item)}
-                      onMouseEnter={(event) =>
-                        dragState
-                          ? null
-                          : setHoveredPopover({
-                              id: hoverId,
-                              placement: getPopoverPlacement(event)
-                            })
+                  })}
+                  {/* iCal events for this user */}
+                  {icalEvents
+                    .filter(event => event.userId === user.id)
+                    .filter(event => {
+                      const eventStart = new Date(event.start)
+                      const eventEnd = new Date(event.end)
+                      const dayStart = new Date(day)
+                      dayStart.setHours(0, 0, 0, 0)
+                      const dayEnd = new Date(day)
+                      dayEnd.setHours(23, 59, 59, 999)
+                      return eventStart <= dayEnd && eventEnd >= dayStart
+                    })
+                    .map((event) => {
+                      const eventStart = new Date(event.start)
+                      const eventEnd = new Date(event.end)
+                      
+                      // Calculate position on timeline
+                      let startMinutes = eventStart.getHours() * 60 + eventStart.getMinutes()
+                      let endMinutes = eventEnd.getHours() * 60 + eventEnd.getMinutes()
+                      
+                      // If all-day event, span full day
+                      if (event.allDay) {
+                        startMinutes = viewStartMinutes
+                        endMinutes = viewStartMinutes + timelineMinutes
                       }
-                      onMouseLeave={() => setHoveredPopover(null)}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handlePlanningClick(item)
+                      
+                      // Clamp to visible range
+                      startMinutes = Math.max(startMinutes, viewStartMinutes)
+                      endMinutes = Math.min(endMinutes, viewStartMinutes + timelineMinutes)
+                      
+                      if (endMinutes <= startMinutes) return null
+                      
+                      const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
+                      const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
+                      
+                      const backgroundColor = event.userColor || '#6366f1'
+                      const textColor = getReadableTextColor(backgroundColor)
+                      
+                      return (
+                        <div
+                          key={`ical-${event.uid}`}
+                          className="planning-day-block"
+                          style={{
+                            left: `${leftPercent}%`,
+                            width: `${widthPercent}%`,
+                            top: '2px',
+                            height: `${laneHeight - 4}px`,
+                            borderColor: backgroundColor,
+                            background: `repeating-linear-gradient(45deg, ${backgroundColor}, ${backgroundColor} 4px, ${backgroundColor}dd 4px, ${backgroundColor}dd 8px)`,
+                            color: textColor,
+                            opacity: 0.85,
+                            pointerEvents: 'none'
+                          }}
+                          title={`${event.summary}${event.location ? ` - ${event.location}` : ''}`}
+                        >
+                          <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
+                            <span className="truncate font-medium">📅 {event.summary}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              </div>
+            )
+          })}
+          {(() => {
+            // Collect all unassigned items with their segments
+            const dayKey = format(day, 'yyyy-MM-dd')
+            const unassignedWithSegments: ItemWithSegment[] = []
+            
+            unassignedItems.forEach((item) => {
+              const start = new Date(item.scheduledAt)
+              const duration = item.durationMinutes || planningSettings.defaultDurationMinutes || 60
+              const segmentsByDay = buildSegmentsByDay(start, duration, getDefaultWorkingDays())
+              const segments = segmentsByDay.get(dayKey) || []
+              segments.forEach((segment, segmentIndex) => {
+                unassignedWithSegments.push({ item, segment, segmentIndex })
+              })
+            })
+            
+            // Assign lanes to overlapping items
+            const unassignedLaneMap = assignLanes(unassignedWithSegments)
+            const laneHeight = 40
+            const baseRowHeight = 78
+            
+            // Use consistent max lanes across all days for unassigned
+            const maxLanesForUnassigned = userMaxLanes.get('unassigned') || 1
+            const rowHeight = Math.max(baseRowHeight, maxLanesForUnassigned * laneHeight)
+            
+            return (
+              <div className="planning-day-row" style={{ minHeight: `${rowHeight}px` }}>
+                <div className="planning-day-label">Nog niet ingepland</div>
+                <div
+                  className="planning-day-axis"
+                  data-planning-axis="1"
+                  data-day={dayKey}
+                  data-user-id=""
+                  style={{ 
+                    gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
+                    minHeight: `${rowHeight}px`
+                  }}
+                  onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
+                >
+                  {gridSlots.map((slot) => (
+                    <div key={slot.toISOString()} className="planning-day-axis-slot" style={{ minHeight: `${rowHeight}px` }} />
+                  ))}
+                  {unassignedWithSegments.map(({ item, segment, segmentIndex }) => {
+                    const laneKey = `${item.id}-${segmentIndex}`
+                    const lane = unassignedLaneMap.get(laneKey) || 0
+                    const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
+                    const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
+                    const hoverId = `${item.id}-${dayKey}-${segmentIndex}-unassigned`
+                    const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
+                    const backgroundColor = item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                    const textColor = getReadableTextColor(backgroundColor)
+                    const showCustomer = widthPercent >= 18
+                    const showPlate = widthPercent >= 10
+                    const plate = item.vehiclePlate && showPlate ? normalizeLicensePlate(item.vehiclePlate) : null
+                    const customer = item.customerName && showCustomer ? truncateText(item.customerName, 16) : null
+                    
+                    return (
+                      <div
+                        key={hoverId}
+                        className={`planning-day-block${
+                          placement ? ` planning-day-block--${placement}` : ''
+                        }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
+                        style={{
+                          left: `${leftPercent}%`,
+                          width: `${widthPercent}%`,
+                          top: `${lane * laneHeight + 2}px`,
+                          height: `${laneHeight - 4}px`,
+                          borderColor: backgroundColor,
+                          background: backgroundColor,
+                          color: textColor,
+                        }}
+                        onPointerDown={(event) => handleBlockPointerDown(event, item)}
+                        onPointerMove={handleBlockPointerMove}
+                        onPointerUp={(event) => handleBlockPointerUp(event, item)}
+                        onMouseEnter={(event) =>
+                          dragState
+                            ? null
+                            : setHoveredPopover({
+                                id: hoverId,
+                                placement: getPopoverPlacement(event)
+                              })
+                        }
+                        onMouseLeave={() => setHoveredPopover(null)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handlePlanningClick(item)
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
+                          {plate ? (
+                            <span
+                              className={`license-plate text-[0.7rem] ${
+                                item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                              }`}
+                            >
+                              {plate}
+                            </span>
+                          ) : null}
+                          {customer ? (
+                            <span className="min-w-0 truncate font-semibold">{customer}</span>
+                          ) : null}
+                        </div>
+                        <div className="mt-1 truncate text-[0.72rem] font-semibold">
+                          {item.title || item.planningTypeName || 'Planning'}
+                        </div>
+                        {renderDayPopover(item)}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+          
+          {/* Other users section (vrij, ziek, etc.) - with same timeline */}
+          {otherUsers.length > 0 ? (
+            <>
+              <div className="planning-day-row" style={{ height: '40px', minHeight: '40px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
+                <div className="planning-day-label text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wide" style={{ paddingTop: '12px' }}>
+                  Overige medewerkers
+                </div>
+                <div 
+                  className="planning-day-axis" 
+                  style={{ 
+                    gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
+                    minHeight: '40px'
+                  }}
+                >
+                  {gridSlots.map((slot) => (
+                    <div key={`other-header-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '40px', minHeight: '40px' }} />
+                  ))}
+                </div>
+              </div>
+              {otherUsers.map((user) => {
+                return (
+                  <div 
+                    key={`other-${user.id}`} 
+                    className="planning-day-row" 
+                    style={{ height: '40px', minHeight: '40px' }}
+                  >
+                    <div className="planning-day-label" style={{ fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center' }}>
+                    </div>
+                    <div
+                      className="planning-day-axis"
+                      style={{ 
+                        gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
+                        height: '40px',
+                        minHeight: '40px',
+                        background: '#f8fafc',
+                        backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(148, 163, 184, 0.15) 3px, rgba(148, 163, 184, 0.15) 6px)',
+                        position: 'relative'
                       }}
                     >
-                      <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
-                        {plate ? (
-                          <span
-                            className={`license-plate text-[0.7rem] ${
-                              item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                            }`}
-                          >
-                            {plate}
-                          </span>
-                        ) : null}
-                        {customer ? (
-                          <span className="min-w-0 truncate font-semibold">{customer}</span>
-                        ) : null}
-                      </div>
-                      <div className="mt-1 truncate text-[0.72rem] font-semibold">
-                        {item.title || item.planningTypeName || 'Planning'}
-                      </div>
-                      {renderDayPopover(item)}
+                      {gridSlots.map((slot) => (
+                        <div key={`other-${user.id}-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '40px', minHeight: '40px' }} />
+                      ))}
+                      {/* iCal events for this other user */}
+                      {icalEvents
+                        .filter(event => event.userId === user.id)
+                        .filter(event => {
+                          const eventStart = new Date(event.start)
+                          const eventEnd = new Date(event.end)
+                          const dayStart = new Date(day)
+                          dayStart.setHours(0, 0, 0, 0)
+                          const dayEnd = new Date(day)
+                          dayEnd.setHours(23, 59, 59, 999)
+                          return eventStart <= dayEnd && eventEnd >= dayStart
+                        })
+                        .map((event) => {
+                          const eventStart = new Date(event.start)
+                          const eventEnd = new Date(event.end)
+                          
+                          // Calculate position on timeline
+                          let startMinutes = eventStart.getHours() * 60 + eventStart.getMinutes()
+                          let endMinutes = eventEnd.getHours() * 60 + eventEnd.getMinutes()
+                          
+                          // If all-day event, span full day
+                          if (event.allDay) {
+                            startMinutes = viewStartMinutes
+                            endMinutes = viewStartMinutes + timelineMinutes
+                          }
+                          
+                          // Clamp to visible range
+                          startMinutes = Math.max(startMinutes, viewStartMinutes)
+                          endMinutes = Math.min(endMinutes, viewStartMinutes + timelineMinutes)
+                          
+                          if (endMinutes <= startMinutes) return null
+                          
+                          const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
+                          const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
+                          
+                          const backgroundColor = event.userColor || '#6366f1'
+                          const textColor = getReadableTextColor(backgroundColor)
+                          
+                          return (
+                            <div
+                              key={`ical-other-${event.uid}`}
+                              className="planning-day-block"
+                              style={{
+                                left: `${leftPercent}%`,
+                                width: `${widthPercent}%`,
+                                top: '2px',
+                                height: '36px',
+                                borderColor: backgroundColor,
+                                background: `repeating-linear-gradient(45deg, ${backgroundColor}, ${backgroundColor} 4px, ${backgroundColor}dd 4px, ${backgroundColor}dd 8px)`,
+                                color: textColor,
+                                opacity: 0.85,
+                                pointerEvents: 'none'
+                              }}
+                              title={`${event.summary}${event.location ? ` - ${event.location}` : ''}`}
+                            >
+                              <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
+                                <span className="truncate font-medium">📅 {event.summary}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
                     </div>
-                  )
-                })
+                  </div>
+                )
               })}
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
       </div>
     )
@@ -2136,8 +2655,16 @@ export default function PlanningClient() {
                       user.roleId && roleNameMap.get(user.roleId)
                         ? roleNameMap.get(user.roleId)
                         : ''
+                    const laneHeight = 40
+                    const baseRowHeight = 78
+                    const maxLanesForUser = userMaxLanes.get(user.id) || 1
+                    const rowHeight = Math.max(baseRowHeight, maxLanesForUser * laneHeight)
                     return (
-                      <div key={user.id} className="planning-day-label-cell">
+                      <div 
+                        key={user.id} 
+                        className="planning-day-label-cell"
+                        style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, paddingTop: maxLanesForUser > 1 ? '8px' : undefined }}
+                      >
                         <div className="planning-day-label-name">
                           <span className="inline-flex items-center gap-2">
                             {renderAvatar(user.name, user.photoUrl, user.color)}
@@ -2150,7 +2677,66 @@ export default function PlanningClient() {
                       </div>
                     )
                   })}
-                  <div className="planning-day-label-cell">Nog niet ingepland</div>
+                  {(() => {
+                    const laneHeight = 40
+                    const baseRowHeight = 78
+                    const maxLanesForUnassigned = userMaxLanes.get('unassigned') || 1
+                    const rowHeight = Math.max(baseRowHeight, maxLanesForUnassigned * laneHeight)
+                    return (
+                      <div 
+                        className="planning-day-label-cell"
+                        style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, paddingTop: maxLanesForUnassigned > 1 ? '8px' : undefined }}
+                      >
+                        Nog niet ingepland
+                      </div>
+                    )
+                  })()}
+                  {otherUsers.length > 0 ? (
+                    <>
+                      <div 
+                        style={{ 
+                          height: '40px', 
+                          minHeight: '40px',
+                          marginTop: '8px',
+                          paddingTop: '12px',
+                          fontSize: '0.65rem', 
+                          fontWeight: 600, 
+                          color: '#64748b', 
+                          textTransform: 'uppercase', 
+                          letterSpacing: '0.05em',
+                          borderTop: '1px solid #e2e8f0'
+                        }}
+                      >
+                        Overige medewerkers
+                      </div>
+                      {otherUsers.map((user) => {
+                        const roleName = user.roleId && roleNameMap.get(user.roleId) ? roleNameMap.get(user.roleId) : ''
+                        return (
+                          <div 
+                            key={`label-other-${user.id}`} 
+                            style={{ 
+                              height: '40px', 
+                              minHeight: '40px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              opacity: 0.8
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>
+                              {renderAvatar(user.name, user.photoUrl, user.color)}
+                              <div>
+                                <span>{user.name}</span>
+                                {roleName ? (
+                                  <div style={{ fontSize: '0.6rem', color: '#94a3b8' }}>{roleName}</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </>
+                  ) : null}
                 </div>
                 <div
                   ref={dayScrollRef}
@@ -2186,6 +2772,8 @@ export default function PlanningClient() {
                   </div>
                 </div>
               </div>
+              
+              {/* Other users section (vrij, ziek, etc.) - shown once below the day grid */}
             </div>
           ) : null}
 
@@ -2200,7 +2788,7 @@ export default function PlanningClient() {
                 style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(0, 1fr))` }}
               >
                 {Array.from({ length: visibleDays }).map((_, index) => {
-                  const day = addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index)
+                  const day = addDays(currentDate, index)
                   const plannedMinutes = getPlannedMinutesForDay(day)
                   const availableMinutes = getAvailableMinutesForDay(day)
                   return (
@@ -2225,7 +2813,7 @@ export default function PlanningClient() {
                 style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(0, 1fr))` }}
               >
                 {Array.from({ length: visibleDays }).map((_, index) => {
-                  const day = addDays(startOfWeek(currentDate, { weekStartsOn: 1 }), index)
+                  const day = addDays(currentDate, index)
                   const isToday = isSameDay(day, new Date())
                   return (
                     <div
@@ -2331,24 +2919,37 @@ export default function PlanningClient() {
                 </button>
               ) : null}
             </div>
-            <div className="workorder-toggle-row">
-              <span className="workorder-label">Werkorder aanmaken</span>
-              <label className="glass-toggle">
-                <input
-                  type="checkbox"
-                  checked={createWorkOrder}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked
-                    setCreateWorkOrder(nextValue)
-                    if (!nextValue) {
-                      setPartsRequired(false)
-                    }
-                  }}
-                />
-                <span className="glass-toggle-track" />
-                <span className="glass-toggle-thumb" />
-              </label>
-            </div>
+            {editingItem?.workOrderId ? (
+              <div className="workorder-toggle-row">
+                <span className="workorder-label">Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} aangemaakt</span>
+                <button
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700"
+                  type="button"
+                  onClick={() => router.push(`/admin/workorders/${editingItem.workOrderId}`)}
+                >
+                  Bekijk werkorder
+                </button>
+              </div>
+            ) : (
+              <div className="workorder-toggle-row">
+                <span className="workorder-label">Werkorder aanmaken</span>
+                <label className="glass-toggle">
+                  <input
+                    type="checkbox"
+                    checked={createWorkOrder}
+                    onChange={(event) => {
+                      const nextValue = event.target.checked
+                      setCreateWorkOrder(nextValue)
+                      if (!nextValue) {
+                        setPartsRequired(false)
+                      }
+                    }}
+                  />
+                  <span className="glass-toggle-track" />
+                  <span className="glass-toggle-thumb" />
+                </label>
+              </div>
+            )}
             {createWorkOrder ? (
               <div className="workorder-toggle-row">
                 <span className="workorder-label">Onderdelen nodig</span>
@@ -2458,6 +3059,11 @@ export default function PlanningClient() {
                   onChange={(event) => setVehicleId(event.target.value)}
                 >
                   <option value="none">Geen voertuig</option>
+                  {editingItem?.vehicleId && !vehicles.some(v => v.id === editingItem.vehicleId) ? (
+                    <option value={editingItem.vehicleId}>
+                      {editingItem.vehicleLabel || `Voertuig ${editingItem.vehiclePlate || '(onbekend)'}`} (niet beschikbaar)
+                    </option>
+                  ) : null}
                   {vehicles.map((vehicle) => (
                     <option key={vehicle.id} value={vehicle.id}>
                       {vehicle.brand} {vehicle.model}

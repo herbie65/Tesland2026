@@ -1,8 +1,27 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type Customer = {
   id: string
@@ -51,6 +70,110 @@ type Vehicle = {
   rdwChassisNumber?: string | null
 }
 
+// Column options constant - defined outside component
+const COLUMN_OPTIONS = [
+  { key: 'make', label: 'Merk', defaultWidth: 150 },
+  { key: 'model', label: 'Model', defaultWidth: 150 },
+  { key: 'licensePlate', label: 'Kenteken', defaultWidth: 120 },
+  { key: 'vin', label: 'VIN', defaultWidth: 180 },
+  { key: 'customer', label: 'Klant', defaultWidth: 180 },
+  { key: 'year', label: 'Bouwjaar', defaultWidth: 100 },
+  { key: 'color', label: 'Kleur', defaultWidth: 120 },
+  { key: 'mileage', label: 'Kilometerstand', defaultWidth: 150 },
+  { key: 'apkDueDate', label: 'APK Vervaldatum', defaultWidth: 150 },
+  { key: 'constructionDate', label: 'Bouwdatum', defaultWidth: 130 },
+  { key: 'notes', label: 'Notities', defaultWidth: 200 },
+  { key: 'createdAt', label: 'Aangemaakt', defaultWidth: 150 }
+]
+
+// Sortable column header component
+function SortableColumnHeader({
+  columnKey,
+  label,
+  width,
+  sortKey,
+  sortDir,
+  onSort,
+  onResizeStart,
+  resizingColumn
+}: {
+  columnKey: string
+  label: string
+  width: number
+  sortKey: string
+  sortDir: 'asc' | 'desc'
+  onSort: (key: string) => void
+  onResizeStart: (columnKey: string, e: React.MouseEvent) => void
+  resizingColumn: string | null
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: columnKey })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    width: `${width}px`,
+    minWidth: '80px',
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <th
+      ref={setNodeRef}
+      style={style}
+      className={`relative px-4 py-2 text-left select-none bg-slate-50 ${
+        isDragging ? 'z-50 shadow-lg' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing flex-shrink-0"
+        >
+          <svg 
+            className="h-4 w-4 text-slate-400 hover:text-slate-600 transition-colors"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+          </svg>
+        </div>
+        
+        {/* Sort button */}
+        <button 
+          type="button" 
+          onClick={() => onSort(columnKey)}
+          className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+        >
+          {label}
+          {sortKey === columnKey && (
+            <span className="text-purple-600 text-lg">
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </span>
+          )}
+        </button>
+      </div>
+      
+      {/* Resize handle */}
+      <div
+        className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-purple-400 hover:w-2 transition-all ${
+          resizingColumn === columnKey ? 'bg-purple-600 w-2' : ''
+        }`}
+        onMouseDown={(e) => onResizeStart(columnKey, e)}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </th>
+  )
+}
+
 export default function VehiclesClient() {
   const [items, setItems] = useState<Vehicle[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -92,33 +215,133 @@ export default function VehiclesClient() {
     'vin',
     'customer'
   ])
+  
+  // Advanced table features - columnOrder includes ALL columns
+  const [columnOrder, setColumnOrder] = useState<string[]>(
+    COLUMN_OPTIONS.map(col => col.key)
+  )
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null)
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
+  const [showColumnSelector, setShowColumnSelector] = useState(false)
+  const resizeStartX = useRef<number>(0)
+  const resizeStartWidth = useRef<number>(0)
+  
+  // DnD Kit sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 3, // 3px movement required to start drag (sneller response)
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
-  const columnOptions = [
-    { key: 'make', label: 'Merk' },
-    { key: 'model', label: 'Model' },
-    { key: 'licensePlate', label: 'Kenteken' },
-    { key: 'vin', label: 'VIN' },
-    { key: 'customer', label: 'Klant' },
-    { key: 'createdAt', label: 'Aangemaakt' }
-  ]
-
+  // Load preferences from database
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-vehicles-columns')
-    if (stored) {
+    const loadPreferences = async () => {
       try {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.length) {
-          setVisibleColumns(parsed)
+        // Load visible columns
+        const visibleRes = await fetch('/api/user-preferences?key=vehicles-columns')
+        const visibleData = await visibleRes.json()
+        if (visibleData.success && visibleData.value) {
+          setVisibleColumns(visibleData.value)
         }
-      } catch {
-        // ignore
+        
+        // Load column order
+        const orderRes = await fetch('/api/user-preferences?key=vehicles-column-order')
+        const orderData = await orderRes.json()
+        if (orderData.success && orderData.value) {
+          const allColumnKeys = COLUMN_OPTIONS.map(col => col.key)
+          const existingColumns = orderData.value.filter((key: string) => allColumnKeys.includes(key))
+          const newColumns = allColumnKeys.filter((key: string) => !orderData.value.includes(key))
+          setColumnOrder([...existingColumns, ...newColumns])
+        }
+        
+        // Load column widths
+        const widthsRes = await fetch('/api/user-preferences?key=vehicles-column-widths')
+        const widthsData = await widthsRes.json()
+        if (widthsData.success && widthsData.value) {
+          setColumnWidths(widthsData.value)
+        }
+      } catch (error) {
+        console.error('Error loading preferences:', error)
       }
     }
+    
+    loadPreferences()
   }, [])
 
+  // Save visible columns to database
   useEffect(() => {
-    window.localStorage.setItem('tladmin-vehicles-columns', JSON.stringify(visibleColumns))
+    const savePreference = async () => {
+      try {
+        await fetch('/api/user-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'vehicles-columns',
+            value: visibleColumns
+          })
+        })
+      } catch (error) {
+        console.error('Error saving visible columns:', error)
+      }
+    }
+    
+    // Only save if not initial render
+    if (visibleColumns.length > 0) {
+      savePreference()
+    }
   }, [visibleColumns])
+  
+  // Save column order to database
+  useEffect(() => {
+    const savePreference = async () => {
+      try {
+        await fetch('/api/user-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'vehicles-column-order',
+            value: columnOrder
+          })
+        })
+      } catch (error) {
+        console.error('Error saving column order:', error)
+      }
+    }
+    
+    // Only save if not initial state
+    if (columnOrder.length > 0 && columnOrder.length === COLUMN_OPTIONS.length) {
+      savePreference()
+    }
+  }, [columnOrder])
+  
+  // Save column widths to database
+  useEffect(() => {
+    const savePreference = async () => {
+      try {
+        await fetch('/api/user-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'vehicles-column-widths',
+            value: columnWidths
+          })
+        })
+      } catch (error) {
+        console.error('Error saving column widths:', error)
+      }
+    }
+    
+    // Only save if there are widths set
+    if (Object.keys(columnWidths).length > 0) {
+      savePreference()
+    }
+  }, [columnWidths])
 
   const customerLookup = useMemo(() => {
     return customers.reduce<Record<string, string>>((acc, item) => {
@@ -126,6 +349,124 @@ export default function VehiclesClient() {
       return acc
     }, {})
   }, [customers])
+  
+  // Advanced table handlers
+  const handleResizeStart = (columnKey: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+    setResizingColumn(columnKey)
+    resizeStartX.current = e.clientX
+    resizeStartWidth.current = columnWidths[columnKey] || col?.defaultWidth || 150
+  }
+  
+  useEffect(() => {
+    if (!resizingColumn) return
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - resizeStartX.current
+      const newWidth = Math.max(80, resizeStartWidth.current + diff)
+      setColumnWidths(prev => ({
+        ...prev,
+        [resizingColumn]: newWidth
+      }))
+    }
+    
+    const handleMouseUp = () => {
+      setResizingColumn(null)
+    }
+    
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [resizingColumn])
+  
+  // DnD Kit handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveColumnId(event.active.id as string)
+  }
+  
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    
+    if (over && active.id !== over.id) {
+      setColumnOrder((items) => {
+        const oldIndex = items.indexOf(active.id as string)
+        const newIndex = items.indexOf(over.id as string)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+    
+    setActiveColumnId(null)
+  }
+  
+  const toggleColumnVisibility = (columnKey: string) => {
+    if (visibleColumns.includes(columnKey)) {
+      setVisibleColumns(prev => prev.filter(k => k !== columnKey))
+    } else {
+      setVisibleColumns(prev => [...prev, columnKey])
+    }
+  }
+  
+  const getColumnWidth = (columnKey: string) => {
+    if (columnWidths[columnKey]) return columnWidths[columnKey]
+    const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+    return col?.defaultWidth || 150
+  }
+  
+  const orderedVisibleColumns = useMemo(() => {
+    return columnOrder.filter(key => visibleColumns.includes(key))
+  }, [columnOrder, visibleColumns])
+  
+  const renderCellContent = (item: Vehicle, columnKey: string) => {
+    switch (columnKey) {
+      case 'make':
+        return item.make || '-'
+      case 'model':
+        return item.model || '-'
+      case 'licensePlate':
+        return item.licensePlate ? (
+          <span
+            className={`license-plate text-xs ${
+              isDutchLicensePlate(item.licensePlate) ? 'nl' : ''
+            }`}
+          >
+            {normalizeLicensePlate(item.licensePlate)}
+          </span>
+        ) : '-'
+      case 'vin':
+        return item.vin || '-'
+      case 'customer':
+        return item.customerId ? customerLookup[item.customerId] || item.customerId : '-'
+      case 'year':
+        return item.year || '-'
+      case 'color':
+        return item.color || '-'
+      case 'mileage':
+        return item.mileage ? `${item.mileage.toLocaleString()} km` : '-'
+      case 'apkDueDate':
+        return item.apkDueDate ? new Date(item.apkDueDate).toLocaleDateString('nl-NL') : '-'
+      case 'constructionDate':
+        return item.constructionDate ? new Date(item.constructionDate).toLocaleDateString('nl-NL') : '-'
+      case 'notes':
+        return (
+          <span className="truncate block max-w-xs" title={item.notes || undefined}>
+            {item.notes || '-'}
+          </span>
+        )
+      case 'createdAt':
+        return item.createdAt ? new Date(item.createdAt).toLocaleString('nl-NL') : '-'
+      default:
+        return '-'
+    }
+  }
 
 const loadItems = async () => {
     try {
@@ -496,17 +837,61 @@ const filteredItems = useMemo(() => {
           </div>
         ) : null}
 
-        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-          {columnOptions.map((col) => (
-            <label key={col.key} className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={visibleColumns.includes(col.key)}
-                onChange={() => toggleColumn(col.key)}
+        <div className="mt-3 relative">
+          <button
+            onClick={() => setShowColumnSelector(!showColumnSelector)}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 transition-all"
+          >
+            📊 Kolommen ({visibleColumns.length}/{COLUMN_OPTIONS.length})
+          </button>
+          
+          {showColumnSelector && (
+            <>
+              <div 
+                className="fixed inset-0 z-40" 
+                onClick={() => setShowColumnSelector(false)}
               />
-              {col.label}
-            </label>
-          ))}
+              <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                <h3 className="text-sm font-semibold mb-3 text-slate-900">Kolommen selecteren</h3>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {COLUMN_OPTIONS.map((col) => (
+                    <label
+                      key={col.key}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.includes(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-4 pt-4 border-t border-slate-200 flex justify-between">
+                  <button
+                    onClick={() => {
+                      COLUMN_OPTIONS.forEach(col => {
+                        if (!visibleColumns.includes(col.key)) {
+                          toggleColumn(col.key)
+                        }
+                      })
+                    }}
+                    className="text-sm text-purple-600 hover:text-purple-700 font-medium"
+                  >
+                    Alles selecteren
+                  </button>
+                  <button
+                    onClick={() => setShowColumnSelector(false)}
+                    className="text-sm text-slate-600 hover:text-slate-700"
+                  >
+                    Sluiten
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {error ? (
@@ -546,217 +931,57 @@ const filteredItems = useMemo(() => {
             </div>
 
             <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  {visibleColumns.includes('make') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('make')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Merk
-                        {sortKey === 'make' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('model') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('model')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Model
-                        {sortKey === 'model' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('licensePlate') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('licensePlate')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Kenteken
-                        {sortKey === 'licensePlate' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('vin') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('vin')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        VIN
-                        {sortKey === 'vin' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('chassisNumber') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('chassisNumber')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Chassisnummer
-                        {sortKey === 'chassisNumber' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('customer') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('customer')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Klant
-                        {sortKey === 'customer' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('ownerHistory') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('ownerHistory')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Overdrachten
-                        {sortKey === 'ownerHistory' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('createdAt') ? (
-                    <th className="px-4 py-2 text-left">
-                      <button 
-                        type="button" 
-                        onClick={() => updateSort('createdAt')}
-                        className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-                      >
-                        Aangemaakt
-                        {sortKey === 'createdAt' && (
-                          <span className="text-purple-600 text-lg">
-                            {sortDir === 'asc' ? '↑' : '↓'}
-                          </span>
-                        )}
-                      </button>
-                    </th>
-                  ) : null}
-                  <th className="px-4 py-2 text-right font-semibold text-slate-700">Acties</th>
-                </tr>
-                <tr className="bg-white/50">
-                  {visibleColumns.includes('make') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek merk..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.make || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, make: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('model') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek model..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.model || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, model: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('licensePlate') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek kenteken..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.licensePlate || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, licensePlate: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('vin') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek VIN..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.vin || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, vin: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('chassisNumber') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek chassis..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.chassisNumber || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, chassisNumber: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('customer') ? (
-                    <th className="px-4 py-2">
-                      <input
-                        type="text"
-                        placeholder="Zoek klant..."
-                        className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                        value={columnFilters.customer || ''}
-                        onChange={(e) => setColumnFilters(prev => ({ ...prev, customer: e.target.value }))}
-                      />
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('ownerHistory') ? (
-                    <th className="px-4 py-2">
-                    </th>
-                  ) : null}
-                  {visibleColumns.includes('createdAt') ? (
-                    <th className="px-4 py-2">
-                    </th>
-                  ) : null}
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <SortableContext 
+                    items={orderedVisibleColumns}
+                    strategy={horizontalListSortingStrategy}
+                  >
+                    <tr>
+                      {orderedVisibleColumns.map((columnKey) => {
+                        const col = COLUMN_OPTIONS.find(c => c.key === columnKey)
+                        if (!col) return null
+                        
+                        return (
+                          <SortableColumnHeader
+                            key={columnKey}
+                            columnKey={columnKey}
+                            label={col.label}
+                            width={getColumnWidth(columnKey)}
+                            sortKey={sortKey}
+                            sortDir={sortDir}
+                            onSort={updateSort}
+                            onResizeStart={handleResizeStart}
+                            resizingColumn={resizingColumn}
+                          />
+                        )
+                      })}
+                      <th className="px-4 py-2 text-right font-semibold text-slate-700 bg-slate-50">Acties</th>
+                    </tr>
+                  </SortableContext>
+                  
+                  {/* Filter row */}
+                  <tr className="bg-white/50">
+                    {orderedVisibleColumns.map((columnKey) => (
+                      <th key={columnKey} className="px-4 py-2">
+                        <input
+                          type="text"
+                          placeholder={`Zoek ${COLUMN_OPTIONS.find(c => c.key === columnKey)?.label.toLowerCase()}...`}
+                          className="w-full rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
+                          value={columnFilters[columnKey] || ''}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, [columnKey]: e.target.value }))}
+                        />
+                      </th>
+                    ))}
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedItems.map((item) => (
                   <tr 
@@ -767,48 +992,15 @@ const filteredItems = useMemo(() => {
                       setShowDetailView(true)
                     }}
                   >
-                    {visibleColumns.includes('make') ? (
-                      <td className="px-4 py-2 font-medium text-slate-900">{item.make}</td>
-                    ) : null}
-                    {visibleColumns.includes('model') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.model}</td>
-                    ) : null}
-                    {visibleColumns.includes('licensePlate') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        {item.licensePlate ? (
-                          <span
-                            className={`license-plate text-xs ${
-                              isDutchLicensePlate(item.licensePlate) ? 'nl' : ''
-                            }`}
-                          >
-                            {normalizeLicensePlate(item.licensePlate)}
-                          </span>
-                        ) : (
-                          '-'
-                        )}
+                    {orderedVisibleColumns.map((columnKey) => (
+                      <td
+                        key={columnKey}
+                        className="px-4 py-2 text-slate-700"
+                        style={{ width: `${getColumnWidth(columnKey)}px` }}
+                      >
+                        {renderCellContent(item, columnKey)}
                       </td>
-                    ) : null}
-                    {visibleColumns.includes('vin') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.vin || '-'}</td>
-                    ) : null}
-                    {visibleColumns.includes('chassisNumber') ? (
-                      <td className="px-4 py-2 text-slate-700">{item.vin || '-'}</td>
-                    ) : null}
-                    {visibleColumns.includes('customer') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        {item.customerId ? customerLookup[item.customerId] || item.customerId : '-'}
-                      </td>
-                    ) : null}
-                    {visibleColumns.includes('ownerHistory') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        -
-                      </td>
-                    ) : null}
-                    {visibleColumns.includes('createdAt') ? (
-                      <td className="px-4 py-2 text-slate-700">
-                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
-                      </td>
-                    ) : null}
+                    ))}
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1.5">
                         <select
@@ -858,6 +1050,34 @@ const filteredItems = useMemo(() => {
                 ))}
               </tbody>
             </table>
+            
+            {/* DragOverlay for smooth ghost effect */}
+            <DragOverlay dropAnimation={null} adjustScale={false}>
+              {activeColumnId ? (
+                <div 
+                  className="bg-white shadow-2xl rounded-lg px-4 py-2 border-2 border-purple-400 opacity-90 pointer-events-none"
+                  style={{ 
+                    width: `${getColumnWidth(activeColumnId)}px`,
+                    minWidth: '80px',
+                    cursor: 'grabbing'
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <svg 
+                      className="h-4 w-4 text-slate-400 flex-shrink-0"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+                    </svg>
+                    <span className="font-semibold text-slate-700 whitespace-nowrap">
+                      {COLUMN_OPTIONS.find(c => c.key === activeColumnId)?.label}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
 
             <div className="mt-4 flex items-center justify-between">
               <button

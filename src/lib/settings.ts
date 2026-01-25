@@ -81,6 +81,16 @@ export type EmailSettings = {
   fromName: string
   fromEmail: string
   provider: 'SMTP' | 'SENDGRID'
+  // SMTP credentials
+  smtpHost?: string
+  smtpPort?: string
+  smtpUser?: string
+  smtpPassword?: string
+  smtpSecure?: string | boolean
+  // SendGrid credentials
+  sendgridApiKey?: string
+  // Email signature (HTML)
+  signature?: string
 }
 
 export type WorkOrderDefaults = {
@@ -313,12 +323,23 @@ export const getEmailSettings = async (): Promise<EmailSettings | null> => {
     : []
   const fromName = String(data?.fromName || 'Tesland')
   const fromEmail = String(data?.fromEmail || 'noreply@tesland.nl')
+  
   return {
     mode: mode === 'LIVE' ? 'LIVE' : mode === 'TEST' ? 'TEST' : 'OFF',
     testRecipients,
     fromName,
     fromEmail,
-    provider: provider === 'SENDGRID' ? 'SENDGRID' : 'SMTP'
+    provider: provider === 'SENDGRID' ? 'SENDGRID' : 'SMTP',
+    // SMTP credentials
+    smtpHost: data?.smtpHost ? String(data.smtpHost) : undefined,
+    smtpPort: data?.smtpPort ? String(data.smtpPort) : undefined,
+    smtpUser: data?.smtpUser ? String(data.smtpUser) : undefined,
+    smtpPassword: data?.smtpPassword ? String(data.smtpPassword) : undefined,
+    smtpSecure: data?.smtpSecure,
+    // SendGrid credentials
+    sendgridApiKey: data?.sendgridApiKey ? String(data.sendgridApiKey) : undefined,
+    // Email signature
+    signature: data?.signature ? String(data.signature) : undefined
   }
 }
 

@@ -217,12 +217,12 @@ export default function MagazijnClient() {
                           onChange={(event) => updateDraft(order.id, { status: event.target.value })}
                           disabled={!warehouseStatuses.length}
                         >
-                          <option value="">Kies status</option>
-                          {warehouseStatuses.map((entry) => (
-                            <option key={entry.code} value={entry.code}>
-                              {entry.label}
-                            </option>
-                          ))}
+                <option value="">Kies status</option>
+                {warehouseStatuses.map((entry, index) => (
+                  <option key={`${entry.code}-${index}`} value={entry.code}>
+                    {entry.label}
+                  </option>
+                ))}
                         </select>
                       </td>
                       <td className="py-3 pr-4">

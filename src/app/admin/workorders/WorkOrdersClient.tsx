@@ -7,6 +7,7 @@ import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 
 type WorkOrder = {
   id: string
+  workOrderNumber?: string | null
   title: string
   workOrderStatus?: string | null
   scheduledAt?: string | null
@@ -580,6 +581,7 @@ export default function WorkOrdersClient() {
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
+                  <th className="px-4 py-2 text-left">WO#</th>
                   <th className="px-4 py-2 text-left">Planning</th>
                   <th className="px-4 py-2 text-left">Kenteken</th>
                   <th className="px-4 py-2 text-left">Titel</th>
@@ -593,6 +595,11 @@ export default function WorkOrdersClient() {
               <tbody className="divide-y divide-slate-100">
                 {sortedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-900 font-medium">
+                      <Link className="text-blue-600 hover:underline" href={`/admin/workorders/${item.id}`}>
+                        {item.workOrderNumber || item.id.slice(0, 8)}
+                      </Link>
+                    </td>
                     <td className="px-4 py-2 text-slate-700">
                       {formatDate(item.scheduledAt || item.createdAt)}
                     </td>

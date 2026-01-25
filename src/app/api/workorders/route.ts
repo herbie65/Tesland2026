@@ -34,6 +34,11 @@ export async function GET(request: NextRequest) {
         customer: true,
         vehicle: true,
         assignee: true,
+        planningItem: {
+          include: {
+            planningType: true
+          }
+        },
         partsLines: includeMissing,
       }
     })
@@ -43,9 +48,31 @@ export async function GET(request: NextRequest) {
       items = items.filter((item) => allowed.has(String(item.workOrderStatus || '')))
     }
 
+    // Merge denormalized fields for frontend
+    const merged = items.map((item) => {
+      const resolvedLicensePlate = item.licensePlate || item.vehiclePlate || item.vehicle?.licensePlate || null
+      const resolvedVehicleLabel = item.vehicleLabel || (item.vehicle 
+        ? `${item.vehicle.make || ''} ${item.vehicle.model || ''}${item.vehicle.licensePlate ? ` (${item.vehicle.licensePlate})` : ''}`.trim()
+        : null)
+      const resolvedCustomerName = item.customerName || item.customer?.name || null
+      const resolvedAssigneeName = item.assigneeName || item.assignee?.displayName || null
+      const resolvedPlanningTypeName = item.planningItem?.planningTypeName || item.planningItem?.planningType?.name || null
+      const resolvedPlanningTypeColor = item.planningItem?.planningTypeColor || item.planningItem?.planningType?.color || null
+      
+      return {
+        ...item,
+        licensePlate: resolvedLicensePlate,
+        vehicleLabel: resolvedVehicleLabel,
+        customerName: resolvedCustomerName,
+        assigneeName: resolvedAssigneeName,
+        planningTypeName: resolvedPlanningTypeName,
+        planningTypeColor: resolvedPlanningTypeColor,
+      }
+    })
+
     if (includeMissing) {
       const partsLogic = await getPartsLogicSettings()
-      const itemsWithMissing = items.map((item) => {
+      const itemsWithMissing = merged.map((item) => {
         const missingCount = (item.partsLines || []).filter((line: any) => 
           partsLogic.missingLineStatuses.includes(String(line.status || ''))
         ).length
@@ -59,7 +86,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, items: itemsWithMissing })
     }
 
-    return NextResponse.json({ success: true, items })
+    return NextResponse.json({ success: true, items: merged })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error fetching workOrders:', error)

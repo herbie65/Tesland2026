@@ -11,7 +11,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const actor = await requireAuth(request)
     const body = await request.json()
-    const { displayName, email, roleId, photoURL, photoUrl, phoneNumber, isSystemAdmin, active, color, planningHoursPerDay, workingDays } = body || {}
+    const { displayName, email, roleId, photoURL, photoUrl, phoneNumber, isSystemAdmin, active, color, planningHoursPerDay, workingDays, icalUrl } = body || {}
+    
+    console.log('PATCH /api/users/[id] - Received icalUrl:', icalUrl)
     
     const params = await context.params
     const userId = params?.id || request.nextUrl.pathname.split('/').filter(Boolean).pop() || ''
@@ -29,7 +31,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updateData: any = {}
     if (displayName !== undefined) updateData.displayName = displayName
     if (email !== undefined) updateData.email = email
-    if (roleId !== undefined) updateData.roleId = roleId
+    if (roleId !== undefined) {
+      // Update via relation if roleId is provided
+      updateData.roleRef = roleId ? { connect: { id: roleId } } : { disconnect: true }
+    }
     if (photoURL !== undefined || photoUrl !== undefined) updateData.photoURL = photoUrl || photoURL
     if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber
     if (isSystemAdmin !== undefined) updateData.isSystemAdmin = Boolean(isSystemAdmin)
@@ -37,11 +42,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (color !== undefined) updateData.color = color
     if (planningHoursPerDay !== undefined) updateData.planningHoursPerDay = planningHoursPerDay
     if (workingDays !== undefined) updateData.workingDays = workingDays
+    if (icalUrl !== undefined) updateData.icalUrl = icalUrl
+    
+    console.log('Update data for icalUrl:', updateData.icalUrl)
 
     const item = await prisma.user.update({
       where: { id: userId },
       data: updateData,
     })
+    
+    console.log('Updated user icalUrl:', item.icalUrl)
 
     // Log role changes
     if (roleId !== undefined && roleId !== existing.roleId) {

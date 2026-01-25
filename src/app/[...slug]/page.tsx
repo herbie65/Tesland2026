@@ -99,9 +99,10 @@ const parseKeywords = (value?: string | null, fallback?: string[]) => {
 export async function generateMetadata({
   params
 }: {
-  params: { slug: string[] }
+  params: Promise<{ slug: string[] }>
 }): Promise<Metadata> {
-  const segments = Array.isArray(params.slug) ? params.slug : []
+  const resolvedParams = await params
+  const segments = Array.isArray(resolvedParams.slug) ? resolvedParams.slug : []
   const path = `/${segments.join('/')}`
   const locale = getLocale(segments) as SupportedLocale
   const messages = localeMessages[locale] || localeMessages.nl
@@ -134,8 +135,9 @@ export async function generateMetadata({
   }
 }
 
-export default async function PublicPage({ params }: { params: { slug: string[] } }) {
-  const segments = Array.isArray(params.slug) ? params.slug : []
+export default async function PublicPage({ params }: { params: Promise<{ slug: string[] }> }) {
+  const resolvedParams = await params
+  const segments = Array.isArray(resolvedParams.slug) ? resolvedParams.slug : []
   const path = `/${segments.join('/')}`
   const locale = getLocale(segments) as SupportedLocale
   const messages = localeMessages[locale] || localeMessages.nl

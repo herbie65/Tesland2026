@@ -13,6 +13,7 @@ import {
 } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
 import { logAudit } from '@/lib/audit'
+import { sendTemplatedEmail } from '@/lib/email'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -116,11 +117,35 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       workOrderId = workOrder.id
     }
 
-    const cleanedBody = Object.fromEntries(
-      Object.entries(body || {}).filter(([, value]) => value !== undefined)
-    )
+    // Only include valid PlanningItem fields (exclude control fields and non-schema fields)
+    const validPlanningItemFields = [
+      'title',
+      'scheduledAt',
+      'durationMinutes',
+      'assigneeId',
+      'assigneeName',
+      'assigneeColor',
+      'location',
+      'customerId',
+      'customerName',
+      'vehicleId',
+      'vehiclePlate',
+      'vehicleLabel',
+      'planningTypeId',
+      'planningTypeName',
+      'planningTypeColor',
+      'notes',
+      'status',
+      'priority'
+    ]
     
-    const updateData: any = { ...cleanedBody }
+    const updateData: any = {}
+    for (const field of validPlanningItemFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field]
+      }
+    }
+    
     if (workOrderId) {
       updateData.workOrderId = workOrderId
     }
@@ -154,21 +179,21 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // Sync to work order if needed
     if (workOrderId && shouldSyncWorkOrder) {
       const workOrderUpdateData: any = {}
-      if (cleanedBody.title !== undefined) workOrderUpdateData.title = cleanedBody.title ?? item.title
-      if (cleanedBody.notes !== undefined) workOrderUpdateData.notes = cleanedBody.notes ?? item.notes
-      if (cleanedBody.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = cleanedBody.scheduledAt ? new Date(String(cleanedBody.scheduledAt)) : item.scheduledAt
+      if (body.title !== undefined) workOrderUpdateData.title = body.title ?? item.title
+      if (body.notes !== undefined) workOrderUpdateData.notes = body.notes ?? item.notes
+      if (body.scheduledAt !== undefined) workOrderUpdateData.scheduledAt = body.scheduledAt ? new Date(String(body.scheduledAt)) : item.scheduledAt
       // NOTE: durationMinutes and assigneeColor belong to PlanningItem, not WorkOrder - removed
-      if (cleanedBody.assigneeId !== undefined) workOrderUpdateData.assigneeId = cleanedBody.assigneeId ?? item.assigneeId
-      if (cleanedBody.assigneeName !== undefined) workOrderUpdateData.assigneeName = cleanedBody.assigneeName ?? item.assigneeName
-      if (cleanedBody.customerId !== undefined) workOrderUpdateData.customerId = cleanedBody.customerId ?? item.customerId
-      if (cleanedBody.customerName !== undefined) workOrderUpdateData.customerName = cleanedBody.customerName ?? item.customerName
-      if (cleanedBody.vehicleId !== undefined) workOrderUpdateData.vehicleId = cleanedBody.vehicleId ?? item.vehicleId
-      if (cleanedBody.vehiclePlate !== undefined) {
-        workOrderUpdateData.vehiclePlate = cleanedBody.vehiclePlate ?? item.vehiclePlate
-        workOrderUpdateData.licensePlate = cleanedBody.vehiclePlate ?? item.vehiclePlate
+      if (body.assigneeId !== undefined) workOrderUpdateData.assigneeId = body.assigneeId ?? item.assigneeId
+      if (body.assigneeName !== undefined) workOrderUpdateData.assigneeName = body.assigneeName ?? item.assigneeName
+      if (body.customerId !== undefined) workOrderUpdateData.customerId = body.customerId ?? item.customerId
+      if (body.customerName !== undefined) workOrderUpdateData.customerName = body.customerName ?? item.customerName
+      if (body.vehicleId !== undefined) workOrderUpdateData.vehicleId = body.vehicleId ?? item.vehicleId
+      if (body.vehiclePlate !== undefined) {
+        workOrderUpdateData.vehiclePlate = body.vehiclePlate ?? item.vehiclePlate
+        workOrderUpdateData.licensePlate = body.vehiclePlate ?? item.vehiclePlate
       }
-      if (cleanedBody.vehicleLabel !== undefined) workOrderUpdateData.vehicleLabel = cleanedBody.vehicleLabel ?? item.vehicleLabel
-      if (cleanedBody.partsRequired !== undefined) workOrderUpdateData.partsRequired = cleanedBody.partsRequired ?? null
+      if (body.vehicleLabel !== undefined) workOrderUpdateData.vehicleLabel = body.vehicleLabel ?? item.vehicleLabel
+      if (body.partsRequired !== undefined) workOrderUpdateData.partsRequired = body.partsRequired ?? null
 
       await prisma.workOrder.update({
         where: { id: workOrderId },
@@ -176,7 +201,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       })
     }
 
-    if (item.status === 'REQUEST' && cleanedBody.status !== 'REQUEST') {
+    if (item.status === 'REQUEST' && body.status !== 'REQUEST') {
       await logAudit(
         {
           action: 'PLANNING_APPROVED',
@@ -211,6 +236,56 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           }
         }
       }
+    }
+    
+    // Send confirmation email if requested
+    if (body?.sendEmail === true && body?.customerEmail && updatedItem.scheduledAt) {
+      try {
+        const scheduledDate = new Date(updatedItem.scheduledAt)
+        const dateString = Number.isNaN(scheduledDate.getTime())
+          ? ''
+          : scheduledDate.toISOString().slice(0, 10)
+        const timeString = Number.isNaN(scheduledDate.getTime())
+          ? ''
+          : scheduledDate.toTimeString().slice(0, 5)
+        
+        // Get vehicle details for merk/model
+        let merk = ''
+        let model = ''
+        if (updatedItem.vehicleId) {
+          const vehicle = await prisma.vehicle.findUnique({
+            where: { id: updatedItem.vehicleId },
+            select: { make: true, model: true }
+          })
+          if (vehicle) {
+            merk = vehicle.make || ''
+            model = vehicle.model || ''
+          }
+        }
+        
+        console.log('[Email] Sending confirmation email to:', body.customerEmail)
+        const result = await sendTemplatedEmail({
+          templateId: 'appointment_confirmed',
+          to: body.customerEmail,
+          variables: {
+            klantNaam: updatedItem.customerName || '',
+            datum: dateString,
+            tijd: timeString,
+            kenteken: updatedItem.vehiclePlate || '',
+            merk,
+            model
+          }
+        })
+        if (!result.success) {
+          console.error('[Email] Failed to send:', result.error)
+        } else {
+          console.log('[Email] Successfully sent confirmation email')
+        }
+      } catch (err: any) {
+        console.error('[Email] Exception while sending email:', err.message)
+      }
+    } else {
+      console.log('[Email] Not sending email. sendEmail:', body?.sendEmail, 'customerEmail:', body?.customerEmail, 'scheduledAt:', updatedItem.scheduledAt)
     }
     
     return NextResponse.json({ success: true, item: updatedItem })

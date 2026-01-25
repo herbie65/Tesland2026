@@ -16,6 +16,7 @@ type User = {
   planningHoursPerDay?: number | null
   workingDays?: string[]
   lastLoginAt?: string | null
+  icalUrl?: string | null
 }
 
 type PlanningRole = {
@@ -47,6 +48,7 @@ export default function UsersClient() {
   const [editColor, setEditColor] = useState("#4f46e5")
   const [editPlanningHoursPerDay, setEditPlanningHoursPerDay] = useState(8)
   const [editWorkingDays, setEditWorkingDays] = useState<string[]>(["mon", "tue", "wed", "thu", "fri"])
+  const [editIcalUrl, setEditIcalUrl] = useState("")
   const [showPhotoPicker, setShowPhotoPicker] = useState(false)
   const [showEditPhotoPicker, setShowEditPhotoPicker] = useState(false)
 
@@ -199,6 +201,7 @@ export default function UsersClient() {
     setEditColor(item.color || "#4f46e5")
     setEditPlanningHoursPerDay(item.planningHoursPerDay || 8)
     setEditWorkingDays(item.workingDays?.length ? item.workingDays : ["mon", "tue", "wed", "thu", "fri"])
+    setEditIcalUrl(item.icalUrl || "")
   }
 
   const cancelEdit = () => {
@@ -211,6 +214,7 @@ export default function UsersClient() {
     setEditColor("#4f46e5")
     setEditPlanningHoursPerDay(8)
     setEditWorkingDays(["mon", "tue", "wed", "thu", "fri"])
+    setEditIcalUrl("")
   }
 
   const saveEdit = async () => {
@@ -221,6 +225,10 @@ export default function UsersClient() {
         setError("Selecteer een rol.")
         return
       }
+      
+      const icalUrlValue = editIcalUrl?.trim() || null
+      console.log('Saving user with icalUrl:', icalUrlValue)
+      
       const response = await apiFetch(`/api/users/${editingId}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -231,16 +239,24 @@ export default function UsersClient() {
           active: editActive,
           color: editColor,
           planningHoursPerDay: editPlanningHoursPerDay,
-          workingDays: editWorkingDays
+          workingDays: editWorkingDays,
+          icalUrl: icalUrlValue
         })
       })
       const data = await response.json()
+      
+      console.log('Save response:', data)
+      
       if (!response.ok || !data.success) {
         throw new Error(data.error || "Failed to update user")
       }
+      
+      alert(icalUrlValue ? 'Gebruiker opgeslagen! iCal kalender gekoppeld.' : 'Gebruiker opgeslagen!')
+      
       cancelEdit()
       await loadItems()
     } catch (err: any) {
+      console.error('Save error:', err)
       setError(err.message)
     }
   }
@@ -616,6 +632,20 @@ export default function UsersClient() {
                           ))}
                         </div>
                       </div>
+                      <div className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+                        <label className="grid gap-2">
+                          iCal kalender URL
+                          <input
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                            value={editIcalUrl}
+                            onChange={(event) => setEditIcalUrl(event.target.value)}
+                            placeholder="https://calendar.google.com/calendar/ical/..."
+                          />
+                          <p className="text-xs text-slate-500">
+                            Plak hier de URL van een externe iCal kalender (Google Calendar, Outlook, etc.) om deze in de planning te tonen.
+                          </p>
+                        </label>
+                      </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
@@ -655,6 +685,16 @@ export default function UsersClient() {
                         <p className="mt-1 text-xs text-slate-500">
                           {item.workingDays?.length ? item.workingDays.map((day) => dayLabels[day]).join(", ") : "Geen werkdagen"}
                         </p>
+                        {item.icalUrl ? (
+                          <p className="mt-1 text-xs flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 font-medium">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              iCal kalender gekoppeld
+                            </span>
+                          </p>
+                        ) : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
