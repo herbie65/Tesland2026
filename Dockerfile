@@ -1,24 +1,23 @@
 # Multi-stage build for Next.js production
 
-# Stage 1: Dependencies
+# Stage 1: Dependencies  
 FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Copy package files AND prisma schema
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
+
+# Set Prisma to use binary targets for Alpine
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
+ENV PRISMA_QUERY_ENGINE_BINARY=/app/node_modules/.prisma/client/query-engine-linux-musl-openssl-3.0.x
+
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Install OpenSSL for Prisma generate
-RUN apk add --no-cache \
-    libc6-compat \
-    openssl \
-    && apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/v3.16/main openssl1.1-compat-libs
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -32,14 +31,15 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install dependencies including OpenSSL 1.1 compatibility
-RUN apk add --no-cache \
-    libc6-compat \
-    openssl \
-    && apk add --no-cache --repository=http://dl-cdn.alpinelinux.org/alpine/v3.16/main openssl1.1-compat-libs
+# Install required runtime dependencies
+RUN apk add --no-cache libc6-compat
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Set Prisma binary targets for Alpine with OpenSSL 3
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
+ENV PRISMA_QUERY_ENGINE_BINARY=/app/node_modules/.prisma/client/query-engine-linux-musl-openssl-3.0.x
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
