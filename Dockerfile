@@ -31,8 +31,6 @@ RUN npm run build
 # Stage 3: Runner (Production)
 FROM node:20-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache libc6-compat openssl
-RUN apk add --no-cache openssl1.1-compat
 
 # Install dependencies including OpenSSL 1.1 compatibility
 RUN apk add --no-cache \
