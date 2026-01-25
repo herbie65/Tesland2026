@@ -26,7 +26,7 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
-RUN ln -s /lib/libssl.so.3 /lib/libssl.so.1.1 || true
+RUN apk add --no-cache openssl1.1-compat
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
