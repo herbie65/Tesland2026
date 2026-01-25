@@ -9,10 +9,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 
-# Set Prisma to use binary targets for Alpine
-ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
-ENV PRISMA_QUERY_ENGINE_BINARY=/app/node_modules/.prisma/client/query-engine-linux-musl-openssl-3.0.x
-
 RUN npm ci --legacy-peer-deps
 
 # Stage 2: Builder
