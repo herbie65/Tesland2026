@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 
 const getSlugFromRequest = async (
   request: NextRequest,
-  context: { params: { slug?: string } } | { params: Promise<{ slug?: string }> }
+  context: { params: Promise<{ slug?: string }> }
 ) => {
   const params = await context.params
   const directSlug = params?.slug
@@ -14,7 +14,7 @@ const getSlugFromRequest = async (
 
 export async function GET(
   request: NextRequest,
-  context: { params: { slug?: string } } | { params: Promise<{ slug?: string }> }
+  context: { params: Promise<{ slug?: string }> }
 ) {
   try {
     const slug = await getSlugFromRequest(request, context)
