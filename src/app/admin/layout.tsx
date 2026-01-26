@@ -14,6 +14,7 @@ import {
   Cog6ToothIcon,
   CubeIcon,
   DocumentTextIcon,
+  FolderIcon,
   ReceiptRefundIcon,
   WrenchScrewdriverIcon,
   ShoppingCartIcon,
@@ -43,7 +44,15 @@ const NAV_ITEMS: NavItem[] = [
   { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },
   { type: 'link', name: 'Voertuigen', href: '/admin/vehicles', icon: TruckIcon },
-  { type: 'link', name: 'Producten', href: '/admin/products', icon: CubeIcon },
+  {
+    type: 'group',
+    name: 'Producten',
+    icon: CubeIcon,
+    children: [
+      { type: 'link', name: 'Alle Producten', href: '/admin/products', icon: CubeIcon },
+      { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
+    ]
+  },
   { type: 'link', name: 'Magazijn', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Gebruikers', href: '/admin/users', icon: UsersIcon },
   {
@@ -67,6 +76,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [salesOpen, setSalesOpen] = useState(false)
+  const [productsOpen, setProductsOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -255,6 +265,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setSalesOpen(true)
       }
     }
+    
+    const productsGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Producten')
+    if (productsGroup && productsGroup.type === 'group') {
+      const isActive = productsGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setProductsOpen(true)
+      }
+    }
   }, [pathname])
 
   useEffect(() => {
@@ -425,11 +443,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   if (item.type === 'group') {
                     const isActive = item.children.some((child) => child.href === pathname)
                     const showText = sidebarWidth >= 150 || isHovering
+                    const isOpen = item.name === 'Verkopen' ? salesOpen : item.name === 'Producten' ? productsOpen : false
+                    const setOpen = item.name === 'Verkopen' ? setSalesOpen : item.name === 'Producten' ? setProductsOpen : () => {}
+                    
                     return (
                       <div key={item.name} className="space-y-1">
                         <button
                           type="button"
-                          onClick={() => setSalesOpen((prev) => !prev)}
+                          onClick={() => setOpen((prev) => !prev)}
                           className={`flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
                             isActive ? 'active' : ''
                           } ${!showText ? 'justify-center' : ''}`}
@@ -446,12 +467,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             <>
                               <span className="flex-1 text-left whitespace-nowrap overflow-hidden">{item.name}</span>
                               <ChevronDownIcon
-                                className={`h-4 w-4 transition-transform ${salesOpen ? 'rotate-180' : ''}`}
+                                className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
                               />
                             </>
                           )}
                         </button>
-                        {salesOpen && showText ? (
+                        {isOpen && showText ? (
                           <div className="ml-6 space-y-1 border-l border-slate-200 pl-3">
                             {item.children.map((child) => {
                               const childActive = pathname === child.href
@@ -543,11 +564,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }
                 if (item.type === 'group') {
                   const isActive = item.children.some((child) => child.href === pathname)
+                  const isOpen = item.name === 'Verkopen' ? salesOpen : item.name === 'Producten' ? productsOpen : false
+                  const setOpen = item.name === 'Verkopen' ? setSalesOpen : item.name === 'Producten' ? setProductsOpen : () => {}
+                  
                   return (
                     <div key={item.name} className="space-y-1">
                       <button
                         type="button"
-                        onClick={() => setSalesOpen((prev) => !prev)}
+                        onClick={() => setOpen((prev) => !prev)}
                         className={`flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
                           isActive ? 'active' : ''
                         }`}
@@ -561,10 +585,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         </div>
                         <span className="flex-1 text-left">{item.name}</span>
                         <ChevronDownIcon
-                          className={`h-4 w-4 transition-transform ${salesOpen ? 'rotate-180' : ''}`}
+                          className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
                         />
                       </button>
-                      {salesOpen ? (
+                      {isOpen ? (
                         <div className="ml-6 space-y-1 border-l border-slate-200 pl-3">
                           {item.children.map((child) => {
                             const childActive = pathname === child.href
