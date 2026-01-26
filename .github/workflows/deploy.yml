@@ -1,0 +1,38 @@
+name: Deploy to Hetzner
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🚀 Deploy to Hetzner via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 46.62.229.245
+          username: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            
+            echo "📂 Navigating to project directory..."
+            cd /opt/tladmin
+            
+            echo "📥 Pulling latest code from GitHub..."
+            git pull origin main
+            
+            echo "🛑 Stopping existing containers..."
+            docker compose --env-file .env.production down
+            
+            echo "🏗️  Building Docker image..."
+            docker compose --env-file .env.production build --no-cache
+            
+            echo "🚀 Starting containers..."
+            docker compose --env-file .env.production up -d
+            
+            echo "✅ Deployment complete!"
+            docker compose --env-file .env.production ps
