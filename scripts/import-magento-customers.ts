@@ -93,7 +93,7 @@ class MagentoCustomerImporter {
           try {
             await this.importCustomer(customer);
           } catch (error) {
-            console.error(`   ✗ Error importing customer ${customer.email}:`, error.message);
+            console.error(`   ✗ Error importing customer ${customer.email}:`, error instanceof Error ? error.message : String(error));
             this.stats.errors++;
           }
 
@@ -105,7 +105,7 @@ class MagentoCustomerImporter {
         currentPage++;
 
       } catch (error) {
-        console.error(`Error fetching page ${currentPage}:`, error.message);
+        console.error(`Error fetching page ${currentPage}:`, error instanceof Error ? error.message : String(error));
         this.stats.errors++;
         break;
       }
@@ -175,17 +175,29 @@ class MagentoCustomerImporter {
       await prisma.customer.update({
         where: { id: existing.id },
         data: {
-          ...customerData,
-          // Keep existing data if new data is empty
           name: customerData.name || existing.name,
           email: customerData.email || existing.email,
+          customerNumber: customerData.customerNumber,
+          externalId: customerData.externalId,
+          source: customerData.source,
+          street: customerData.street,
+          city: customerData.city,
+          zipCode: customerData.zipCode,
+          countryId: customerData.countryId,
+          phone: customerData.phone,
+          company: customerData.company,
+          address: customerData.address as any,
+          displayName: customerData.displayName,
         },
       });
       this.stats.updated++;
     } else {
       // Create new customer
       await prisma.customer.create({
-        data: customerData,
+        data: {
+          ...customerData,
+          address: customerData.address as any,
+        },
       });
       this.stats.imported++;
     }

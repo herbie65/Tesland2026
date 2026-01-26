@@ -7,7 +7,7 @@ import SiteFooter from '@/app/components/SiteFooter'
 const prisma = new PrismaClient()
 
 interface Props {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }
 
 async function getCategory(slug: string) {
@@ -40,7 +40,8 @@ async function getCategory(slug: string) {
 }
 
 export default async function CategoryPage({ params }: Props) {
-  const category = await getCategory(params.slug)
+  const { slug } = await params
+  const category = await getCategory(slug)
 
   if (!category) {
     notFound()

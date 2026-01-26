@@ -120,7 +120,7 @@ class CategoryReImporter {
 
       return dbCategory.id;
     } catch (error) {
-      console.error(`   ✗ Error importing category ${category.name}:`, error.message);
+      console.error(`   ✗ Error importing category ${category.name}:`, error instanceof Error ? error.message : String(error));
       this.stats.errors++;
       return null;
     }

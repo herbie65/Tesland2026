@@ -91,7 +91,7 @@ class MagentoFullImporter {
       console.log(`   Errors: ${this.stats.errors}`);
 
     } catch (error) {
-      await this.completeSyncLog('failed', error instanceof Error ? error.message : 'Unknown error');
+      await this.completeSyncLog('failed', error instanceof Error ? error instanceof Error ? error.message : String(error) : 'Unknown error');
       console.error('\n❌ Import failed:', error);
       throw error;
     } finally {
@@ -219,7 +219,7 @@ class MagentoFullImporter {
         }
       }
     } catch (error) {
-      console.log(`   ⚠️  Skipping attributes (no permission): ${error.message}`);
+      console.log(`   ⚠️  Skipping attributes (no permission): ${error instanceof Error ? error.message : String(error)}`);
       // Continue without attributes - not critical for basic import
     }
   }

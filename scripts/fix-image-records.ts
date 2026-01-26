@@ -77,7 +77,7 @@ async function fixImageRecords() {
         }
 
       } catch (error) {
-        console.error(`✗ Error processing folder ${folder}:`, error.message);
+        console.error(`✗ Error processing folder ${folder}:`, error instanceof Error ? error.message : String(error));
         errors++;
       }
     }
@@ -142,7 +142,7 @@ async function processImagesForProduct(
       imageCount++;
     }
   } catch (error) {
-    console.error(`Error processing images for ${product.sku}:`, error.message);
+    console.error(`Error processing images for ${product.sku}:`, error instanceof Error ? error.message : String(error));
   }
 
   return imageCount;

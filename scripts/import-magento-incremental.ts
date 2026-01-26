@@ -66,7 +66,7 @@ class MagentoIncrementalSync {
       console.log(`   Errors: ${this.stats.errors}`);
 
     } catch (error) {
-      await this.completeSyncLog('failed', error instanceof Error ? error.message : 'Unknown error');
+      await this.completeSyncLog('failed', error instanceof Error ? error instanceof Error ? error.message : String(error) : 'Unknown error');
       console.error('\n❌ Sync failed:', error);
       throw error;
     } finally {

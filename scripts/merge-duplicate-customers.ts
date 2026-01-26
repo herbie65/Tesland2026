@@ -149,7 +149,7 @@ class CustomerMerger {
       this.stats.merged++;
 
     } catch (error) {
-      console.error(`   ✗ Error merging ${group.email}:`, error.message);
+      console.error(`   ✗ Error merging ${group.email}:`, error instanceof Error ? error.message : String(error));
       this.stats.errors++;
     }
   }

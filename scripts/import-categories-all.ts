@@ -18,7 +18,8 @@ async function importCategories() {
       'searchCriteria[pageSize]': 1000,
     });
 
-    const categories = response.items || [];
+    const data = response as { items?: any[] };
+    const categories = data.items || [];
     console.log(`✅ Found ${categories.length} categories in Magento\n`);
 
     let imported = 0;
@@ -77,7 +78,7 @@ async function importCategories() {
           console.log(`   ✓ Imported ${imported}/${categories.length} categories...`);
         }
       } catch (error) {
-        console.error(`   ✗ Error importing ${category.name}:`, error.message);
+        console.error(`   ✗ Error importing ${category.name}:`, error instanceof Error ? error.message : String(error));
         errors++;
       }
     }
@@ -112,11 +113,11 @@ async function linkProductsToCategories() {
 
   for (const product of products) {
     try {
-      const fullProduct = await magentoClient['request'](
+      const fullProduct: any = await magentoClient['request'](
         'GET',
         `/products/${encodeURIComponent(product.sku)}`
       );
-
+      
       if (fullProduct.extension_attributes?.category_links) {
         for (const catLink of fullProduct.extension_attributes.category_links) {
           const category = await prisma.category.findUnique({
@@ -124,7 +125,7 @@ async function linkProductsToCategories() {
           });
 
           if (category) {
-            await prisma.productCategoryLink.upsert({
+            await prisma.productCategory.upsert({
               where: {
                 productId_categoryId: {
                   productId: product.id,
