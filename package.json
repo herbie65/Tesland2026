@@ -22,6 +22,9 @@
     "rdw:status": "tsx scripts/count-rdw-status.ts",
     "rdw:bulk-import": "tsx scripts/rdw-bulk-import.ts",
     "rdw:bulk-import:force": "tsx scripts/rdw-bulk-import.ts --force",
+    "vat:seed": "tsx scripts/seed-vat-data.ts",
+    "vat:migrate": "tsx scripts/migrate-vat.ts",
+    "vat:test": "tsx scripts/test-vat-calculator.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -42,6 +45,7 @@
     "@tiptap/starter-kit": "^3.17.1",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
+    "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.3",
     "next": "16.1.3",
