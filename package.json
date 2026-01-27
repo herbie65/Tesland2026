@@ -25,6 +25,7 @@
     "vat:seed": "tsx scripts/seed-vat-data.ts",
     "vat:migrate": "tsx scripts/migrate-vat.ts",
     "vat:test": "tsx scripts/test-vat-calculator.ts",
+    "vat:test-vies": "tsx scripts/test-vies-validator.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
