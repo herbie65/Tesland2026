@@ -67,7 +67,6 @@ type Vehicle = {
   rdwMaxTowWeightBraked?: number | null
   rdwMaxTowWeightUnbraked?: number | null
   rdwMaxMass?: number | null
-  rdwChassisNumber?: string | null
 }
 
 // Column options constant - defined outside component
@@ -190,7 +189,6 @@ export default function VehiclesClient() {
   const [editModel, setEditModel] = useState('')
   const [editLicensePlate, setEditLicensePlate] = useState('')
   const [editVin, setEditVin] = useState('')
-  const [editChassisNumber, setEditChassisNumber] = useState('')
   const [editCustomerId, setEditCustomerId] = useState('none')
   const [rdwLoading, setRdwLoading] = useState(false)
   const [rdwError, setRdwError] = useState<string | null>(null)
@@ -1136,15 +1134,6 @@ const filteredItems = useMemo(() => {
                   placeholder="Optioneel"
                 />
               </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Chassisnummer
-              <input
-                className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                value={editChassisNumber}
-                onChange={(event) => setEditChassisNumber(event.target.value)}
-                placeholder="Optioneel"
-              />
-            </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
                 Eigenaar
                 <select
