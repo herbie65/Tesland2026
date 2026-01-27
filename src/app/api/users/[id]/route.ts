@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const actor = await requireAuth(request)
     const body = await request.json()
-    const { displayName, email, roleId, photoURL, photoUrl, phoneNumber, isSystemAdmin, active, color, planningHoursPerDay, workingDays, icalUrl } = body || {}
+    const { displayName, email, roleId, photoURL, photoUrl, phoneNumber, isSystemAdmin, active, color, planningHoursPerDay, workingDays, icalUrl, voipExtension } = body || {}
     
     console.log('PATCH /api/users/[id] - Received icalUrl:', icalUrl)
     
@@ -43,6 +43,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (planningHoursPerDay !== undefined) updateData.planningHoursPerDay = planningHoursPerDay
     if (workingDays !== undefined) updateData.workingDays = workingDays
     if (icalUrl !== undefined) updateData.icalUrl = icalUrl
+    if (voipExtension !== undefined) updateData.voipExtension = voipExtension
     
     console.log('Update data for icalUrl:', updateData.icalUrl)
 

@@ -1126,6 +1126,62 @@ export default function SettingsClient() {
         </div>
       </section>
 
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">VoIP / Telefonie</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Klik-en-bel integratie (VoIPgrid/Verbonden.nl)</p>
+          </div>
+          <button
+            className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
+            type="button"
+            onClick={() => saveGroup("voip")}
+          >
+            Opslaan
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-xs text-slate-700 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.voip?.enabled)}
+              onChange={(event) => updateGroup("voip", "enabled", event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
+            />
+            Klik-en-bel functionaliteit inschakelen
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
+            API Email
+            <input
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+              type="email"
+              value={settings.voip?.apiEmail || ""}
+              onChange={(event) => updateGroup("voip", "apiEmail", event.target.value)}
+              placeholder="gebruiker@bedrijf.nl"
+            />
+            <p className="text-[10px] text-slate-400 mt-0.5">Je VoIPgrid gebruikersnaam / email adres</p>
+          </label>
+          <label className="grid gap-1.5 text-xs font-medium text-slate-700 sm:col-span-2">
+            API Token
+            <input
+              className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50 font-mono text-xs"
+              type="password"
+              value={settings.voip?.apiToken || ""}
+              onChange={(event) => updateGroup("voip", "apiToken", event.target.value)}
+              placeholder="17591f6e4d89764e31b6b1d25cea8f179c54b518"
+            />
+            <p className="text-[10px] text-slate-400 mt-0.5">Te vinden in VoIPgrid portal onder Persoonlijke instellingen</p>
+          </label>
+          <div className="sm:col-span-2 rounded-lg bg-blue-50/50 border border-blue-200/30 p-3">
+            <p className="text-xs text-slate-600 leading-relaxed">
+              <strong>💡 Eindbestemming per gebruiker:</strong><br/>
+              Elke gebruiker kan in hun eigen profiel een VoIP extensie instellen (bijv. "206"). 
+              Deze eindbestemming wordt gebruikt wanneer zij op een telefoonnummer klikken.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {loading ? (
         <p className="text-sm text-slate-500">Instellingen laden...</p>
       ) : null}

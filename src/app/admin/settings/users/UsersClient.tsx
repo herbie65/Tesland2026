@@ -17,6 +17,7 @@ type User = {
   workingDays?: string[]
   lastLoginAt?: string | null
   icalUrl?: string | null
+  voipExtension?: string | null
 }
 
 type PlanningRole = {
@@ -49,6 +50,7 @@ export default function UsersClient() {
   const [editPlanningHoursPerDay, setEditPlanningHoursPerDay] = useState(8)
   const [editWorkingDays, setEditWorkingDays] = useState<string[]>(["mon", "tue", "wed", "thu", "fri"])
   const [editIcalUrl, setEditIcalUrl] = useState("")
+  const [editVoipExtension, setEditVoipExtension] = useState("")
   const [showPhotoPicker, setShowPhotoPicker] = useState(false)
   const [showEditPhotoPicker, setShowEditPhotoPicker] = useState(false)
 
@@ -202,6 +204,7 @@ export default function UsersClient() {
     setEditPlanningHoursPerDay(item.planningHoursPerDay || 8)
     setEditWorkingDays(item.workingDays?.length ? item.workingDays : ["mon", "tue", "wed", "thu", "fri"])
     setEditIcalUrl(item.icalUrl || "")
+    setEditVoipExtension(item.voipExtension || "")
   }
 
   const cancelEdit = () => {
@@ -215,6 +218,7 @@ export default function UsersClient() {
     setEditPlanningHoursPerDay(8)
     setEditWorkingDays(["mon", "tue", "wed", "thu", "fri"])
     setEditIcalUrl("")
+    setEditVoipExtension("")
   }
 
   const saveEdit = async () => {
@@ -227,6 +231,7 @@ export default function UsersClient() {
       }
       
       const icalUrlValue = editIcalUrl?.trim() || null
+      const voipExtensionValue = editVoipExtension?.trim() || null
       console.log('Saving user with icalUrl:', icalUrlValue)
       
       const response = await apiFetch(`/api/users/${editingId}`, {
@@ -240,7 +245,8 @@ export default function UsersClient() {
           color: editColor,
           planningHoursPerDay: editPlanningHoursPerDay,
           workingDays: editWorkingDays,
-          icalUrl: icalUrlValue
+          icalUrl: icalUrlValue,
+          voipExtension: voipExtensionValue
         })
       })
       const data = await response.json()
@@ -643,6 +649,20 @@ export default function UsersClient() {
                           />
                           <p className="text-xs text-slate-500">
                             Plak hier de URL van een externe iCal kalender (Google Calendar, Outlook, etc.) om deze in de planning te tonen.
+                          </p>
+                        </label>
+                      </div>
+                      <div className="grid gap-2 text-sm font-medium text-slate-700">
+                        <label className="grid gap-2">
+                          VoIP Extensie / Eindbestemming
+                          <input
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                            value={editVoipExtension}
+                            onChange={(event) => setEditVoipExtension(event.target.value)}
+                            placeholder="206"
+                          />
+                          <p className="text-xs text-slate-500">
+                            Het toestel/extensie nummer dat gebeld wordt bij klik-en-bel (bijv. 206, 101, etc.)
                           </p>
                         </label>
                       </div>

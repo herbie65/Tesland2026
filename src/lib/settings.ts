@@ -93,6 +93,12 @@ export type EmailSettings = {
   signature?: string
 }
 
+export type VoipSettings = {
+  enabled: boolean
+  apiEmail: string
+  apiToken: string
+}
+
 export type WorkOrderDefaults = {
   workOrderStatusDefault: string
   defaultDurationMinutes: number
@@ -357,6 +363,17 @@ export const getWorkOrderDefaults = async (): Promise<WorkOrderDefaults> => {
   return {
     workOrderStatusDefault,
     defaultDurationMinutes: duration
+  }
+}
+
+export const getVoipSettings = async (): Promise<VoipSettings | null> => {
+  const data = await readSettingsDocOptional('voip')
+  if (!data) return null
+  
+  return {
+    enabled: data?.enabled === true,
+    apiEmail: String(data?.apiEmail || ''),
+    apiToken: String(data?.apiToken || '')
   }
 }
 
