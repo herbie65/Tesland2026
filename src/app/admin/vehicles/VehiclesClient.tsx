@@ -921,10 +921,9 @@ const filteredItems = useMemo(() => {
                       setCurrentPage(1)
                     }}
                   >
-                    <option value={25}>25</option>
+                    <option value={20}>20</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
-                    <option value={250}>250</option>
                   </select>
                 </label>
               </div>
