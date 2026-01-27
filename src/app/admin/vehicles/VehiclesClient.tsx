@@ -477,7 +477,7 @@ const loadItems = async () => {
       setError(null)
       const [vehiclesResponse, customersResponse] = await Promise.all([
         fetch(`/api/vehicles?page=${currentPage}&limit=${itemsPerPage}&search=${searchTerm}`),
-        fetch('/api/customers')
+        fetch('/api/customers/search')
       ])
       const vehiclesData = await vehiclesResponse.json()
       const customersData = await customersResponse.json()

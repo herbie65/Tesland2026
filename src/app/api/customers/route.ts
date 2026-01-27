@@ -5,12 +5,9 @@ export async function GET() {
   try {
     const items = await prisma.customer.findMany({
       orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        company: true,
-      }
+      include: {
+        vehicles: true, // Include related vehicles for admin page
+      },
     })
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
