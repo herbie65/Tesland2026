@@ -184,7 +184,6 @@ export default function VehiclesClient() {
   const [licensePlate, setLicensePlate] = useState('')
   const [vin, setVin] = useState('')
   const [customerId, setCustomerId] = useState('none')
-  const [transferTargetById, setTransferTargetById] = useState<Record<string, string>>({})
   const [showEdit, setShowEdit] = useState(false)
   const [editingItem, setEditingItem] = useState<Vehicle | null>(null)
   const [editBrand, setEditBrand] = useState('')
@@ -529,30 +528,6 @@ useEffect(() => {
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to delete vehicle')
       }
-      await loadItems()
-    } catch (err: any) {
-      setError(err.message)
-    }
-  }
-
-  const handleTransfer = async (item: Vehicle) => {
-    const nextOwner = transferTargetById[item.id]
-    if (!nextOwner || nextOwner === 'none') {
-      setError('Selecteer eerst een nieuwe eigenaar.')
-      return
-    }
-    try {
-      setError(null)
-      const response = await fetch(`/api/vehicles/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transferToCustomerId: nextOwner })
-      })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to transfer vehicle')
-      }
-      setTransferTargetById((prev) => ({ ...prev, [item.id]: 'none' }))
       await loadItems()
     } catch (err: any) {
       setError(err.message)
@@ -988,23 +963,6 @@ const filteredItems = useMemo(() => {
                     ))}
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1.5">
-                        <select
-                          className="rounded-lg border border-slate-200/50 bg-white/70 px-2 py-1 text-xs backdrop-blur-sm transition-all duration-200 hover:bg-white/80 focus:border-purple-400 focus:bg-white focus:ring-2 focus:ring-purple-200/50"
-                          value={transferTargetById[item.id] || 'none'}
-                          onChange={(event) =>
-                            setTransferTargetById((prev) => ({
-                              ...prev,
-                              [item.id]: event.target.value
-                            }))
-                          }
-                        >
-                          <option value="none">Kies klant...</option>
-                          {customers.map((customer) => (
-                            <option key={customer.id} value={customer.id}>
-                              {customer.name}
-                            </option>
-                          ))}
-                        </select>
                         <button
                           className="rounded-lg border border-slate-300/50 bg-white/60 px-2 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
                           type="button"
@@ -1012,14 +970,6 @@ const filteredItems = useMemo(() => {
                           title="Bewerken"
                         >
                           ✏️
-                        </button>
-                        <button
-                          className="rounded-lg border border-purple-300/50 bg-gradient-to-br from-purple-500/80 to-purple-600/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm transition-all duration-200 hover:from-purple-600/80 hover:to-purple-700/80 hover:shadow-md hover:shadow-purple-500/20 active:scale-95"
-                          type="button"
-                          onClick={() => handleTransfer(item)}
-                          title="Overzetten naar geselecteerde klant"
-                        >
-                          ➜
                         </button>
                         <button
                           className="rounded-lg border border-slate-400/50 bg-gradient-to-br from-slate-500/80 to-slate-600/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm transition-all duration-200 hover:from-slate-600/80 hover:to-slate-700/80 hover:shadow-md hover:shadow-slate-500/20 active:scale-95"
