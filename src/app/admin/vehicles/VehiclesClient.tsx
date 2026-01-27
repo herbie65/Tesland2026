@@ -618,7 +618,8 @@ const loadItems = async () => {
     if (!editingItem) return
     try {
       const normalized = editLicensePlate.trim().toLowerCase()
-      if (!normalized || normalized === lastRdwPlate) return
+      if (!normalized) return
+      
       setRdwError(null)
       setRdwLoading(true)
       const response = await fetch(`/api/vehicles/${editingItem.id}/rdw`, {
