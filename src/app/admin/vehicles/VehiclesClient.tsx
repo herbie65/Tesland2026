@@ -986,7 +986,8 @@ const filteredItems = useMemo(() => {
                 {paginatedItems.map((item) => (
                   <tr 
                     key={item.id} 
-                    className="hover:bg-slate-50 cursor-pointer"
+                    className="hover:bg-slate-50 cursor-pointer transition-colors duration-150"
+                    onClick={() => openEdit(item)}
                     onDoubleClick={() => {
                       setDetailViewItem(item)
                       setShowDetailView(true)
@@ -1004,17 +1005,12 @@ const filteredItems = useMemo(() => {
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1.5">
                         <button
-                          className="rounded-lg border border-slate-300/50 bg-white/60 px-2 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
-                          type="button"
-                          onClick={() => openEdit(item)}
-                          title="Bewerken"
-                        >
-                          ✏️
-                        </button>
-                        <button
                           className="rounded-lg border border-slate-400/50 bg-gradient-to-br from-slate-500/80 to-slate-600/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm transition-all duration-200 hover:from-slate-600/80 hover:to-slate-700/80 hover:shadow-md hover:shadow-slate-500/20 active:scale-95"
                           type="button"
-                          onClick={() => handleDelete(item)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(item)
+                          }}
                           title="Verwijderen"
                         >
                           🗑️

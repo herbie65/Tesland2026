@@ -19,6 +19,9 @@
     "import:magento:customers": "tsx scripts/import-magento-customers.ts",
     "customers:merge-duplicates": "tsx scripts/merge-duplicate-customers.ts",
     "customers:delete-empty": "tsx scripts/delete-empty-customers.ts",
+    "rdw:status": "tsx scripts/count-rdw-status.ts",
+    "rdw:bulk-import": "tsx scripts/rdw-bulk-import.ts",
+    "rdw:bulk-import:force": "tsx scripts/rdw-bulk-import.ts --force",
     "postinstall": "prisma generate"
   },
   "dependencies": {
