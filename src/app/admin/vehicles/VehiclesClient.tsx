@@ -274,73 +274,58 @@ export default function VehiclesClient() {
     loadPreferences()
   }, [])
 
-  // Save visible columns to database
+  // Debounced save function
+  const debouncedSaveRef = useRef<NodeJS.Timeout>()
+  
+  const savePreference = async (key: string, value: any) => {
+    try {
+      await fetch('/api/user-preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value })
+      })
+    } catch (error) {
+      console.error(`Error saving ${key}:`, error)
+    }
+  }
+
+  // Save visible columns to database (debounced)
   useEffect(() => {
-    const savePreference = async () => {
-      try {
-        await fetch('/api/user-preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'vehicles-columns',
-            value: visibleColumns
-          })
-        })
-      } catch (error) {
-        console.error('Error saving visible columns:', error)
-      }
+    if (visibleColumns.length === 0) return
+    
+    if (debouncedSaveRef.current) {
+      clearTimeout(debouncedSaveRef.current)
     }
     
-    // Only save if not initial render
-    if (visibleColumns.length > 0) {
-      savePreference()
-    }
+    debouncedSaveRef.current = setTimeout(() => {
+      savePreference('vehicles-columns', visibleColumns)
+    }, 1000) // Save after 1 second of no changes
   }, [visibleColumns])
   
-  // Save column order to database
+  // Save column order to database (debounced)
   useEffect(() => {
-    const savePreference = async () => {
-      try {
-        await fetch('/api/user-preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'vehicles-column-order',
-            value: columnOrder
-          })
-        })
-      } catch (error) {
-        console.error('Error saving column order:', error)
-      }
+    if (columnOrder.length === 0 || columnOrder.length !== COLUMN_OPTIONS.length) return
+    
+    if (debouncedSaveRef.current) {
+      clearTimeout(debouncedSaveRef.current)
     }
     
-    // Only save if not initial state
-    if (columnOrder.length > 0 && columnOrder.length === COLUMN_OPTIONS.length) {
-      savePreference()
-    }
+    debouncedSaveRef.current = setTimeout(() => {
+      savePreference('vehicles-column-order', columnOrder)
+    }, 1000)
   }, [columnOrder])
   
-  // Save column widths to database
+  // Save column widths to database (debounced)
   useEffect(() => {
-    const savePreference = async () => {
-      try {
-        await fetch('/api/user-preferences', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'vehicles-column-widths',
-            value: columnWidths
-          })
-        })
-      } catch (error) {
-        console.error('Error saving column widths:', error)
-      }
+    if (Object.keys(columnWidths).length === 0) return
+    
+    if (debouncedSaveRef.current) {
+      clearTimeout(debouncedSaveRef.current)
     }
     
-    // Only save if there are widths set
-    if (Object.keys(columnWidths).length > 0) {
-      savePreference()
-    }
+    debouncedSaveRef.current = setTimeout(() => {
+      savePreference('vehicles-column-widths', columnWidths)
+    }, 1000)
   }, [columnWidths])
 
   const customerLookup = useMemo(() => {
