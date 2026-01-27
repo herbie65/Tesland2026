@@ -974,3 +974,66 @@ model MagentoSyncLog {
   @@index([startedAt])
   @@map("magento_sync_logs")
 }
+
+// ========================================
+// BTW / VAT SYSTEM
+// ========================================
+
+model VatRate {
+  id              String      @id @default(uuid())
+  code            String      @unique // "HIGH", "LOW", "ZERO", "REVERSED"
+  name            String      // "Hoog tarief", "Laag tarief", etc.
+  percentage      Decimal     @db.Decimal(5, 2) // 21.00, 9.00, 0.00
+  isActive        Boolean     @default(true) @map("is_active")
+  isDefault       Boolean     @default(false) @map("is_default")
+  validFrom       DateTime    @default(now()) @map("valid_from")
+  validUntil      DateTime?   @map("valid_until")
+  description     String?     @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  laborLines      LaborLine[]
+  partLines       PartLine[]
+
+  @@index([isActive])
+  @@index([isDefault])
+  @@map("vat_rates")
+}
+
+model VatReport {
+  id                    String    @id @default(uuid())
+  periodStart           DateTime  @map("period_start")
+  periodEnd             DateTime  @map("period_end")
+  quarter               Int
+  year                  Int
+  
+  salesSubtotalHigh     Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_high")
+  salesVatHigh          Decimal   @default(0) @db.Decimal(10, 2) @map("sales_vat_high")
+  salesSubtotalLow      Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_low")
+  salesVatLow           Decimal   @default(0) @db.Decimal(10, 2) @map("sales_vat_low")
+  salesSubtotalZero     Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_zero")
+  
+  purchaseSubtotalHigh  Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_subtotal_high")
+  purchaseVatHigh       Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_vat_high")
+  purchaseSubtotalLow   Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_subtotal_low")
+  purchaseVatLow        Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_vat_low")
+  
+  totalSalesVat         Decimal   @default(0) @db.Decimal(10, 2) @map("total_sales_vat")
+  totalPurchaseVat      Decimal   @default(0) @db.Decimal(10, 2) @map("total_purchase_vat")
+  vatToPay              Decimal   @default(0) @db.Decimal(10, 2) @map("vat_to_pay")
+  vatToReceive          Decimal   @default(0) @db.Decimal(10, 2) @map("vat_to_receive")
+  
+  status                String    @default("draft")
+  submittedAt           DateTime? @map("submitted_at")
+  paidAt                DateTime? @map("paid_at")
+  
+  notes                 String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  
+  @@unique([year, quarter])
+  @@index([status])
+  @@index([year])
+  @@map("vat_reports")
+}
