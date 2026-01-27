@@ -49,7 +49,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         make: nextBrand,
         model: nextModel,
         licensePlate: normalizedPlate,
-        rdwData: baseRecord as any
+        rdwData: baseRecord as any,
+        // Store flattened RDW fields for easy access
+        ...mapped
       }
     })
     
