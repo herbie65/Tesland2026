@@ -62,15 +62,29 @@ export async function POST(request: NextRequest) {
     console.log(`📋 Found ${customersRows.length} customers and ${vehiclesRows.length} vehicles in CSV`)
 
     if (dryRun) {
+      // Check for duplicates in preview mode
+      const duplicateEmails = await prisma.$queryRaw<Array<{ email: string; count: bigint }>>`
+        SELECT email, COUNT(*) as count
+        FROM customers
+        WHERE email IS NOT NULL AND email != ''
+        GROUP BY email
+        HAVING COUNT(*) > 1
+        ORDER BY COUNT(*) DESC
+      `
+      
       return NextResponse.json({
         success: true,
         dryRun: true,
         customersCount: customersRows.length,
         vehiclesCount: vehiclesRows.length,
-        message: 'Preview mode - no changes made'
+        duplicatesFound: duplicateEmails.length,
+        message: `Preview: Would re-link ${vehiclesRows.length} vehicles and merge ${duplicateEmails.length} duplicate customers`
       })
     }
 
+    // Step 1: Re-link vehicles to correct customers
+    console.log('\n📦 Step 1: Re-linking vehicles to correct customers...')
+    
     // Build mapping: Automaat ID → Customer in database
     // First, get all existing customers with externalId (from Magento)
     const existingCustomers = await prisma.customer.findMany({
@@ -156,18 +170,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`\n✅ Re-import complete:`)
+    console.log(`\n✅ Vehicle re-linking complete:`)
     console.log(`   - Updated: ${updated}`)
     console.log(`   - Skipped: ${skipped}`)
     console.log(`   - Errors: ${errors}`)
 
+    // Step 2: Merge duplicate customers
+    console.log('\n🔗 Step 2: Merging duplicate customers...')
+    
+    const mergeStats = await mergeDuplicateCustomers()
+    
+    console.log(`\n✅ Duplicate merge complete:`)
+    console.log(`   - Merged: ${mergeStats.merged}`)
+    console.log(`   - Skipped: ${mergeStats.skipped}`)
+    console.log(`   - Errors: ${mergeStats.errors}`)
+
     return NextResponse.json({
       success: true,
       dryRun: false,
-      updated,
-      skipped,
-      errors,
-      message: `Successfully re-linked ${updated} vehicles to correct customers`
+      vehicleUpdates: { updated, skipped, errors },
+      customerMerge: mergeStats,
+      message: `Successfully re-linked ${updated} vehicles and merged ${mergeStats.merged} duplicate customers`
     })
 
   } catch (error: any) {
@@ -179,4 +202,106 @@ export async function POST(request: NextRequest) {
   } finally {
     await prisma.$disconnect()
   }
+}
+
+// Merge duplicate customers based on email
+async function mergeDuplicateCustomers() {
+  const stats = { merged: 0, skipped: 0, errors: 0 }
+
+  // Find all duplicate emails
+  const duplicateEmails = await prisma.$queryRaw<Array<{ email: string; count: bigint }>>`
+    SELECT email, COUNT(*) as count
+    FROM customers
+    WHERE email IS NOT NULL AND email != ''
+    GROUP BY email
+    HAVING COUNT(*) > 1
+    ORDER BY COUNT(*) DESC
+  `
+
+  console.log(`   Found ${duplicateEmails.length} duplicate emails`)
+
+  for (const { email } of duplicateEmails) {
+    try {
+      const customers = await prisma.customer.findMany({
+        where: { email },
+        include: {
+          vehicles: { select: { id: true } },
+          workOrders: { select: { id: true } },
+          invoices: { select: { id: true } },
+        },
+      })
+
+      if (customers.length < 2) {
+        stats.skipped++
+        continue
+      }
+
+      // Choose master: prefer customer with most data
+      const master = customers.sort((a, b) => {
+        const aData = a.vehicles.length + a.workOrders.length + a.invoices.length
+        const bData = b.vehicles.length + b.workOrders.length + b.invoices.length
+        return bData - aData
+      })[0]
+
+      const duplicates = customers.filter(c => c.id !== master.id)
+
+      console.log(`   📧 ${email}: Merging ${duplicates.length} into ${master.name}`)
+
+      for (const duplicate of duplicates) {
+        // Move all relations to master
+        await prisma.$transaction([
+          // Move vehicles
+          prisma.vehicle.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Move work orders
+          prisma.workOrder.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Move invoices
+          prisma.invoice.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Move credit invoices
+          prisma.creditInvoice.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Move planning items
+          prisma.planningItem.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Move orders
+          prisma.order.updateMany({
+            where: { customerId: duplicate.id },
+            data: { customerId: master.id }
+          }),
+          // Update master source to include both
+          prisma.customer.update({
+            where: { id: master.id },
+            data: { 
+              source: master.source?.includes('magento') && master.source?.includes('manual') 
+                ? master.source 
+                : `${master.source || 'manual'},magento`
+            }
+          }),
+          // Delete duplicate
+          prisma.customer.delete({
+            where: { id: duplicate.id }
+          })
+        ])
+      }
+
+      stats.merged++
+    } catch (error: any) {
+      console.error(`   ❌ Error merging ${email}:`, error.message)
+      stats.errors++
+    }
+  }
+
+  return stats
 }
