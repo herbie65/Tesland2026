@@ -61,12 +61,22 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      // Try to find customer by externalId (Automaat customer ID)
+      // Try to find customer by Automaat customer ID
+      // The vehicle CSV has customerId which is the Automaat customer ID (column 1 in customers CSV)
+      // We need to look up the customerNumber from Automaat CSV (column 2)
+      // Then find the database customer where externalId matches that customerNumber
       let customerId: string | null = null
-      const automatCustomerId = row.customerId?.trim()
-      if (automatCustomerId) {
+      const customerNameFromVehicle = row.customerName?.trim()
+      
+      // First try: Find by customer name (most reliable for now)
+      if (customerNameFromVehicle) {
         const customer = await prisma.customer.findFirst({
-          where: { externalId: automatCustomerId }
+          where: { 
+            name: {
+              contains: customerNameFromVehicle,
+              mode: 'insensitive'
+            }
+          }
         })
         if (customer) {
           customerId = customer.id
