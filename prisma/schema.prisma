@@ -148,6 +148,25 @@ model Vehicle {
   notes           String?   @db.Text
   rdwData         Json?     @map("rdw_data") // RDW API response
   externalId      String?   @map("external_id") // Automaat ID
+  
+  // RDW flattened fields for easy access
+  rdwChassisNumber            String?   @map("rdw_chassis_number")
+  rdwColor                    String?   @map("rdw_color")
+  rdwVehicleType              String?   @map("rdw_vehicle_type")
+  rdwEngineCode               String?   @map("rdw_engine_code")
+  rdwBuildYear                Int?      @map("rdw_build_year")
+  rdwRegistrationDatePart1    String?   @map("rdw_registration_date_part1")
+  rdwOwnerSince               String?   @map("rdw_owner_since")
+  rdwOwnerCount               Int?      @map("rdw_owner_count")
+  rdwApkDueDate               String?   @map("rdw_apk_due_date")
+  rdwOdometer                 Int?      @map("rdw_odometer")
+  rdwOdometerJudgement        String?   @map("rdw_odometer_judgement")
+  rdwFuelType                 String?   @map("rdw_fuel_type")
+  rdwEmptyWeight              Int?      @map("rdw_empty_weight")
+  rdwMaxTowWeightBraked       Int?      @map("rdw_max_tow_weight_braked")
+  rdwMaxTowWeightUnbraked     Int?      @map("rdw_max_tow_weight_unbraked")
+  rdwMaxMass                  Int?      @map("rdw_max_mass")
+  
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
