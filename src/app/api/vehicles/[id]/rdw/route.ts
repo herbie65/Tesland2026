@@ -33,13 +33,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'licensePlate is required' }, { status: 400 })
     }
 
+    console.log(`🔍 RDW lookup for: ${normalizedPlate}`)
+    
     const rdwResult = await getRdwData(normalizedPlate)
     const baseRecord = Array.isArray(rdwResult.base) ? rdwResult.base[0] : null
     if (!baseRecord) {
+      console.log('❌ No RDW data found')
       return NextResponse.json({ success: false, error: 'Kenteken niet gevonden' }, { status: 404 })
     }
     
+    console.log('✅ RDW data found, mapping fields...')
     const mapped = mapRdwFields(baseRecord, rdwResult.fuel)
+    console.log('Mapped RDW fields:', mapped)
+    
     const nextBrand = existing.make || baseRecord.merk || null
     const nextModel = existing.model || baseRecord.handelsbenaming || null
     
@@ -52,12 +58,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         rdwData: baseRecord as any,
         // Store flattened RDW fields for easy access
         ...mapped
+      },
+      include: {
+        customer: true
       }
     })
     
+    console.log('✅ Vehicle updated with RDW data')
     return NextResponse.json({ success: true, item: updated })
   } catch (error: any) {
-    console.error('Error fetching RDW data:', error)
+    console.error('❌ Error fetching RDW data:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   }
 }
