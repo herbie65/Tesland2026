@@ -2,7 +2,7 @@
 // Migrated from Firestore collections
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -16,76 +16,76 @@ datasource db {
 // ========================================
 
 model User {
-  id              String    @id @default(uuid())
-  uid             String?   @unique // Optional: For backward compatibility with Firebase
-  email           String    @unique
-  password        String    // Bcrypt hashed password
-  displayName     String?   @map("display_name")
-  photoURL        String?   @map("photo_url")
-  phoneNumber     String?   @map("phone_number")
-  roleId          String?   @map("role_id")
-  role            String?   // Legacy/denormalized role name - DO NOT UPDATE DIRECTLY
-  isSystemAdmin   Boolean   @default(false) @map("is_system_admin")
-  isActive        Boolean   @default(true) @map("is_active")
-  lastLoginAt     DateTime? @map("last_login_at")
-  
+  id            String    @id @default(uuid())
+  uid           String?   @unique // Optional: For backward compatibility with Firebase
+  email         String    @unique
+  password      String // Bcrypt hashed password
+  displayName   String?   @map("display_name")
+  photoURL      String?   @map("photo_url")
+  phoneNumber   String?   @map("phone_number")
+  roleId        String?   @map("role_id")
+  role          String? // Legacy/denormalized role name - DO NOT UPDATE DIRECTLY
+  isSystemAdmin Boolean   @default(false) @map("is_system_admin")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+
   // Planning fields
-  color               String?   @default("#4f46e5")
-  planningHoursPerDay Float?    @map("planning_hours_per_day")
-  workingDays         String[]  @default([]) @map("working_days")
-  
+  color               String?  @default("#4f46e5")
+  planningHoursPerDay Float?   @map("planning_hours_per_day")
+  workingDays         String[] @default([]) @map("working_days")
+
   // Profile settings
-  profilePhoto    String?   @map("profile_photo")
-  backgroundPhoto String?   @map("background_photo")
-  transparency    Int?      @default(30)
+  profilePhoto    String? @map("profile_photo")
+  backgroundPhoto String? @map("background_photo")
+  transparency    Int?    @default(30)
   language        String?
-  
+
   // External calendar integration
-  icalUrl         String?   @map("ical_url")
-  
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  icalUrl String? @map("ical_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  roleRef         Role?     @relation(fields: [roleId], references: [id])
-  workOrders      WorkOrder[] @relation("assignee")
-  planningItems   PlanningItem[] @relation("assignee")
-  laborLines      LaborLine[] @relation("labor_user")
-  uploadedPhotos  WorkOrderPhoto[] @relation("photo_uploader")
-  auditLogs       AuditLog[]
-  notifications   Notification[]
-  preferences     UserPreference[]
+  roleRef        Role?            @relation(fields: [roleId], references: [id])
+  workOrders     WorkOrder[]      @relation("assignee")
+  planningItems  PlanningItem[]   @relation("assignee")
+  laborLines     LaborLine[]      @relation("labor_user")
+  uploadedPhotos WorkOrderPhoto[] @relation("photo_uploader")
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  preferences    UserPreference[]
 
   @@map("users")
 }
 
 model UserPreference {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  key         String   // e.g., "vehicles-columns", "vehicles-column-order", etc.
-  value       Json     // Store the preference data as JSON
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  key       String // e.g., "vehicles-columns", "vehicles-column-order", etc.
+  value     Json // Store the preference data as JSON
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
   @@map("user_preferences")
 }
 
 model Role {
-  id                String    @id @default(uuid())
-  name              String    @unique
-  isSystemAdmin     Boolean   @default(false) @map("is_system_admin")
-  includeInPlanning Boolean   @default(false) @map("include_in_planning")
-  permissions       Json?     // Store as JSONB for flexibility
+  id                String   @id @default(uuid())
+  name              String   @unique
+  isSystemAdmin     Boolean  @default(false) @map("is_system_admin")
+  includeInPlanning Boolean  @default(false) @map("include_in_planning")
+  permissions       Json? // Store as JSONB for flexibility
   description       String?
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relations
-  users             User[]
+  users User[]
 
   @@map("roles")
 }
@@ -95,86 +95,97 @@ model Role {
 // ========================================
 
 model Customer {
-  id                String    @id @default(uuid())
+  id                String  @id @default(uuid())
   name              String
   email             String?
   phone             String?
   mobile            String?
   fax               String?
   company           String?
-  contact           String?    // Contact persoon
-  address           Json?      // Store address as JSONB
+  contact           String? // Contact persoon
+  address           Json? // Store address as JSONB
   street            String?
-  zipCode           String?    @map("zip_code")
+  zipCode           String? @map("zip_code")
   city              String?
-  countryId         String?    @map("country_id")
-  customerNumber    String?    @map("customer_number")
-  displayName       String?    @map("display_name")
-  emailDestinations String?    @db.Text @map("email_destinations")
-  branchId          String?    @map("branch_id")
-  extra1            String?    @map("extra_1")
-  notes             String?    @db.Text
-  externalId        String?    @map("external_id") // For Automaat/Magento import
-  source            String?    @default("manual") // manual, automaat, magento
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
+  countryId         String? @map("country_id")
+  customerNumber    String? @map("customer_number")
+  displayName       String? @map("display_name")
+  emailDestinations String? @map("email_destinations") @db.Text
+  branchId          String? @map("branch_id")
+  extra1            String? @map("extra_1")
+  notes             String? @db.Text
+  externalId        String? @map("external_id") // For Automaat/Magento import
+  source            String? @default("manual") // manual, automaat, magento
+
+  // BTW fields
+  vatNumber            String?   @map("vat_number") // BTW nummer (NL123456789B01)
+  vatNumberValidated   Boolean?  @default(false) @map("vat_number_validated") // VIES check result
+  vatNumberValidatedAt DateTime? @map("vat_number_validated_at") // Last VIES check
+  isBusinessCustomer   Boolean   @default(false) @map("is_business_customer") // B2B vs B2C
+  vatReversed          Boolean   @default(false) @map("vat_reversed") // BTW verlegd
+  vatExempt            Boolean   @default(false) @map("vat_exempt") // Vrijgesteld van BTW
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  vehicles        Vehicle[]
-  workOrders      WorkOrder[]
-  planningItems   PlanningItem[]
-  invoices        Invoice[]
-  creditInvoices  CreditInvoice[]
-  orders          Order[]
-  rmas            Rma[]
+  vehicles       Vehicle[]
+  workOrders     WorkOrder[]
+  planningItems  PlanningItem[]
+  invoices       Invoice[]
+  creditInvoices CreditInvoice[]
+  orders         Order[]
+  rmas           Rma[]
 
+  @@index([vatNumber])
+  @@index([isBusinessCustomer])
   @@map("customers")
 }
 
 model Vehicle {
-  id              String    @id @default(uuid())
-  customerId      String?   @map("customer_id")
-  licensePlate    String    @unique @map("license_plate")
-  make            String?
-  model           String?
-  year            Int?
-  vin             String?
-  color           String?
-  mileage         Int?      // Kilometrage
-  apkDueDate      DateTime? @map("apk_due_date") // APK vervaldatum
+  id               String    @id @default(uuid())
+  customerId       String?   @map("customer_id")
+  licensePlate     String    @unique @map("license_plate")
+  make             String?
+  model            String?
+  year             Int?
+  vin              String?
+  color            String?
+  mileage          Int? // Kilometrage
+  apkDueDate       DateTime? @map("apk_due_date") // APK vervaldatum
   constructionDate DateTime? @map("construction_date") // Bouwdatum
-  isHistory       Boolean?  @map("is_history") // Automaat history flag
-  deleted         Boolean?  // Automaat deleted flag
-  notes           String?   @db.Text
-  rdwData         Json?     @map("rdw_data") // RDW API response
-  externalId      String?   @map("external_id") // Automaat ID
-  
+  isHistory        Boolean?  @map("is_history") // Automaat history flag
+  deleted          Boolean? // Automaat deleted flag
+  notes            String?   @db.Text
+  rdwData          Json?     @map("rdw_data") // RDW API response
+  externalId       String?   @map("external_id") // Automaat ID
+
   // RDW flattened fields for easy access
-  rdwChassisNumber            String?   @map("rdw_chassis_number")
-  rdwColor                    String?   @map("rdw_color")
-  rdwVehicleType              String?   @map("rdw_vehicle_type")
-  rdwEngineCode               String?   @map("rdw_engine_code")
-  rdwBuildYear                Int?      @map("rdw_build_year")
-  rdwRegistrationDatePart1    String?   @map("rdw_registration_date_part1")
-  rdwOwnerSince               String?   @map("rdw_owner_since")
-  rdwOwnerCount               Int?      @map("rdw_owner_count")
-  rdwApkDueDate               String?   @map("rdw_apk_due_date")
-  rdwOdometer                 Int?      @map("rdw_odometer")
-  rdwOdometerJudgement        String?   @map("rdw_odometer_judgement")
-  rdwFuelType                 String?   @map("rdw_fuel_type")
-  rdwEmptyWeight              Int?      @map("rdw_empty_weight")
-  rdwMaxTowWeightBraked       Int?      @map("rdw_max_tow_weight_braked")
-  rdwMaxTowWeightUnbraked     Int?      @map("rdw_max_tow_weight_unbraked")
-  rdwMaxMass                  Int?      @map("rdw_max_mass")
-  
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  rdwChassisNumber         String? @map("rdw_chassis_number")
+  rdwColor                 String? @map("rdw_color")
+  rdwVehicleType           String? @map("rdw_vehicle_type")
+  rdwEngineCode            String? @map("rdw_engine_code")
+  rdwBuildYear             Int?    @map("rdw_build_year")
+  rdwRegistrationDatePart1 String? @map("rdw_registration_date_part1")
+  rdwOwnerSince            String? @map("rdw_owner_since")
+  rdwOwnerCount            Int?    @map("rdw_owner_count")
+  rdwApkDueDate            String? @map("rdw_apk_due_date")
+  rdwOdometer              Int?    @map("rdw_odometer")
+  rdwOdometerJudgement     String? @map("rdw_odometer_judgement")
+  rdwFuelType              String? @map("rdw_fuel_type")
+  rdwEmptyWeight           Int?    @map("rdw_empty_weight")
+  rdwMaxTowWeightBraked    Int?    @map("rdw_max_tow_weight_braked")
+  rdwMaxTowWeightUnbraked  Int?    @map("rdw_max_tow_weight_unbraked")
+  rdwMaxMass               Int?    @map("rdw_max_mass")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  workOrders      WorkOrder[]
-  planningItems   PlanningItem[]
-  orders          Order[]
+  customer      Customer?      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  workOrders    WorkOrder[]
+  planningItems PlanningItem[]
+  orders        Order[]
 
   @@index([customerId])
   @@map("vehicles")
@@ -185,35 +196,35 @@ model Vehicle {
 // ========================================
 
 model PlanningItem {
-  id                  String    @id // Custom ID like PLN-20240123-143045-123
-  title               String
-  scheduledAt         DateTime  @map("scheduled_at")
-  durationMinutes     Int       @default(60) @map("duration_minutes")
-  assigneeId          String?   @map("assignee_id")
-  assigneeName        String?   @map("assignee_name")
-  assigneeColor       String?   @map("assignee_color")
-  location            String?
-  customerId          String?   @map("customer_id")
-  customerName        String?   @map("customer_name")
-  vehicleId           String?   @map("vehicle_id")
-  vehiclePlate        String?   @map("vehicle_plate")
-  vehicleLabel        String?   @map("vehicle_label")
-  planningTypeId      String?   @map("planning_type_id")
-  planningTypeName    String?   @map("planning_type_name")
-  planningTypeColor   String?   @map("planning_type_color")
-  notes               String?   @db.Text
-  status              String?   @default("GEPLAND")
-  workOrderId         String?   @unique @map("work_order_id") // Link to work order
-  priority            String?   @default("NORMAL")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  id                String   @id // Custom ID like PLN-20240123-143045-123
+  title             String
+  scheduledAt       DateTime @map("scheduled_at")
+  durationMinutes   Int      @default(60) @map("duration_minutes")
+  assigneeId        String?  @map("assignee_id")
+  assigneeName      String?  @map("assignee_name")
+  assigneeColor     String?  @map("assignee_color")
+  location          String?
+  customerId        String?  @map("customer_id")
+  customerName      String?  @map("customer_name")
+  vehicleId         String?  @map("vehicle_id")
+  vehiclePlate      String?  @map("vehicle_plate")
+  vehicleLabel      String?  @map("vehicle_label")
+  planningTypeId    String?  @map("planning_type_id")
+  planningTypeName  String?  @map("planning_type_name")
+  planningTypeColor String?  @map("planning_type_color")
+  notes             String?  @db.Text
+  status            String?  @default("GEPLAND")
+  workOrderId       String?  @unique @map("work_order_id") // Link to work order
+  priority          String?  @default("NORMAL")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relations
-  assignee            User?     @relation("assignee", fields: [assigneeId], references: [id])
-  customer            Customer? @relation(fields: [customerId], references: [id])
-  vehicle             Vehicle?  @relation(fields: [vehicleId], references: [id])
-  planningType        PlanningType? @relation(fields: [planningTypeId], references: [id])
-  workOrder           WorkOrder? @relation(fields: [workOrderId], references: [id])
+  assignee     User?         @relation("assignee", fields: [assigneeId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
+  planningType PlanningType? @relation(fields: [planningTypeId], references: [id])
+  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
 
   @@index([scheduledAt])
   @@index([assigneeId])
@@ -223,48 +234,48 @@ model PlanningItem {
 }
 
 model PlanningType {
-  id              String    @id @default(uuid())
-  name            String    @unique
+  id              String   @id @default(uuid())
+  name            String   @unique
   color           String?
   description     String?
-  defaultDuration Int?      @map("default_duration")
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  defaultDuration Int?     @map("default_duration")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
-  planningItems   PlanningItem[]
+  planningItems PlanningItem[]
 
   @@map("planning_types")
 }
 
 model WorkOrder {
-  id                  String    @id @default(uuid())
-  workOrderNumber     String    @unique @map("work_order_number") // WO-2024-0001
-  title               String
-  description         String?   @db.Text
-  workOrderStatus     String    @map("work_order_status") @default("DRAFT")
-  executionStatus     String?   @map("execution_status")
-  warehouseStatus     String?   @map("warehouse_status")
-  customerId          String?   @map("customer_id")
-  customerName        String?   @map("customer_name")
-  vehicleId           String?   @map("vehicle_id")
-  vehiclePlate        String?   @map("vehicle_plate")
-  vehicleLabel        String?   @map("vehicle_label")
-  assigneeId          String?   @map("assignee_id")
-  assigneeName        String?   @map("assignee_name")
-  licensePlate        String?   @map("license_plate")
-  scheduledAt         DateTime? @map("scheduled_at")
-  completedAt         DateTime? @map("completed_at")
-  
+  id              String    @id @default(uuid())
+  workOrderNumber String    @unique @map("work_order_number") // WO-2024-0001
+  title           String
+  description     String?   @db.Text
+  workOrderStatus String    @default("DRAFT") @map("work_order_status")
+  executionStatus String?   @map("execution_status")
+  warehouseStatus String?   @map("warehouse_status")
+  customerId      String?   @map("customer_id")
+  customerName    String?   @map("customer_name")
+  vehicleId       String?   @map("vehicle_id")
+  vehiclePlate    String?   @map("vehicle_plate")
+  vehicleLabel    String?   @map("vehicle_label")
+  assigneeId      String?   @map("assignee_id")
+  assigneeName    String?   @map("assignee_name")
+  licensePlate    String?   @map("license_plate")
+  scheduledAt     DateTime? @map("scheduled_at")
+  completedAt     DateTime? @map("completed_at")
+
   // Pricing
-  pricingMode         String?   @map("pricing_mode")
-  estimatedAmount     Decimal?  @map("estimated_amount") @db.Decimal(10, 2)
-  priceAmount         Decimal?  @map("price_amount") @db.Decimal(10, 2)
-  currency            String?   @default("EUR")
-  customerApproved    Boolean?  @map("customer_approved")
-  approvalDate        DateTime? @map("approval_date")
-  
+  pricingMode      String?   @map("pricing_mode")
+  estimatedAmount  Decimal?  @map("estimated_amount") @db.Decimal(10, 2)
+  priceAmount      Decimal?  @map("price_amount") @db.Decimal(10, 2)
+  currency         String?   @default("EUR")
+  customerApproved Boolean?  @map("customer_approved")
+  approvalDate     DateTime? @map("approval_date")
+
   // Parts & Warehouse Management
   partsSummaryStatus  String?   @map("parts_summary_status")
   partsSummaryHistory Json?     @map("parts_summary_history") // Array of status changes
@@ -275,29 +286,29 @@ model WorkOrder {
   warehouseEtaDate    DateTime? @map("warehouse_eta_date")
   warehouseLocation   String?   @map("warehouse_location")
   missingItemsCount   Int?      @default(0) @map("missing_items_count")
-  
+
   // Status history
-  statusHistory       Json?     @map("status_history") // Array of status transitions
-  
+  statusHistory Json? @map("status_history") // Array of status transitions
+
   // Additional fields
-  priority            String?   @default("NORMAL")
-  notes               String?   @db.Text
-  internalNotes       String?   @map("internal_notes") @db.Text
-  customerNotes       String?   @map("customer_notes") @db.Text
-  
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  createdBy           String?   @map("created_by")
+  priority      String? @default("NORMAL")
+  notes         String? @db.Text
+  internalNotes String? @map("internal_notes") @db.Text
+  customerNotes String? @map("customer_notes") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
 
   // Relations
-  customer            Customer? @relation(fields: [customerId], references: [id])
-  vehicle             Vehicle?  @relation(fields: [vehicleId], references: [id])
-  assignee            User?     @relation("assignee", fields: [assigneeId], references: [id])
-  planningItem        PlanningItem?
-  partsLines          PartsLine[]
-  laborLines          LaborLine[]
-  photos              WorkOrderPhoto[]
-  stockMoves          StockMove[]
+  customer     Customer?        @relation(fields: [customerId], references: [id])
+  vehicle      Vehicle?         @relation(fields: [vehicleId], references: [id])
+  assignee     User?            @relation("assignee", fields: [assigneeId], references: [id])
+  planningItem PlanningItem?
+  partsLines   PartsLine[]
+  laborLines   LaborLine[]
+  photos       WorkOrderPhoto[]
+  stockMoves   StockMove[]
 
   @@index([workOrderNumber])
   @@index([workOrderStatus])
@@ -313,95 +324,104 @@ model WorkOrder {
 // ========================================
 
 model Product {
-  id              String    @id @default(uuid())
-  sku             String    @unique
-  name            String
-  description     String?   @db.Text
-  category        String?
-  price           Decimal?  @db.Decimal(10, 2)
-  cost            Decimal?  @db.Decimal(10, 2)
-  stock           Int?      @default(0)
-  unit            String?
-  supplier        String?
-  supplierSku     String?   @map("supplier_sku")
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  sku         String   @unique
+  name        String
+  description String?  @db.Text
+  category    String?
+  price       Decimal? @db.Decimal(10, 2)
+  cost        Decimal? @db.Decimal(10, 2)
+  stock       Int?     @default(0)
+  unit        String?
+  supplier    String?
+  supplierSku String?  @map("supplier_sku")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  partsLines      PartsLine[]
-  stockMoves      StockMove[]
+  partsLines PartsLine[]
+  stockMoves StockMove[]
 
   @@map("products")
 }
 
 model PartsLine {
-  id              String    @id @default(uuid())
-  workOrderId     String    @map("work_order_id")
-  productId       String?   @map("product_id")
-  productName     String?   @map("product_name")
-  articleNumber   String?   @map("article_number")
-  quantity        Int       @default(1)
-  unitPrice       Decimal?  @map("unit_price") @db.Decimal(10, 2)
-  totalPrice      Decimal?  @map("total_price") @db.Decimal(10, 2)
-  status          String    @default("PENDING")
-  statusHistory   Json?     @map("status_history") // Array of status changes
-  locationId      String?   @map("location_id")
-  etaDate         DateTime? @map("eta_date")
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  workOrderId   String    @map("work_order_id")
+  productId     String?   @map("product_id")
+  productName   String?   @map("product_name")
+  articleNumber String?   @map("article_number")
+  quantity      Int       @default(1)
+  unitPrice     Decimal?  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice    Decimal?  @map("total_price") @db.Decimal(10, 2)
+  status        String    @default("PENDING")
+  statusHistory Json?     @map("status_history") // Array of status changes
+  locationId    String?   @map("location_id")
+  etaDate       DateTime? @map("eta_date")
+  notes         String?   @db.Text
+
+  // BTW fields
+  vatRateId     String?  @map("vat_rate_id")
+  vatRate       VatRate? @relation(fields: [vatRateId], references: [id])
+  vatPercentage Decimal? @map("vat_percentage") @db.Decimal(5, 2) // Snapshot of rate at time of creation
+  vatAmount     Decimal? @map("vat_amount") @db.Decimal(10, 2)
+  subtotal      Decimal? @map("subtotal") @db.Decimal(10, 2) // Amount without VAT
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  product         Product?  @relation(fields: [productId], references: [id])
-  location        InventoryLocation? @relation(fields: [locationId], references: [id])
-  stockMoves      StockMove[]
+  workOrder  WorkOrder          @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  product    Product?           @relation(fields: [productId], references: [id])
+  location   InventoryLocation? @relation(fields: [locationId], references: [id])
+  stockMoves StockMove[]
 
   @@index([workOrderId])
   @@index([productId])
   @@index([status])
+  @@index([vatRateId])
   @@map("parts_lines")
 }
 
 model InventoryLocation {
-  id              String    @id @default(uuid())
-  name            String    @unique
-  code            String?
-  description     String?
-  type            String?   // warehouse, shelf, bin, etc.
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String?
+  description String?
+  type        String? // warehouse, shelf, bin, etc.
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  partsLines      PartsLine[]
-  stockMovesFrom  StockMove[] @relation("from_location")
-  stockMovesTo    StockMove[] @relation("to_location")
+  partsLines     PartsLine[]
+  stockMovesFrom StockMove[] @relation("from_location")
+  stockMovesTo   StockMove[] @relation("to_location")
 
   @@map("inventory_locations")
 }
 
 model StockMove {
-  id              String    @id @default(uuid())
-  moveType        String    @map("move_type") // in, out, transfer, adjustment
-  quantity        Int
-  productId       String?   @map("product_id")
-  workOrderId     String?   @map("work_order_id")
-  partsLineId     String?   @map("parts_line_id")
-  fromLocationId  String?   @map("from_location_id")
-  toLocationId    String?   @map("to_location_id")
-  reason          String?
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  createdBy       String?   @map("created_by")
+  id             String   @id @default(uuid())
+  moveType       String   @map("move_type") // in, out, transfer, adjustment
+  quantity       Int
+  productId      String?  @map("product_id")
+  workOrderId    String?  @map("work_order_id")
+  partsLineId    String?  @map("parts_line_id")
+  fromLocationId String?  @map("from_location_id")
+  toLocationId   String?  @map("to_location_id")
+  reason         String?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  createdBy      String?  @map("created_by")
 
   // Relations
-  product         Product?  @relation(fields: [productId], references: [id])
-  workOrder       WorkOrder? @relation(fields: [workOrderId], references: [id])
-  partsLine       PartsLine? @relation(fields: [partsLineId], references: [id])
-  fromLocation    InventoryLocation? @relation("from_location", fields: [fromLocationId], references: [id])
-  toLocation      InventoryLocation? @relation("to_location", fields: [toLocationId], references: [id])
+  product      Product?           @relation(fields: [productId], references: [id])
+  workOrder    WorkOrder?         @relation(fields: [workOrderId], references: [id])
+  partsLine    PartsLine?         @relation(fields: [partsLineId], references: [id])
+  fromLocation InventoryLocation? @relation("from_location", fields: [fromLocationId], references: [id])
+  toLocation   InventoryLocation? @relation("to_location", fields: [toLocationId], references: [id])
 
   @@index([productId])
   @@index([workOrderId])
@@ -415,39 +435,48 @@ model StockMove {
 // ========================================
 
 model LaborLine {
-  id              String    @id @default(uuid())
-  workOrderId     String    @map("work_order_id")
+  id              String   @id @default(uuid())
+  workOrderId     String   @map("work_order_id")
   description     String
-  userId          String?   @map("user_id")
-  userName        String?   @map("user_name")
-  durationMinutes Int       @default(0) @map("duration_minutes")
-  hourlyRate      Decimal?  @map("hourly_rate") @db.Decimal(10, 2)
-  totalAmount     Decimal?  @map("total_amount") @db.Decimal(10, 2)
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  userId          String?  @map("user_id")
+  userName        String?  @map("user_name")
+  durationMinutes Int      @default(0) @map("duration_minutes")
+  hourlyRate      Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  totalAmount     Decimal? @map("total_amount") @db.Decimal(10, 2)
+  notes           String?  @db.Text
+
+  // BTW fields
+  vatRateId     String?  @map("vat_rate_id")
+  vatRate       VatRate? @relation(fields: [vatRateId], references: [id])
+  vatPercentage Decimal? @map("vat_percentage") @db.Decimal(5, 2) // Snapshot of rate at time of creation
+  vatAmount     Decimal? @map("vat_amount") @db.Decimal(10, 2)
+  subtotal      Decimal? @map("subtotal") @db.Decimal(10, 2) // Amount without VAT
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  user            User?     @relation("labor_user", fields: [userId], references: [id])
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  user      User?     @relation("labor_user", fields: [userId], references: [id])
 
   @@index([workOrderId])
+  @@index([vatRateId])
   @@map("labor_lines")
 }
 
 model WorkOrderPhoto {
-  id              String    @id @default(uuid())
-  workOrderId     String    @map("work_order_id")
-  url             String
-  filename        String?
-  description     String?
-  type            String    @default("general") // general, before, after, damage
-  uploadedBy      String?   @map("uploaded_by")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  workOrderId String   @map("work_order_id")
+  url         String
+  filename    String?
+  description String?
+  type        String   @default("general") // general, before, after, damage
+  uploadedBy  String?  @map("uploaded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   // Relations
-  workOrder       WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  uploader        User?     @relation("photo_uploader", fields: [uploadedBy], references: [id])
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  uploader  User?     @relation("photo_uploader", fields: [uploadedBy], references: [id])
 
   @@index([workOrderId])
   @@map("work_order_photos")
@@ -458,31 +487,31 @@ model WorkOrderPhoto {
 // ========================================
 
 model Order {
-  id              String    @id @default(uuid())
-  orderNumber     String    @unique @map("order_number")
-  title           String?
-  customerId      String?   @map("customer_id")
-  vehicleId       String?   @map("vehicle_id")
-  vehiclePlate    String?   @map("vehicle_plate")
-  vehicleLabel    String?   @map("vehicle_label")
-  orderStatus     String?   @map("order_status")
-  paymentStatus   String?   @map("payment_status")
-  shipmentStatus  String?   @map("shipment_status")
-  paymentMethod   String?   @map("payment_method")
-  shippingMethod  String?   @map("shipping_method")
-  totalAmount     Decimal?  @map("total_amount") @db.Decimal(10, 2)
-  scheduledAt     DateTime? @map("scheduled_at")
-  notes           String?   @db.Text
-  orderDate       DateTime? @map("order_date")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id             String    @id @default(uuid())
+  orderNumber    String    @unique @map("order_number")
+  title          String?
+  customerId     String?   @map("customer_id")
+  vehicleId      String?   @map("vehicle_id")
+  vehiclePlate   String?   @map("vehicle_plate")
+  vehicleLabel   String?   @map("vehicle_label")
+  orderStatus    String?   @map("order_status")
+  paymentStatus  String?   @map("payment_status")
+  shipmentStatus String?   @map("shipment_status")
+  paymentMethod  String?   @map("payment_method")
+  shippingMethod String?   @map("shipping_method")
+  totalAmount    Decimal?  @map("total_amount") @db.Decimal(10, 2)
+  scheduledAt    DateTime? @map("scheduled_at")
+  notes          String?   @db.Text
+  orderDate      DateTime? @map("order_date")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer?        @relation(fields: [customerId], references: [id])
-  vehicle         Vehicle?         @relation(fields: [vehicleId], references: [id])
-  invoices        Invoice[]
-  creditInvoices  CreditInvoice[]  @relation("CreditInvoiceOrder")
-  rmas            Rma[]            @relation("RmaOrder")
+  customer       Customer?       @relation(fields: [customerId], references: [id])
+  vehicle        Vehicle?        @relation(fields: [vehicleId], references: [id])
+  invoices       Invoice[]
+  creditInvoices CreditInvoice[] @relation("CreditInvoiceOrder")
+  rmas           Rma[]           @relation("RmaOrder")
 
   @@index([customerId])
   @@index([vehicleId])
@@ -490,71 +519,95 @@ model Order {
 }
 
 model PurchaseOrder {
-  id              String    @id @default(uuid())
-  poNumber        String    @unique @map("po_number")
-  supplier        String?
-  status          String    @default("DRAFT")
-  totalAmount     Decimal?  @map("total_amount") @db.Decimal(10, 2)
-  notes           String?   @db.Text
-  orderDate       DateTime? @map("order_date")
-  expectedDate    DateTime? @map("expected_date")
-  receivedDate    DateTime? @map("received_date")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id           String    @id @default(uuid())
+  poNumber     String    @unique @map("po_number")
+  supplier     String?
+  status       String    @default("DRAFT")
+  totalAmount  Decimal?  @map("total_amount") @db.Decimal(10, 2)
+  notes        String?   @db.Text
+  orderDate    DateTime? @map("order_date")
+  expectedDate DateTime? @map("expected_date")
+  receivedDate DateTime? @map("received_date")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("purchase_orders")
 }
 
 model Invoice {
-  id              String    @id @default(uuid())
-  invoiceNumber   String    @unique @map("invoice_number")
-  title           String?
-  customerId      String?   @map("customer_id")
-  orderId         String?   @map("order_id")
-  vehiclePlate    String?   @map("vehicle_plate")
-  vehicleLabel    String?   @map("vehicle_label")
-  status          String    @default("DRAFT")
-  paymentStatus   String?   @map("payment_status")
-  totalAmount     Decimal   @map("total_amount") @db.Decimal(10, 2)
-  taxAmount       Decimal?  @map("tax_amount") @db.Decimal(10, 2)
-  notes           String?   @db.Text
-  invoiceDate     DateTime  @map("invoice_date")
-  dueDate         DateTime? @map("due_date")
-  paidDate        DateTime? @map("paid_date")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id            String  @id @default(uuid())
+  invoiceNumber String  @unique @map("invoice_number")
+  title         String?
+  customerId    String? @map("customer_id")
+  orderId       String? @map("order_id")
+  vehiclePlate  String? @map("vehicle_plate")
+  vehicleLabel  String? @map("vehicle_label")
+  status        String  @default("DRAFT")
+  paymentStatus String? @map("payment_status")
+
+  // Bedragen
+  totalAmount    Decimal  @map("total_amount") @db.Decimal(10, 2) // Totaal inclusief BTW
+  subtotalAmount Decimal? @map("subtotal_amount") @db.Decimal(10, 2) // Totaal exclusief BTW
+  taxAmount      Decimal? @map("tax_amount") @db.Decimal(10, 2) // Deprecated - use vatTotal
+
+  // BTW details
+  vatSubtotalHigh Decimal? @default(0) @map("vat_subtotal_high") @db.Decimal(10, 2) // Subtotaal 21%
+  vatAmountHigh   Decimal? @default(0) @map("vat_amount_high") @db.Decimal(10, 2) // BTW 21%
+  vatSubtotalLow  Decimal? @default(0) @map("vat_subtotal_low") @db.Decimal(10, 2) // Subtotaal 9%
+  vatAmountLow    Decimal? @default(0) @map("vat_amount_low") @db.Decimal(10, 2) // BTW 9%
+  vatSubtotalZero Decimal? @default(0) @map("vat_subtotal_zero") @db.Decimal(10, 2) // Subtotaal 0%
+  vatTotal        Decimal? @default(0) @map("vat_total") @db.Decimal(10, 2) // Totaal BTW
+
+  // BTW regeling
+  vatReversed     Boolean @default(false) @map("vat_reversed") // BTW verlegd
+  vatReversedText String? @map("vat_reversed_text") // "BTW verlegd art. 12(b) Wet OB"
+  vatExempt       Boolean @default(false) @map("vat_exempt") // BTW vrijgesteld
+  vatExemptReason String? @map("vat_exempt_reason")
+
+  // Klant BTW info (snapshot)
+  customerVatNumber String? @map("customer_vat_number") // BTW nummer klant
+  customerIsB2B     Boolean @default(false) @map("customer_is_b2b") // Is zakelijke klant
+
+  notes       String?   @db.Text
+  invoiceDate DateTime  @map("invoice_date")
+  dueDate     DateTime? @map("due_date")
+  paidDate    DateTime? @map("paid_date")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer? @relation(fields: [customerId], references: [id])
-  order           Order?    @relation(fields: [orderId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  order    Order?    @relation(fields: [orderId], references: [id])
 
   @@index([invoiceNumber])
   @@index([customerId])
   @@index([orderId])
+  @@index([invoiceDate])
+  @@index([vatReversed])
   @@map("invoices")
 }
 
 model CreditInvoice {
-  id              String    @id @default(uuid())
-  creditNumber    String    @unique @map("credit_number")
+  id              String   @id @default(uuid())
+  creditNumber    String   @unique @map("credit_number")
   title           String?
-  customerId      String?   @map("customer_id")
-  orderId         String?   @map("order_id")
-  originalInvoice String?   @map("original_invoice")
-  vehiclePlate    String?   @map("vehicle_plate")
-  vehicleLabel    String?   @map("vehicle_label")
-  status          String    @default("DRAFT")
-  totalAmount     Decimal   @map("total_amount") @db.Decimal(10, 2)
-  taxAmount       Decimal?  @map("tax_amount") @db.Decimal(10, 2)
-  reason          String?   @db.Text
-  notes           String?   @db.Text
-  creditDate      DateTime  @map("credit_date")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  customerId      String?  @map("customer_id")
+  orderId         String?  @map("order_id")
+  originalInvoice String?  @map("original_invoice")
+  vehiclePlate    String?  @map("vehicle_plate")
+  vehicleLabel    String?  @map("vehicle_label")
+  status          String   @default("DRAFT")
+  totalAmount     Decimal  @map("total_amount") @db.Decimal(10, 2)
+  taxAmount       Decimal? @map("tax_amount") @db.Decimal(10, 2)
+  reason          String?  @db.Text
+  notes           String?  @db.Text
+  creditDate      DateTime @map("credit_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer? @relation(fields: [customerId], references: [id])
-  order           Order?    @relation(fields: [orderId], references: [id], name: "CreditInvoiceOrder")
+  customer Customer? @relation(fields: [customerId], references: [id])
+  order    Order?    @relation(fields: [orderId], references: [id], name: "CreditInvoiceOrder")
 
   @@index([creditNumber])
   @@index([customerId])
@@ -563,26 +616,26 @@ model CreditInvoice {
 }
 
 model Rma {
-  id              String    @id @default(uuid())
-  rmaNumber       String    @unique @map("rma_number")
-  title           String?
-  customerId      String?   @map("customer_id")
-  orderId         String?   @map("order_id")
-  vehiclePlate    String?   @map("vehicle_plate")
-  vehicleLabel    String?   @map("vehicle_label")
-  productSku      String?   @map("product_sku")
-  productName     String?   @map("product_name")
-  reason          String?   @db.Text
-  status          String    @default("PENDING")
-  quantity        Int       @default(1)
-  resolution      String?
-  notes           String?   @db.Text
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  rmaNumber    String   @unique @map("rma_number")
+  title        String?
+  customerId   String?  @map("customer_id")
+  orderId      String?  @map("order_id")
+  vehiclePlate String?  @map("vehicle_plate")
+  vehicleLabel String?  @map("vehicle_label")
+  productSku   String?  @map("product_sku")
+  productName  String?  @map("product_name")
+  reason       String?  @db.Text
+  status       String   @default("PENDING")
+  quantity     Int      @default(1)
+  resolution   String?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relations
-  customer        Customer? @relation(fields: [customerId], references: [id])
-  order           Order?    @relation(fields: [orderId], references: [id], name: "RmaOrder")
+  customer Customer? @relation(fields: [customerId], references: [id])
+  order    Order?    @relation(fields: [orderId], references: [id], name: "RmaOrder")
 
   @@index([rmaNumber])
   @@index([customerId])
@@ -595,38 +648,38 @@ model Rma {
 // ========================================
 
 model Setting {
-  id              String    @id @default(uuid())
-  group           String    @unique // 'planning', 'email', 'ui', 'rdwSettings', etc.
-  data            Json      // Store all settings as JSONB
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  group     String   @unique // 'planning', 'email', 'ui', 'rdwSettings', etc.
+  data      Json // Store all settings as JSONB
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("settings")
 }
 
 model EmailTemplate {
-  id              String    @id // Template ID like 'workorder-created'
-  name            String
-  subject         String
-  body            String    @db.Text
-  variables       Json?     // Available template variables
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id        String   @id // Template ID like 'workorder-created'
+  name      String
+  subject   String
+  body      String   @db.Text
+  variables Json? // Available template variables
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("email_templates")
 }
 
 model EmailLog {
-  id              String    @id @default(uuid())
-  to              String
-  from            String?
-  subject         String
-  templateId      String?   @map("template_id")
-  status          String    @default("sent")
-  error           String?   @db.Text
-  sentAt          DateTime  @map("sent_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  to         String
+  from       String?
+  subject    String
+  templateId String?  @map("template_id")
+  status     String   @default("sent")
+  error      String?  @db.Text
+  sentAt     DateTime @map("sent_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([sentAt])
   @@index([templateId])
@@ -634,15 +687,15 @@ model EmailLog {
 }
 
 model Page {
-  id              String    @id // Slug like '_home', 'about', etc.
+  id              String   @id // Slug like '_home', 'about', etc.
   title           String
-  content         Json      // Store page content as JSONB
-  slug            String    @unique
-  isPublished     Boolean   @default(false) @map("is_published")
-  metaDescription String?   @map("meta_description")
-  metaKeywords    String?   @map("meta_keywords")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  content         Json // Store page content as JSONB
+  slug            String   @unique
+  isPublished     Boolean  @default(false) @map("is_published")
+  metaDescription String?  @map("meta_description")
+  metaKeywords    String?  @map("meta_keywords")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("pages")
 }
@@ -652,19 +705,19 @@ model Page {
 // ========================================
 
 model AuditLog {
-  id              String    @id @default(uuid())
-  userId          String?   @map("user_id")
-  action          String
-  resource        String
-  resourceId      String?   @map("resource_id")
-  changes         Json?     // Store before/after values
-  context         Json?     // Additional context
-  ipAddress       String?   @map("ip_address")
-  userAgent       String?   @map("user_agent")
-  timestamp       DateTime  @default(now())
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  changes    Json? // Store before/after values
+  context    Json? // Additional context
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  timestamp  DateTime @default(now())
 
   // Relations
-  user            User?     @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([action])
@@ -674,13 +727,13 @@ model AuditLog {
 }
 
 model RdwLog {
-  id              String    @id @default(uuid())
-  licensePlate    String    @map("license_plate")
-  requestType     String    @map("request_type")
-  response        Json?
-  success         Boolean
-  error           String?   @db.Text
-  timestamp       DateTime  @default(now())
+  id           String   @id @default(uuid())
+  licensePlate String   @map("license_plate")
+  requestType  String   @map("request_type")
+  response     Json?
+  success      Boolean
+  error        String?  @db.Text
+  timestamp    DateTime @default(now())
 
   @@index([licensePlate])
   @@index([timestamp])
@@ -688,23 +741,23 @@ model RdwLog {
 }
 
 model Notification {
-  id              String    @id @default(uuid())
-  userId          String    @map("user_id")
-  title           String
-  message         String    @db.Text
-  type            String?   @default("info")
-  isRead          Boolean   @default(false) @map("is_read")
-  readBy          String[]  @default([]) @map("read_by")
-  link            String?
-  notifyAt        DateTime? @map("notify_at")
-  workOrderId     String?   @map("work_order_id")
-  riskReason      String?   @map("risk_reason")
-  meta            Json?
-  createdBy       String?   @map("created_by")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  title       String
+  message     String    @db.Text
+  type        String?   @default("info")
+  isRead      Boolean   @default(false) @map("is_read")
+  readBy      String[]  @default([]) @map("read_by")
+  link        String?
+  notifyAt    DateTime? @map("notify_at")
+  workOrderId String?   @map("work_order_id")
+  riskReason  String?   @map("risk_reason")
+  meta        Json?
+  createdBy   String?   @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   // Relations
-  user            User      @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([isRead])
@@ -717,11 +770,11 @@ model Notification {
 // ========================================
 
 model Counter {
-  id              String    @id // Counter name like 'workorders', 'invoices'
-  currentValue    Int       @default(0) @map("current_value")
-  prefix          String?
-  format          String?   // Format string like 'WO-{year}-{counter}'
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id           String   @id // Counter name like 'workorders', 'invoices'
+  currentValue Int      @default(0) @map("current_value")
+  prefix       String?
+  format       String? // Format string like 'WO-{year}-{counter}'
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("counters")
 }
@@ -731,22 +784,22 @@ model Counter {
 // ========================================
 
 model Category {
-  id              String    @id @default(uuid())
-  magentoId       Int?      @unique @map("magento_id")
-  parentId        String?   @map("parent_id")
-  name            String
-  slug            String    @unique
-  description     String?   @db.Text
-  isActive        Boolean   @default(true) @map("is_active")
-  position        Int       @default(0)
-  level           Int       @default(0)
-  path            String?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  magentoId   Int?     @unique @map("magento_id")
+  parentId    String?  @map("parent_id")
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  position    Int      @default(0)
+  level       Int      @default(0)
+  path        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  parent          Category?           @relation("CategoryTree", fields: [parentId], references: [id])
-  children        Category[]          @relation("CategoryTree")
+  parent            Category?         @relation("CategoryTree", fields: [parentId], references: [id])
+  children          Category[]        @relation("CategoryTree")
   productCategories ProductCategory[]
 
   @@index([magentoId])
@@ -756,36 +809,36 @@ model Category {
 }
 
 model ProductCatalog {
-  id                  String    @id @default(uuid())
-  magentoId           Int?      @unique @map("magento_id")
-  sku                 String    @unique
-  typeId              String    @map("type_id") // simple, configurable, bundle, grouped
-  name                String
-  slug                String    @unique
-  description         String?   @db.Text
-  shortDescription    String?   @map("short_description") @db.Text
-  price               Decimal?  @db.Decimal(10, 2)
-  costPrice           Decimal?  @map("cost_price") @db.Decimal(10, 2)
-  specialPrice        Decimal?  @map("special_price") @db.Decimal(10, 2)
-  specialPriceFrom    DateTime? @map("special_price_from")
-  specialPriceTo      DateTime? @map("special_price_to")
-  weight              Decimal?  @db.Decimal(10, 2)
-  status              String    @default("enabled") // enabled, disabled
-  visibility          String    @default("catalog_search") // not_visible, catalog, search, catalog_search
-  metaTitle           String?   @map("meta_title")
-  metaDescription     String?   @map("meta_description") @db.Text
-  metaKeywords        String?   @map("meta_keywords") @db.Text
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  magentoId        Int?      @unique @map("magento_id")
+  sku              String    @unique
+  typeId           String    @map("type_id") // simple, configurable, bundle, grouped
+  name             String
+  slug             String    @unique
+  description      String?   @db.Text
+  shortDescription String?   @map("short_description") @db.Text
+  price            Decimal?  @db.Decimal(10, 2)
+  costPrice        Decimal?  @map("cost_price") @db.Decimal(10, 2)
+  specialPrice     Decimal?  @map("special_price") @db.Decimal(10, 2)
+  specialPriceFrom DateTime? @map("special_price_from")
+  specialPriceTo   DateTime? @map("special_price_to")
+  weight           Decimal?  @db.Decimal(10, 2)
+  status           String    @default("enabled") // enabled, disabled
+  visibility       String    @default("catalog_search") // not_visible, catalog, search, catalog_search
+  metaTitle        String?   @map("meta_title")
+  metaDescription  String?   @map("meta_description") @db.Text
+  metaKeywords     String?   @map("meta_keywords") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  categories          ProductCategory[]
-  images              ProductImage[]
-  inventory           ProductInventory?
-  customOptions       ProductCustomOption[]
-  attributeValues     ProductAttributeValue[]
-  parentRelations     ProductRelation[] @relation("ParentProduct")
-  childRelations      ProductRelation[] @relation("ChildProduct")
+  categories      ProductCategory[]
+  images          ProductImage[]
+  inventory       ProductInventory?
+  customOptions   ProductCustomOption[]
+  attributeValues ProductAttributeValue[]
+  parentRelations ProductRelation[]       @relation("ParentProduct")
+  childRelations  ProductRelation[]       @relation("ChildProduct")
 
   @@index([magentoId])
   @@index([sku])
@@ -796,14 +849,14 @@ model ProductCatalog {
 }
 
 model ProductCategory {
-  id          String          @id @default(uuid())
-  productId   String          @map("product_id")
-  categoryId  String          @map("category_id")
-  position    Int             @default(0)
+  id         String @id @default(uuid())
+  productId  String @map("product_id")
+  categoryId String @map("category_id")
+  position   Int    @default(0)
 
   // Relations
-  product     ProductCatalog  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  category    Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product  ProductCatalog @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([productId, categoryId])
   @@index([productId])
@@ -812,13 +865,13 @@ model ProductCategory {
 }
 
 model ProductRelation {
-  id          String          @id @default(uuid())
-  parentId    String          @map("parent_id")
-  childId     String          @map("child_id")
+  id       String @id @default(uuid())
+  parentId String @map("parent_id")
+  childId  String @map("child_id")
 
   // Relations
-  parent      ProductCatalog  @relation("ParentProduct", fields: [parentId], references: [id], onDelete: Cascade)
-  child       ProductCatalog  @relation("ChildProduct", fields: [childId], references: [id], onDelete: Cascade)
+  parent ProductCatalog @relation("ParentProduct", fields: [parentId], references: [id], onDelete: Cascade)
+  child  ProductCatalog @relation("ChildProduct", fields: [childId], references: [id], onDelete: Cascade)
 
   @@unique([parentId, childId])
   @@index([parentId])
@@ -827,51 +880,51 @@ model ProductRelation {
 }
 
 model ProductAttribute {
-  id                  String    @id @default(uuid())
-  magentoAttributeId  Int?      @map("magento_attribute_id")
-  attributeCode       String    @unique @map("attribute_code")
-  attributeLabel      String    @map("attribute_label")
-  inputType           String    @map("input_type") // select, multiselect, text, textarea, boolean, price
-  isRequired          Boolean   @default(false) @map("is_required")
-  position            Int       @default(0)
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  magentoAttributeId Int?     @map("magento_attribute_id")
+  attributeCode      String   @unique @map("attribute_code")
+  attributeLabel     String   @map("attribute_label")
+  inputType          String   @map("input_type") // select, multiselect, text, textarea, boolean, price
+  isRequired         Boolean  @default(false) @map("is_required")
+  position           Int      @default(0)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   // Relations
-  options             ProductAttributeOption[]
-  values              ProductAttributeValue[]
+  options ProductAttributeOption[]
+  values  ProductAttributeValue[]
 
   @@index([magentoAttributeId])
   @@map("product_attributes")
 }
 
 model ProductAttributeOption {
-  id              String    @id @default(uuid())
-  attributeId     String    @map("attribute_id")
-  magentoOptionId Int?      @map("magento_option_id")
-  optionLabel     String    @map("option_label")
-  optionValue     String?   @map("option_value")
-  sortOrder       Int       @default(0) @map("sort_order")
+  id              String  @id @default(uuid())
+  attributeId     String  @map("attribute_id")
+  magentoOptionId Int?    @map("magento_option_id")
+  optionLabel     String  @map("option_label")
+  optionValue     String? @map("option_value")
+  sortOrder       Int     @default(0) @map("sort_order")
 
   // Relations
-  attribute       ProductAttribute       @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-  values          ProductAttributeValue[]
+  attribute ProductAttribute        @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  values    ProductAttributeValue[]
 
   @@index([attributeId])
   @@map("product_attribute_options")
 }
 
 model ProductAttributeValue {
-  id          String                  @id @default(uuid())
-  productId   String                  @map("product_id")
-  attributeId String                  @map("attribute_id")
-  optionId    String?                 @map("option_id")
-  value       String?                 @db.Text
+  id          String  @id @default(uuid())
+  productId   String  @map("product_id")
+  attributeId String  @map("attribute_id")
+  optionId    String? @map("option_id")
+  value       String? @db.Text
 
   // Relations
-  product     ProductCatalog          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  attribute   ProductAttribute        @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-  option      ProductAttributeOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
+  product   ProductCatalog          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  attribute ProductAttribute        @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  option    ProductAttributeOption? @relation(fields: [optionId], references: [id], onDelete: SetNull)
 
   @@unique([productId, attributeId])
   @@index([productId])
@@ -880,57 +933,57 @@ model ProductAttributeValue {
 }
 
 model ProductCustomOption {
-  id              String    @id @default(uuid())
-  productId       String    @map("product_id")
-  magentoOptionId Int?      @map("magento_option_id")
+  id              String   @id @default(uuid())
+  productId       String   @map("product_id")
+  magentoOptionId Int?     @map("magento_option_id")
   title           String
-  type            String    // field, area, file, drop_down, radio, checkbox, multiple, date, date_time, time
-  isRequire       Boolean   @default(false) @map("is_require")
-  sortOrder       Int       @default(0) @map("sort_order")
-  price           Decimal?  @db.Decimal(10, 2)
-  priceType       String    @default("fixed") @map("price_type") // fixed, percent
+  type            String // field, area, file, drop_down, radio, checkbox, multiple, date, date_time, time
+  isRequire       Boolean  @default(false) @map("is_require")
+  sortOrder       Int      @default(0) @map("sort_order")
+  price           Decimal? @db.Decimal(10, 2)
+  priceType       String   @default("fixed") @map("price_type") // fixed, percent
   sku             String?
 
   // Relations
-  product         ProductCatalog              @relation(fields: [productId], references: [id], onDelete: Cascade)
-  values          ProductCustomOptionValue[]
+  product ProductCatalog             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ProductCustomOptionValue[]
 
   @@index([productId])
   @@map("product_custom_options")
 }
 
 model ProductCustomOptionValue {
-  id              String              @id @default(uuid())
-  optionId        String              @map("option_id")
-  magentoValueId  Int?                @map("magento_value_id")
-  title           String
-  price           Decimal?            @db.Decimal(10, 2)
-  priceType       String              @default("fixed") @map("price_type") // fixed, percent
-  sku             String?
-  sortOrder       Int                 @default(0) @map("sort_order")
+  id             String   @id @default(uuid())
+  optionId       String   @map("option_id")
+  magentoValueId Int?     @map("magento_value_id")
+  title          String
+  price          Decimal? @db.Decimal(10, 2)
+  priceType      String   @default("fixed") @map("price_type") // fixed, percent
+  sku            String?
+  sortOrder      Int      @default(0) @map("sort_order")
 
   // Relations
-  option          ProductCustomOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  option ProductCustomOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   @@index([optionId])
   @@map("product_custom_option_values")
 }
 
 model ProductImage {
-  id              String          @id @default(uuid())
-  productId       String          @map("product_id")
-  magentoImageId  Int?            @map("magento_image_id")
-  filePath        String          @map("file_path")
-  url             String?
-  localPath       String?         @map("local_path") // Local file path after download
-  label           String?
-  position        Int             @default(0)
-  isMain          Boolean         @default(false) @map("is_main")
-  isThumbnail     Boolean         @default(false) @map("is_thumbnail")
-  createdAt       DateTime        @default(now()) @map("created_at")
+  id             String   @id @default(uuid())
+  productId      String   @map("product_id")
+  magentoImageId Int?     @map("magento_image_id")
+  filePath       String   @map("file_path")
+  url            String?
+  localPath      String?  @map("local_path") // Local file path after download
+  label          String?
+  position       Int      @default(0)
+  isMain         Boolean  @default(false) @map("is_main")
+  isThumbnail    Boolean  @default(false) @map("is_thumbnail")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   // Relations
-  product         ProductCatalog  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product ProductCatalog @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([isMain])
@@ -938,19 +991,19 @@ model ProductImage {
 }
 
 model ProductInventory {
-  id              String          @id @default(uuid())
-  productId       String          @unique @map("product_id")
-  sku             String          @unique
-  qty             Decimal         @default(0) @db.Decimal(10, 2)
-  isInStock       Boolean         @default(true) @map("is_in_stock")
-  minQty          Decimal         @default(0) @map("min_qty") @db.Decimal(10, 2)
-  notifyStockQty  Decimal?        @map("notify_stock_qty") @db.Decimal(10, 2)
-  manageStock     Boolean         @default(true) @map("manage_stock")
-  backorders      String          @default("no") // no, notify, yes
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  productId      String   @unique @map("product_id")
+  sku            String   @unique
+  qty            Decimal  @default(0) @db.Decimal(10, 2)
+  isInStock      Boolean  @default(true) @map("is_in_stock")
+  minQty         Decimal  @default(0) @map("min_qty") @db.Decimal(10, 2)
+  notifyStockQty Decimal? @map("notify_stock_qty") @db.Decimal(10, 2)
+  manageStock    Boolean  @default(true) @map("manage_stock")
+  backorders     String   @default("no") // no, notify, yes
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   // Relations
-  product         ProductCatalog  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product ProductCatalog @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([sku])
   @@index([isInStock])
@@ -958,16 +1011,16 @@ model ProductInventory {
 }
 
 model MagentoSyncLog {
-  id              String    @id @default(uuid())
-  syncType        String    @map("sync_type") // full, incremental, categories, products, inventory
-  status          String    // running, completed, failed
-  startedAt       DateTime  @default(now()) @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  totalItems      Int       @default(0) @map("total_items")
-  processedItems  Int       @default(0) @map("processed_items")
-  failedItems     Int       @default(0) @map("failed_items")
-  errorMessage    String?   @db.Text @map("error_message")
-  details         Json?     // Additional sync details
+  id             String    @id @default(uuid())
+  syncType       String    @map("sync_type") // full, incremental, categories, products, inventory
+  status         String // running, completed, failed
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+  totalItems     Int       @default(0) @map("total_items")
+  processedItems Int       @default(0) @map("processed_items")
+  failedItems    Int       @default(0) @map("failed_items")
+  errorMessage   String?   @map("error_message") @db.Text
+  details        Json? // Additional sync details
 
   @@index([status])
   @@index([syncType])
@@ -980,21 +1033,21 @@ model MagentoSyncLog {
 // ========================================
 
 model VatRate {
-  id              String      @id @default(uuid())
-  code            String      @unique // "HIGH", "LOW", "ZERO", "REVERSED"
-  name            String      // "Hoog tarief", "Laag tarief", etc.
-  percentage      Decimal     @db.Decimal(5, 2) // 21.00, 9.00, 0.00
-  isActive        Boolean     @default(true) @map("is_active")
-  isDefault       Boolean     @default(false) @map("is_default")
-  validFrom       DateTime    @default(now()) @map("valid_from")
-  validUntil      DateTime?   @map("valid_until")
-  description     String?     @db.Text
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  id          String    @id @default(uuid())
+  code        String    @unique // "HIGH", "LOW", "ZERO", "REVERSED"
+  name        String // "Hoog tarief", "Laag tarief", etc.
+  percentage  Decimal   @db.Decimal(5, 2) // 21.00, 9.00, 0.00
+  isActive    Boolean   @default(true) @map("is_active")
+  isDefault   Boolean   @default(false) @map("is_default")
+  validFrom   DateTime  @default(now()) @map("valid_from")
+  validUntil  DateTime? @map("valid_until")
+  description String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  laborLines      LaborLine[]
-  partLines       PartLine[]
+  laborLines LaborLine[]
+  partsLines PartsLine[]
 
   @@index([isActive])
   @@index([isDefault])
@@ -1002,36 +1055,36 @@ model VatRate {
 }
 
 model VatReport {
-  id                    String    @id @default(uuid())
-  periodStart           DateTime  @map("period_start")
-  periodEnd             DateTime  @map("period_end")
-  quarter               Int
-  year                  Int
-  
-  salesSubtotalHigh     Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_high")
-  salesVatHigh          Decimal   @default(0) @db.Decimal(10, 2) @map("sales_vat_high")
-  salesSubtotalLow      Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_low")
-  salesVatLow           Decimal   @default(0) @db.Decimal(10, 2) @map("sales_vat_low")
-  salesSubtotalZero     Decimal   @default(0) @db.Decimal(10, 2) @map("sales_subtotal_zero")
-  
-  purchaseSubtotalHigh  Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_subtotal_high")
-  purchaseVatHigh       Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_vat_high")
-  purchaseSubtotalLow   Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_subtotal_low")
-  purchaseVatLow        Decimal   @default(0) @db.Decimal(10, 2) @map("purchase_vat_low")
-  
-  totalSalesVat         Decimal   @default(0) @db.Decimal(10, 2) @map("total_sales_vat")
-  totalPurchaseVat      Decimal   @default(0) @db.Decimal(10, 2) @map("total_purchase_vat")
-  vatToPay              Decimal   @default(0) @db.Decimal(10, 2) @map("vat_to_pay")
-  vatToReceive          Decimal   @default(0) @db.Decimal(10, 2) @map("vat_to_receive")
-  
-  status                String    @default("draft")
-  submittedAt           DateTime? @map("submitted_at")
-  paidAt                DateTime? @map("paid_at")
-  
-  notes                 String?   @db.Text
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  
+  id          String   @id @default(uuid())
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  quarter     Int
+  year        Int
+
+  salesSubtotalHigh Decimal @default(0) @map("sales_subtotal_high") @db.Decimal(10, 2)
+  salesVatHigh      Decimal @default(0) @map("sales_vat_high") @db.Decimal(10, 2)
+  salesSubtotalLow  Decimal @default(0) @map("sales_subtotal_low") @db.Decimal(10, 2)
+  salesVatLow       Decimal @default(0) @map("sales_vat_low") @db.Decimal(10, 2)
+  salesSubtotalZero Decimal @default(0) @map("sales_subtotal_zero") @db.Decimal(10, 2)
+
+  purchaseSubtotalHigh Decimal @default(0) @map("purchase_subtotal_high") @db.Decimal(10, 2)
+  purchaseVatHigh      Decimal @default(0) @map("purchase_vat_high") @db.Decimal(10, 2)
+  purchaseSubtotalLow  Decimal @default(0) @map("purchase_subtotal_low") @db.Decimal(10, 2)
+  purchaseVatLow       Decimal @default(0) @map("purchase_vat_low") @db.Decimal(10, 2)
+
+  totalSalesVat    Decimal @default(0) @map("total_sales_vat") @db.Decimal(10, 2)
+  totalPurchaseVat Decimal @default(0) @map("total_purchase_vat") @db.Decimal(10, 2)
+  vatToPay         Decimal @default(0) @map("vat_to_pay") @db.Decimal(10, 2)
+  vatToReceive     Decimal @default(0) @map("vat_to_receive") @db.Decimal(10, 2)
+
+  status      String    @default("draft")
+  submittedAt DateTime? @map("submitted_at")
+  paidAt      DateTime? @map("paid_at")
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   @@unique([year, quarter])
   @@index([status])
   @@index([year])
