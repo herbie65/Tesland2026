@@ -63,7 +63,7 @@ type Vehicle = {
 
 // Column options constant - defined outside component
 const COLUMN_OPTIONS = [
-  { key: 'externalId', label: 'Automaat ID', defaultWidth: 120 },
+  { key: 'externalId', label: 'Klant ID', defaultWidth: 120 },
   { key: 'name', label: 'Naam', defaultWidth: 200 },
   { key: 'company', label: 'Bedrijf', defaultWidth: 180 },
   { key: 'email', label: 'Email', defaultWidth: 200 },
@@ -673,7 +673,7 @@ export default function CustomersClient() {
       const getValue = (item: Customer) => {
         switch (sortKey) {
           case 'externalId':
-            return item.externalId || ''
+            return item.externalId ? parseInt(item.externalId) : 0
           case 'name':
             return item.name || ''
           case 'company':
