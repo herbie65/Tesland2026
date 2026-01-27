@@ -23,37 +23,30 @@
 - ✅ Settings opgeslagen in `settings.vat`
 - ✅ Alle waardes komen uit de database (GEEN hardcoded values)
 
-### 3. RDW Bulk Import (33% - lopend op achtergrond)
+### 3. RDW Bulk Import (100% ✅ KLAAR!)
 - ✅ RDW bulk import script gemaakt
-- ✅ Script draait stabiel (1140/3463 voertuigen verwerkt)
-- ⏳ Verwachte voltooiing: ~01:30 uur
+- ✅ Script succesvol afgerond
+- ✅ **3446/3463 voertuigen verwerkt (99.5%)**
 - ✅ Rate limiting: 500ms tussen requests
 - ✅ Progress reporting elke 10 voertuigen
 
+### 4. BTW Calculator Library (100% ✅ KLAAR!)
+- ✅ Core calculator functions geïmplementeerd
+- ✅ Alle BTW tarieven uit database (GEEN hardcoded!)
+- ✅ Support voor alle scenario's:
+  - Particulier: 21% BTW
+  - B2B met BTW nummer: BTW verlegd (0%)
+  - Export: 0% BTW
+  - Mixed rates: 21% + 9% op zelfde factuur
+- ✅ Decimal.js voor precise calculations
+- ✅ In-memory cache voor performance
+- ✅ Validatie van factuur totalen
+- ✅ **8 test scenarios - alle tests slagen!**
+
 ## 🔨 In Progress
 
-### BTW Calculator Library
-Een TypeScript library voor BTW berekeningen:
-
-```typescript
-// Functionaliteit die gebouwd moet worden:
-interface VatCalculator {
-  calculateVatForLine(amount: number, vatRateCode: string): VatCalculation
-  calculateInvoiceVat(lines: Line[], customer: Customer): InvoiceVat
-  shouldReverseVat(customer: Customer): boolean
-  getVatRateForCustomer(customer: Customer, defaultRate: string): VatRate
-}
-```
-
-**Features:**
-- Haal BTW tarieven op uit `settings.vat` (NOOIT hardcoded)
-- Bereken BTW per regel (labor/parts)
-- Bereken BTW totalen per tarief (21%, 9%, 0%)
-- Bepaal automatisch BTW regeling:
-  - Particulier → 21% BTW
-  - B2B met geldig BTW nummer → BTW verlegd (0%)
-  - Export buiten EU → 0% BTW
-  - Export binnen EU zakelijk → BTW verlegd (0%)
+### VIES BTW Validatie
+Volgende prioriteit!
 
 ## ⏸️ Nog Te Doen
 
@@ -107,9 +100,12 @@ REST endpoints voor BTW functionaliteit:
 ### Scripts
 - ✅ `/scripts/migrate-vat.ts` - Database migratie
 - ✅ `/scripts/seed-vat-data.ts` - Seed BTW data
+- ✅ `/scripts/test-vat-calculator.ts` - Test BTW calculator
+
+### Libraries
+- ✅ `/src/lib/vat-calculator.ts` - BTW Calculator Library
 
 ### Toekomstige files
-- `/src/lib/vat-calculator.ts` - BTW berekeningen
 - `/src/lib/vies-validator.ts` - VIES API client
 - `/src/app/api/vat/*` - VAT API routes
 - `/src/app/admin/vat/*` - VAT admin pagina's
@@ -138,14 +134,18 @@ REST endpoints voor BTW functionaliteit:
 
 ## 📊 Geschatte Tijdlijn
 
-- BTW Calculator: 2-3 uur
-- VIES Validatie: 1-2 uur
+- ✅ BTW Calculator: **KLAAR** (2 uur)
+- VIES Validatie: 1-2 uur (VOLGENDE STAP)
 - Invoice Update: 2-3 uur
 - Rapportage: 3-4 uur
 - Admin UI: 4-5 uur
 - Testing: 2-3 uur
 
-**Totaal**: 14-20 uur werk
+**Totaal**: ~~14-20 uur~~ → **12-18 uur** (Calculator klaar!)
+
+## 🎯 Volgende Stap: VIES BTW Validatie
+
+Nu aan de slag met VIES API integratie voor validatie van Europese BTW nummers!
 
 ## 🔍 Database Schema Details
 
