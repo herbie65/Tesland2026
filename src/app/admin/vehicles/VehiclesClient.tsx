@@ -26,6 +26,8 @@ import { CSS } from '@dnd-kit/utilities'
 type Customer = {
   id: string
   name: string
+  company?: string | null
+  email?: string | null
 }
 
 type Vehicle = {
@@ -190,6 +192,8 @@ export default function VehiclesClient() {
   const [editLicensePlate, setEditLicensePlate] = useState('')
   const [editVin, setEditVin] = useState('')
   const [editCustomerId, setEditCustomerId] = useState('none')
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
+  const [showCustomerResults, setShowCustomerResults] = useState(false)
   const [rdwLoading, setRdwLoading] = useState(false)
   const [rdwError, setRdwError] = useState<string | null>(null)
   const [lastRdwPlate, setLastRdwPlate] = useState('')
@@ -331,6 +335,23 @@ export default function VehiclesClient() {
       return acc
     }, {})
   }, [customers])
+  
+  // Filter customers based on search term
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchTerm || customerSearchTerm.length < 2) {
+      return []
+    }
+    
+    const term = customerSearchTerm.toLowerCase()
+    return customers
+      .filter(customer => {
+        const nameMatch = customer.name?.toLowerCase().includes(term)
+        const companyMatch = customer.company?.toLowerCase().includes(term)
+        const emailMatch = customer.email?.toLowerCase().includes(term)
+        return nameMatch || companyMatch || emailMatch
+      })
+      .slice(0, 50) // Limit to 50 results
+  }, [customers, customerSearchTerm])
   
   // Advanced table handlers
   const handleResizeStart = (columnKey: string, e: React.MouseEvent) => {
@@ -475,9 +496,24 @@ const loadItems = async () => {
     }
   }
 
-useEffect(() => {
+  useEffect(() => {
     loadItems()
   }, [currentPage, itemsPerPage, searchTerm])
+  
+  // Close customer results on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.customer-search-container')) {
+        setShowCustomerResults(false)
+      }
+    }
+    
+    if (showCustomerResults) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showCustomerResults])
 
   // Debounce column filters
   useEffect(() => {
@@ -539,6 +575,12 @@ useEffect(() => {
     setEditLicensePlate(item.licensePlate || '')
     setEditVin(item.vin || '')
     setEditCustomerId(item.customerId || 'none')
+    
+    // Set customer search term to current customer name if exists
+    const currentCustomer = customers.find(c => c.id === item.customerId)
+    setCustomerSearchTerm(currentCustomer?.name || '')
+    setShowCustomerResults(false)
+    
     setRdwError(null)
     setLastRdwPlate(String(item.licensePlate || '').trim().toLowerCase())
     setShowEdit(true)
@@ -1136,18 +1178,78 @@ const filteredItems = useMemo(() => {
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
                 Eigenaar
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-                  value={editCustomerId}
-                  onChange={(event) => setEditCustomerId(event.target.value)}
-                >
-                  <option value="none">Geen eigenaar</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative customer-search-container">
+                  <input
+                    type="text"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-base pr-20"
+                    value={customerSearchTerm}
+                    onChange={(e) => {
+                      setCustomerSearchTerm(e.target.value)
+                      setShowCustomerResults(true)
+                    }}
+                    onFocus={() => setShowCustomerResults(true)}
+                    placeholder="Zoek op naam, bedrijf of email..."
+                  />
+                  {editCustomerId && editCustomerId !== 'none' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditCustomerId('none')
+                        setCustomerSearchTerm('')
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 px-2 py-1"
+                      title="Verwijder selectie"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  
+                  {/* Search results dropdown */}
+                  {showCustomerResults && customerSearchTerm.length >= 2 && (
+                    <div className="absolute z-50 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
+                      {filteredCustomers.length > 0 ? (
+                        <>
+                          <div className="sticky top-0 bg-slate-50 px-3 py-2 text-xs text-slate-600 border-b">
+                            {filteredCustomers.length} resultaten
+                          </div>
+                          {filteredCustomers.map((customer) => (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              onClick={() => {
+                                setEditCustomerId(customer.id)
+                                setCustomerSearchTerm(customer.name)
+                                setShowCustomerResults(false)
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                            >
+                              <div className="font-medium text-slate-900">{customer.name}</div>
+                              {customer.company && (
+                                <div className="text-xs text-slate-600">{customer.company}</div>
+                              )}
+                              {customer.email && (
+                                <div className="text-xs text-slate-500">{customer.email}</div>
+                              )}
+                            </button>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="px-3 py-4 text-sm text-slate-500 text-center">
+                          Geen klanten gevonden
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Selected customer display */}
+                  {editCustomerId && editCustomerId !== 'none' && (
+                    <div className="mt-2 text-sm text-slate-600">
+                      Geselecteerd: <span className="font-medium text-slate-900">
+                        {customers.find(c => c.id === editCustomerId)?.name || 'Onbekend'}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </label>
             <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600 sm:col-span-2">
               <p className="text-sm font-semibold text-slate-700">RDW gegevens (alleen-lezen)</p>

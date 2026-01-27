@@ -4,10 +4,13 @@ import { prisma } from '@/lib/prisma'
 export async function GET() {
   try {
     const items = await prisma.customer.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        vehicles: true, // Include related vehicles
-      },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        company: true,
+      }
     })
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
