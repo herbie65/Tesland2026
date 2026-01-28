@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { apiFetch } from '@/lib/api'
+import ClickToDialButton from '@/components/ClickToDialButton'
 import {
   DndContext,
   closestCenter,
@@ -394,9 +395,19 @@ export default function CustomersClient() {
       case 'email':
         return item.email || '-'
       case 'phone':
-        return item.phone || '-'
+        return (
+          <div className="flex items-center gap-2">
+            {item.phone && <ClickToDialButton phoneNumber={item.phone} />}
+            <span>{item.phone || '-'}</span>
+          </div>
+        )
       case 'mobile':
-        return item.mobile || '-'
+        return (
+          <div className="flex items-center gap-2">
+            {item.mobile && <ClickToDialButton phoneNumber={item.mobile} />}
+            <span>{item.mobile || '-'}</span>
+          </div>
+        )
       case 'address':
         return formatAddress(item.address)
       case 'city':
@@ -1245,11 +1256,17 @@ export default function CustomersClient() {
                   </div>
                   <div className="flex justify-between">
                     <dt className="font-medium text-slate-700">Telefoon:</dt>
-                    <dd className="text-slate-900">{detailViewItem.phone || '-'}</dd>
+                    <dd className="text-slate-900 flex items-center gap-2">
+                      {detailViewItem.phone && <ClickToDialButton phoneNumber={detailViewItem.phone} />}
+                      {detailViewItem.phone || '-'}
+                    </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="font-medium text-slate-700">Mobiel:</dt>
-                    <dd className="text-slate-900">{detailViewItem.mobile || '-'}</dd>
+                    <dd className="text-slate-900 flex items-center gap-2">
+                      {detailViewItem.mobile && <ClickToDialButton phoneNumber={detailViewItem.mobile} />}
+                      {detailViewItem.mobile || '-'}
+                    </dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="font-medium text-slate-700">Fax:</dt>

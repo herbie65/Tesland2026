@@ -989,6 +989,10 @@
   line-height: 1;
   box-shadow: none;
   outline: none;
+  /* Fixed width for consistency */
+  min-width: 5.5rem;
+  width: 5.5rem;
+  max-width: 5.5rem;
 }
 
 .license-plate.nl::before {

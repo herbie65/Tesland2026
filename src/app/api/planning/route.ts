@@ -35,7 +35,14 @@ export async function GET(request: NextRequest) {
       where,
       orderBy: { scheduledAt: 'asc' },
       include: {
-        customer: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            mobile: true,
+          }
+        },
         vehicle: true,
         planningType: true,
         workOrder: {

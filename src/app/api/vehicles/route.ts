@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
               select: {
                 id: true,
                 name: true,
+                phone: true,
+                mobile: true,
               },
             },
           },
@@ -64,7 +66,12 @@ export async function GET(request: NextRequest) {
       v.rdw_data as "rdwData",
       v.created_at as "createdAt",
       v.updated_at as "updatedAt",
-      json_build_object('id', c.id, 'name', c.name) as customer
+      json_build_object(
+        'id', c.id, 
+        'name', c.name,
+        'phone', c.phone,
+        'mobile', c.mobile
+      ) as customer
     FROM vehicles v
     LEFT JOIN customers c ON v.customer_id = c.id
     WHERE 

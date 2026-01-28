@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
+import ClickToDialButton from '@/components/ClickToDialButton'
 import {
   DndContext,
   closestCenter,
@@ -28,6 +29,8 @@ type Customer = {
   name: string
   company?: string | null
   email?: string | null
+  phone?: string | null
+  mobile?: string | null
 }
 
 type Vehicle = {
@@ -447,7 +450,15 @@ export default function VehiclesClient() {
       case 'vin':
         return item.vin || '-'
       case 'customer':
-        return item.customerId ? customerLookup[item.customerId] || item.customerId : '-'
+        const customerName = item.customerId ? customerLookup[item.customerId] || item.customerId : '-'
+        const customer = item.customer
+        const phoneNumber = customer?.phone || customer?.mobile
+        return (
+          <div className="flex items-center gap-2">
+            {phoneNumber && <ClickToDialButton phoneNumber={phoneNumber} />}
+            <span>{customerName}</span>
+          </div>
+        )
       case 'year':
         return item.year || '-'
       case 'color':
@@ -1465,7 +1476,12 @@ const filteredItems = useMemo(() => {
                 <dl className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <dt className="font-medium text-slate-700">Klant:</dt>
-                    <dd className="text-slate-900">{detailViewItem.customer?.name || 'Geen klant gekoppeld'}</dd>
+                    <dd className="text-slate-900 flex items-center gap-2">
+                      {(detailViewItem.customer?.phone || detailViewItem.customer?.mobile) && (
+                        <ClickToDialButton phoneNumber={detailViewItem.customer.phone || detailViewItem.customer.mobile || ''} />
+                      )}
+                      {detailViewItem.customer?.name || 'Geen klant gekoppeld'}
+                    </dd>
                   </div>
                 </dl>
               </div>

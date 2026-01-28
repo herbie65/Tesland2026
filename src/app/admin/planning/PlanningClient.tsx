@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
+import ClickToDialButton from '@/components/ClickToDialButton'
 import {
   addDays,
   addMinutes,
@@ -28,6 +29,12 @@ type PlanningItem = {
   status: string
   workOrderStatus?: string | null
   workOrderId?: string | null
+  customer?: {
+    id: string
+    name: string
+    phone?: string | null
+    mobile?: string | null
+  } | null
   workOrderNumber?: string | null
   isRequest?: boolean
   partsSummaryStatus?: string | null
@@ -302,7 +309,12 @@ export default function PlanningClient() {
         ) : null}
         {item.title ? <div className="planning-day-popover-title">{item.title}</div> : null}
         {item.customerName ? (
-          <div className="planning-day-popover-row">{item.customerName}</div>
+          <div className="planning-day-popover-row flex items-center gap-2">
+            {(item.customer?.phone || item.customer?.mobile) && (
+              <ClickToDialButton phoneNumber={item.customer.phone || item.customer.mobile || ''} />
+            )}
+            {item.customerName}
+          </div>
         ) : null}
         {scheduled ? (
           <div className="planning-day-popover-row">

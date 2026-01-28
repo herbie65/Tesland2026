@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
+import ClickToDialButton from '@/components/ClickToDialButton'
 
 type WorkOrder = {
   id: string
@@ -26,6 +27,12 @@ type WorkOrder = {
   estimatedAmount?: number | null
   planningTypeName?: string | null
   planningTypeColor?: string | null
+  customer?: {
+    id: string
+    name: string
+    phone?: string | null
+    mobile?: string | null
+  } | null
 }
 
 type User = {
@@ -621,7 +628,14 @@ export default function WorkOrdersClient() {
                         {item.title}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-slate-700">{item.customerName || '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">
+                      <div className="flex items-center gap-2">
+                        {(item.customer?.phone || item.customer?.mobile) && (
+                          <ClickToDialButton phoneNumber={item.customer.phone || item.customer.mobile || ''} />
+                        )}
+                        {item.customerName || '-'}
+                      </div>
+                    </td>
                     <td className="px-4 py-2 text-slate-700">{item.vehicleLabel || '-'}</td>
                     <td className="px-4 py-2 text-slate-700">{item.assigneeName || '-'}</td>
                     <td className="px-4 py-2 text-slate-700">
