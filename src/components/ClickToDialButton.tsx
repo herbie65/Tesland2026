@@ -72,8 +72,7 @@ export default function ClickToDialButton({
 
   const pollCallStatus = async (callId: string) => {
     try {
-      const statusResponse = await apiFetch(`/api/voip/call?callId=${callId}`)
-      const statusData = await statusResponse.json()
+      const statusData = await apiFetch(`/api/voip/call?callId=${callId}`)
 
       if (statusData.success && statusData.data.status) {
         const status = statusData.data.status

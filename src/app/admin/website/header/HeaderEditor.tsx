@@ -51,9 +51,8 @@ export default function HeaderEditor() {
     try {
       setLoading(true)
       setError(null)
-      const meResponse = await apiFetch('/api/admin/me')
-      const meData = await meResponse.json()
-      if (!meResponse.ok || !meData.success) {
+      const meData = await apiFetch('/api/admin/me')
+      if (!meData.success) {
         setAllowed(false)
         return
       }
@@ -62,12 +61,11 @@ export default function HeaderEditor() {
       setAllowed(canEdit)
       if (!canEdit) return
 
-      const response = await apiFetch('/api/settings/siteHeader')
-      if (!response.ok) {
+      const data = await apiFetch('/api/settings/siteHeader')
+      if (data.error) {
         setSettings((prev) => ({ ...prev, menuItems: prev.menuItems.length ? prev.menuItems : [] }))
         return
       }
-      const data = await response.json()
       const payload = data.item?.data || {}
       setSettings({
         logoUrl: payload.logoUrl || '',

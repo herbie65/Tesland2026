@@ -14,6 +14,20 @@ import {
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
 
+function getAbsenceTypeColor(code: string): string {
+  const colors: Record<string, string> = {
+    'VERLOF': '#10b981',
+    'ZIEK': '#ef4444',
+    'VAKANTIE': '#3b82f6',
+    'DOKTER': '#f59e0b',
+    'VRIJ': '#8b5cf6',
+    'ONBETAALD': '#6b7280',
+    'TRAINING': '#ec4899',
+    'OVERIG': '#64748b',
+  }
+  return colors[code] || '#94a3b8'
+}
+
 function generatePlanningId(): string {
   const now = new Date()
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -59,6 +73,31 @@ export async function GET(request: NextRequest) {
             warehouseEtaDate: true,
             warehouseLocation: true,
           }
+        },
+        leaveRequest: {
+          select: {
+            id: true,
+            absenceTypeCode: true,
+            status: true,
+            totalDays: true,
+            reason: true,
+          }
+        }
+      }
+    })
+    
+    // Fetch approved leave requests to add to planning
+    const leaveRequests = await prisma.leaveRequest.findMany({
+      where: {
+        status: { in: ['PENDING', 'APPROVED'] }
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+            color: true,
+          }
         }
       }
     })
@@ -91,11 +130,66 @@ export async function GET(request: NextRequest) {
         approvalDate: item.workOrder?.approvalDate || null,
         warehouseStatus: item.workOrder?.warehouseStatus || null,
         warehouseEtaDate: item.workOrder?.warehouseEtaDate || null,
-        warehouseLocation: item.workOrder?.warehouseLocation || null
+        warehouseLocation: item.workOrder?.warehouseLocation || null,
+        // Leave request fields
+        leaveRequestId: item.leaveRequest?.id || null,
+        absenceTypeCode: item.leaveRequest?.absenceTypeCode || null,
+        leaveStatus: item.leaveRequest?.status || null,
+        leaveTotalDays: item.leaveRequest?.totalDays || null,
+        leaveReason: item.leaveRequest?.reason || null,
+      }
+    })
+    
+    // Add leave requests as planning items
+    const leaveItems = leaveRequests.map((leave) => {
+      const startDate = new Date(leave.startDate)
+      const endDate = new Date(leave.endDate)
+      const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      
+      return {
+        id: `leave-${leave.id}`,
+        title: `${leave.user.displayName} - ${leave.absenceTypeCode}`,
+        scheduledAt: leave.startDate.toISOString(),
+        status: 'AFWEZIG',
+        assigneeId: leave.userId,
+        assigneeName: leave.user.displayName,
+        assigneeColor: leave.user.color || '#ef4444',
+        durationMinutes: days * 24 * 60, // Full day(s)
+        notes: leave.reason || null,
+        priority: null,
+        location: null,
+        customerId: null,
+        customerName: null,
+        vehicleId: null,
+        vehiclePlate: null,
+        vehicleLabel: null,
+        planningTypeId: null,
+        planningTypeName: leave.absenceTypeCode,
+        planningTypeColor: getAbsenceTypeColor(leave.absenceTypeCode),
+        workOrderId: null,
+        workOrderNumber: null,
+        workOrderStatus: null,
+        partsSummaryStatus: null,
+        partsRequired: null,
+        pricingMode: null,
+        priceAmount: null,
+        customerApproved: null,
+        approvalDate: null,
+        warehouseStatus: null,
+        warehouseEtaDate: null,
+        warehouseLocation: null,
+        leaveRequestId: leave.id,
+        absenceTypeCode: leave.absenceTypeCode,
+        leaveStatus: leave.status,
+        leaveTotalDays: leave.totalDays,
+        leaveReason: leave.reason,
+        leaveStartDate: leave.startDate.toISOString(),
+        leaveEndDate: leave.endDate.toISOString(),
+        isLeaveRequest: true,
       }
     })
 
-    return NextResponse.json({ success: true, items: merged })
+    return NextResponse.json({ success: true, items: [...merged, ...leaveItems] })
   } catch (error: any) {
     const status = error.status || 500
     console.error('Error fetching planning items:', error)

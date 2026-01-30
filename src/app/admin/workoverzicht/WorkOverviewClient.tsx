@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
-import { SETTINGS_DEFAULTS } from '@/lib/settings-defaults'
 
 type WorkOverviewSettings = {
   columns: string[]
@@ -31,9 +30,7 @@ type PlanningType = {
 }
 
  export default function WorkOverviewClient() {
-   const [columns, setColumns] = useState<string[]>(
-     (SETTINGS_DEFAULTS as any)?.workoverview?.columns || []
-   )
+  const [columns, setColumns] = useState<string[]>([])
    const [loading, setLoading] = useState(true)
    const [error, setError] = useState<string | null>(null)
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
@@ -49,14 +46,9 @@ type PlanningType = {
        try {
          setLoading(true)
          setError(null)
-         const response = await apiFetch('/api/settings/workoverview')
-        const data = await response.json()
-        if (!response.ok || !data.success) {
-          if (response.status === 404) {
-            setColumns((SETTINGS_DEFAULTS as any)?.workoverview?.columns || [])
-            return
-          }
-          throw new Error(data.error || 'Werkoverzicht instellingen ontbreken.')
+      const data = await apiFetch('/api/settings/workoverview')
+      if (!data.success) {
+        throw new Error(data.error || 'Werkoverzicht instellingen ontbreken.')
         }
         const settings = data.item?.data || data.item || {}
         const nextColumns = Array.isArray(settings.columns) ? settings.columns : []
@@ -74,9 +66,8 @@ type PlanningType = {
     const loadWorkOrders = async () => {
       try {
         setWorkOrderError(null)
-        const response = await apiFetch('/api/workorders')
-        const data = await response.json()
-        if (!response.ok || !data.success) {
+        const data = await apiFetch('/api/workorders')
+        if (!data.success) {
           throw new Error(data.error || 'Werkorders laden mislukt.')
         }
         setWorkOrders(data.items || [])
@@ -90,9 +81,8 @@ type PlanningType = {
   useEffect(() => {
     const loadPlanningTypes = async () => {
       try {
-        const response = await apiFetch('/api/planning-types')
-        const data = await response.json()
-        if (!response.ok || !data.success) {
+        const data = await apiFetch('/api/planning-types')
+        if (!data.success) {
           throw new Error(data.error || 'Planningtypes laden mislukt.')
         }
         setPlanningTypes(data.items || [])

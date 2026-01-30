@@ -1,5 +1,6 @@
 /**
  * Helper to make authenticated API calls with JWT token
+ * Returns parsed JSON data directly
  */
 export async function apiFetch(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('token')
@@ -7,6 +8,11 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers)
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
+  }
+  
+  // Set Content-Type for JSON requests
+  if (options.body && typeof options.body === 'string') {
+    headers.set('Content-Type', 'application/json')
   }
   
   const response = await fetch(url, {
@@ -19,9 +25,12 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     window.location.href = '/login'
+    throw new Error('Unauthorized')
   }
   
-  return response
+  // Parse and return JSON
+  const data = await response.json()
+  return data
 }
 
 /**

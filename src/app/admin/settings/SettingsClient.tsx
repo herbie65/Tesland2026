@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { SETTINGS_DEFAULTS } from "@/lib/settings-defaults"
 import PlanningTypes from "./PlanningTypes"
 import { apiFetch } from "@/lib/api"
 import MediaPickerModal from "../components/MediaPickerModal"
@@ -10,6 +9,68 @@ type SettingsGroup = {
   id: string
   group: string
   data: Record<string, any>
+}
+
+const SETTINGS_DEFAULTS: Record<string, any> = {
+  general: {
+    companyName: '',
+    contactEmail: '',
+    contactPhone: '',
+    address: ''
+  },
+  planning: {
+    defaultDurationMinutes: 60,
+    defaultStatus: 'planned',
+    dayStart: '08:30',
+    dayEnd: '16:30',
+    slotMinutes: 60,
+    dayViewDays: 3,
+    selectableSaturday: false,
+    selectableSunday: false,
+    breaks: []
+  },
+  workoverview: {
+    columns: []
+  },
+  notifications: {
+    senderEmail: '',
+    notifyOnNewOrder: false,
+    notifyOnPlanningChange: false,
+    planningLeadHours: 24
+  },
+  email: {
+    mode: 'OFF',
+    testRecipients: [],
+    fromName: '',
+    fromEmail: '',
+    provider: 'SMTP'
+  },
+  warehouseStatuses: {
+    items: []
+  },
+  rdwSettings: {
+    bedrijfsnummer: '',
+    keuringsinstantienummer: '',
+    kvkNaam: '',
+    kvkNummer: '',
+    kvkVestigingsnummer: '',
+    aansluitnummer: '',
+    certificaatReferentie: '',
+    enabled: false
+  },
+  siteHeader: {
+    logoUrl: '',
+    logoAlt: '',
+    menuItems: [],
+    actions: {}
+  },
+  integrations: {
+    webhookUrl: '',
+    externalSystem: ''
+  },
+  absenceTypes: { 
+    items: [] 
+  }
 }
 
 export default function SettingsClient() {
@@ -35,14 +96,13 @@ export default function SettingsClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch("/api/settings")
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch("/api/settings")
+      if (!data.success) {
         throw new Error(data.error || "Failed to load settings")
       }
       const merged: Record<string, any> = { ...SETTINGS_DEFAULTS }
       ;(data.items || []).forEach((item: SettingsGroup) => {
-        merged[item.group] = { ...merged[item.group], ...(item.data || {}) }
+        merged[item.group] = { ...SETTINGS_DEFAULTS[item.group as keyof typeof SETTINGS_DEFAULTS] || {}, ...(item.data || {}) }
       })
       setSettings(merged)
     } catch (err: any) {
@@ -59,9 +119,8 @@ export default function SettingsClient() {
   useEffect(() => {
     const loadRole = async () => {
       try {
-        const response = await apiFetch("/api/admin/me")
-        const data = await response.json()
-        if (response.ok && data.success) {
+        const data = await apiFetch("/api/admin/me")
+        if (data.success) {
           setIsSystemAdmin(data.user?.role === "SYSTEM_ADMIN")
         }
       } catch {
@@ -75,9 +134,8 @@ export default function SettingsClient() {
     const loadProfile = async () => {
       try {
         setProfileLoading(true)
-        const response = await apiFetch("/api/admin/profile")
-        const data = await response.json()
-        if (response.ok && data.success) {
+        const data = await apiFetch("/api/admin/profile")
+        if (data.success) {
           setProfile({
             profilePhoto: data.profile?.profilePhoto || "",
             backgroundPhoto: data.profile?.backgroundPhoto || "",
@@ -110,6 +168,7 @@ export default function SettingsClient() {
   const workOverviewColumns = Array.isArray(settings.workoverview?.columns)
     ? settings.workoverview.columns
     : []
+  const hasPlanningSettings = Boolean(settings.planning)
 
   const updatePlanningBreak = (index: number, field: "start" | "end", value: string) => {
     const next = planningBreaks.map((entry: any, idx: number) =>
@@ -153,13 +212,12 @@ export default function SettingsClient() {
     try {
       setError(null)
       setSuccess(null)
-      const response = await apiFetch(`/api/settings/${group}`, {
+        const data = await apiFetch(`/api/settings/${group}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: settings[group] })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+        if (!data.success) {
         throw new Error(data.error || "Failed to save settings")
       }
       setSuccess(`Instellingen opgeslagen: ${group}`)
@@ -175,13 +233,12 @@ export default function SettingsClient() {
       setError(null)
       setSuccess(null)
       setEmailSaving(true)
-      const response = await apiFetch("/api/settings/email", {
+        const data = await apiFetch("/api/settings/email", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: settings.email })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+        if (!data.success) {
         throw new Error(data.error || "Failed to save email settings")
       }
       setSuccess("E-mail instellingen opgeslagen.")
@@ -199,11 +256,10 @@ export default function SettingsClient() {
       setError(null)
       setSuccess(null)
       setEmailTesting(true)
-      const response = await apiFetch("/api/settings/email/test", {
+      const data = await apiFetch("/api/settings/email/test", {
         method: "POST"
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Test email versturen mislukt")
       }
       setSuccess(`Test email verzonden naar ${data.recipient}. Check je inbox!`)
@@ -234,13 +290,12 @@ export default function SettingsClient() {
         setError("Alle RDW-velden zijn verplicht.")
         return
       }
-      const response = await apiFetch("/api/settings/rdwSettings", {
+      const data = await apiFetch("/api/settings/rdwSettings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: settings.rdwSettings })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to save RDW settings")
       }
       setSuccess("RDW instellingen opgeslagen.")
@@ -329,7 +384,7 @@ export default function SettingsClient() {
                   try {
                     setProfileSaving(true)
                     setError(null)
-                    const response = await apiFetch("/api/admin/profile", {
+                    const data = await apiFetch("/api/admin/profile", {
                       method: "PATCH",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
@@ -338,8 +393,7 @@ export default function SettingsClient() {
                         transparency: profile.transparency
                       })
                     })
-                    const data = await response.json()
-                    if (!response.ok || !data.success) {
+                    if (!data.success) {
                       throw new Error(data.error || "Failed to save profile")
                     }
                     setSuccess("Personalisatie opgeslagen.")
@@ -382,7 +436,12 @@ export default function SettingsClient() {
             E-mail staat in TEST-modus – alle mails gaan naar testadres.
           </div>
         ) : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {!hasPlanningSettings ? (
+          <p className="mt-3 text-xs text-amber-700">
+            Planning instellingen ontbreken in de database. Voeg de groep "planning" toe via de database of API.
+          </p>
+        ) : (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1.5 text-xs font-medium text-slate-700">
             Mode
             <select
@@ -546,7 +605,8 @@ export default function SettingsClient() {
               {emailTesting ? "Versturen..." : "📧 Test email versturen"}
             </button>
           </div>
-        </div>
+          </div>
+        )}
       </section>
 
       {isSystemAdmin ? (
@@ -785,7 +845,7 @@ export default function SettingsClient() {
             Bedrijfsnaam
             <input
               className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
-              value={settings.general.companyName}
+              value={settings.general?.companyName || ''}
               onChange={(event) => updateGroup("general", "companyName", event.target.value)}
             />
           </label>
@@ -793,7 +853,7 @@ export default function SettingsClient() {
             Contact email
             <input
               className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
-              value={settings.general.contactEmail}
+              value={settings.general?.contactEmail || ''}
               onChange={(event) => updateGroup("general", "contactEmail", event.target.value)}
             />
           </label>
@@ -801,7 +861,7 @@ export default function SettingsClient() {
             Contact telefoon
             <input
               className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
-              value={settings.general.contactPhone}
+              value={settings.general?.contactPhone || ''}
               onChange={(event) => updateGroup("general", "contactPhone", event.target.value)}
             />
           </label>
@@ -809,7 +869,7 @@ export default function SettingsClient() {
             Adres
             <input
               className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
-              value={settings.general.address}
+              value={settings.general?.address || ''}
               onChange={(event) => updateGroup("general", "address", event.target.value)}
             />
           </label>

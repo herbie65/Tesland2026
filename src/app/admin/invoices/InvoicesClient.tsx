@@ -63,9 +63,8 @@ export default function InvoicesClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch('/api/invoices')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/invoices')
+      if (!data.success) {
         throw new Error(data.error || 'Failed to load invoices')
       }
       setItems(data.items || [])

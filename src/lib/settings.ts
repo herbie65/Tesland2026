@@ -99,6 +99,13 @@ export type VoipSettings = {
   apiToken: string
 }
 
+export type AbsenceType = {
+  code: string
+  label: string
+  color: string
+  deductsFromBalance?: boolean
+}
+
 export type WorkOrderDefaults = {
   workOrderStatusDefault: string
   defaultDurationMinutes: number
@@ -375,6 +382,28 @@ export const getVoipSettings = async (): Promise<VoipSettings | null> => {
     apiEmail: String(data?.apiEmail || ''),
     apiToken: String(data?.apiToken || '')
   }
+}
+
+export const getAbsenceTypes = async (): Promise<AbsenceType[]> => {
+  const data = await readSettingsDoc('absenceTypes')
+  const items = Array.isArray(data.items) ? data.items : []
+  if (!items.length) {
+    throw new Error('absenceTypes settings ontbreken')
+  }
+  return items.map((item: any) => {
+    const code = String(item.code || '').trim()
+    const label = String(item.label || '').trim()
+    const color = String(item.color || '').trim()
+    if (!code || !label || !color) {
+      throw new Error('absenceTypes settings bevatten lege velden')
+    }
+    return {
+      code,
+      label,
+      color,
+      deductsFromBalance: item.deductsFromBalance === true || ['VERLOF', 'VAKANTIE'].includes(code)
+    }
+  })
 }
 
 export const assertStatusExists = (code: string, list: StatusEntry[], label: string) => {

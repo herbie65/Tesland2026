@@ -114,9 +114,8 @@ export default function WorkOrdersClient() {
 
   const loadStatuses = async () => {
     try {
-      const response = await apiFetch('/api/settings/statuses')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/settings/statuses')
+      if (!data.success) {
         throw new Error(data.error || 'Statuslijst ontbreekt')
       }
       const list = data.item?.data?.workOrder || []
@@ -138,26 +137,22 @@ export default function WorkOrdersClient() {
 
   const loadLookups = async () => {
     try {
-      const [usersResponse, customersResponse, vehiclesResponse, typesResponse] = await Promise.all([
+      const [usersData, customersData, vehiclesData, typesData] = await Promise.all([
         apiFetch('/api/users'),
         apiFetch('/api/customers'),
         apiFetch('/api/vehicles'),
         apiFetch('/api/planning-types')
       ])
-      const usersData = await usersResponse.json()
-      const customersData = await customersResponse.json()
-      const vehiclesData = await vehiclesResponse.json()
-      const typesData = await typesResponse.json()
-      if (usersResponse.ok && usersData.success) {
+      if (usersData.success) {
         setUsers(usersData.items || [])
       }
-      if (customersResponse.ok && customersData.success) {
+      if (customersData.success) {
         setCustomers(customersData.items || [])
       }
-      if (vehiclesResponse.ok && vehiclesData.success) {
+      if (vehiclesData.success) {
         setVehicles(vehiclesData.items || [])
       }
-      if (typesResponse.ok && typesData.success) {
+      if (typesData.success) {
         setPlanningTypes(typesData.items || [])
       }
       setLookupError(null)
@@ -170,9 +165,8 @@ export default function WorkOrdersClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch('/api/workorders')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/workorders')
+      if (!data.success) {
         throw new Error(data.error || 'Failed to load workorders')
       }
       const sorted = [...(data.items || [])].sort((a, b) =>

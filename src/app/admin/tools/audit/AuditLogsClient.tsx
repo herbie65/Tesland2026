@@ -41,9 +41,8 @@ export default function AuditLogsClient() {
 
   const loadRole = async () => {
     try {
-      const response = await apiFetch('/api/admin/me')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/me')
+      if (!data.success) {
         setAllowed(false)
         return
       }
@@ -57,9 +56,8 @@ export default function AuditLogsClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch(`/api/admin/audit-logs?${queryString}`)
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch(`/api/admin/audit-logs?${queryString}`)
+      if (!data.success) {
         throw new Error(data.error || 'Laden mislukt')
       }
       setItems(data.items || [])

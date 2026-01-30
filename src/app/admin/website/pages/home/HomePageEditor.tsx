@@ -95,9 +95,8 @@ export default function HomePageEditor() {
       setLoading(true)
       setError(null)
 
-      const meResponse = await apiFetch('/api/admin/me')
-      const meData = await meResponse.json()
-      if (!meResponse.ok || !meData.success) {
+      const meData = await apiFetch('/api/admin/me')
+      if (!meData.success) {
         setAllowed(false)
         return
       }
@@ -106,10 +105,9 @@ export default function HomePageEditor() {
       setAllowed(canEdit)
       if (!canEdit) return
 
-      const response = await apiFetch('/api/admin/pages/_home')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        if (response.status === 404) {
+      const data = await apiFetch('/api/admin/pages/_home')
+      if (!data.success) {
+        if (data.error?.includes('404') || data.status === 404) {
           setSeedMissing(true)
           return
         }
@@ -178,9 +176,8 @@ export default function HomePageEditor() {
     try {
       setSaving(true)
       setError(null)
-      const response = await apiFetch('/api/admin/seed-pages', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-pages', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       await loadData()

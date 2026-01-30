@@ -60,9 +60,8 @@ export default function CreditInvoicesClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch('/api/credit-invoices')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/credit-invoices')
+      if (!data.success) {
         throw new Error(data.error || 'Failed to load credit invoices')
       }
       setItems(data.items || [])

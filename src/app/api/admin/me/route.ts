@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
         roleId: user.roleId || null,
         roleName: user.roleName || null,
         permissions: user.permissions || [],
+        pagePermissions: user.pagePermissions || {},
         isSystemAdmin: user.isSystemAdmin,
         displayName: user.displayName || null,
         email: user.email

@@ -6,19 +6,39 @@ import MediaPickerModal from '../components/MediaPickerModal'
 type Product = {
   id: string
   name: string
-  sku?: string | null
+  sku: string
+  type?: string
   category?: string | null
   price?: number | null
-  stock_quantity?: number | null
-  min_stock?: number | null
+  cost?: number | null
+  quantity?: number | null
+  isInStock?: boolean
+  minStock?: number | null
+  unit?: string | null
+  supplier?: string | null
+  supplierSku?: string | null
+  shelfLocation?: string | null
+  binLocation?: string | null
+  stockAgain?: Date | string | null
   description?: string | null
-  image_url?: string | null
-  shelf_number?: string | null
-  bin_number?: string | null
-  is_stocked?: boolean
+  imageUrl?: string | null
   isActive?: boolean
+  visibility?: string
   createdAt?: string | Date | null
   updatedAt?: string | Date | null
+  // Configurable product fields
+  hasVariants?: boolean
+  variantCount?: number
+  variants?: Array<{
+    id: string
+    sku: string
+    name: string
+    price?: number | null
+    quantity?: number | null
+    isInStock?: boolean
+    shelfLocation?: string | null
+    binLocation?: string | null
+  }>
 }
 
 const emptyForm = {
@@ -26,13 +46,16 @@ const emptyForm = {
   sku: '',
   category: '',
   price: '',
-  stock_quantity: '',
-  min_stock: '',
+  cost: '',
+  quantity: '',
+  minStock: '',
+  unit: '',
+  supplier: '',
+  supplierSku: '',
+  shelfLocation: '',
+  binLocation: '',
   description: '',
-  image_url: '',
-  shelf_number: '',
-  bin_number: '',
-  is_stocked: true,
+  imageUrl: '',
   isActive: true
 }
 
@@ -49,21 +72,28 @@ export default function ProductsClient() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'name',
+    'type',
     'sku',
-    'category',
     'price',
     'stock',
-    'location',
+    'shelfLocation',
+    'binLocation',
+    'variants',
     'active'
   ])
 
   const columnOptions = [
     { key: 'name', label: 'Naam' },
+    { key: 'type', label: 'Type' },
     { key: 'sku', label: 'SKU' },
     { key: 'category', label: 'Categorie' },
     { key: 'price', label: 'Prijs' },
+    { key: 'cost', label: 'Kostprijs' },
     { key: 'stock', label: 'Voorraad' },
-    { key: 'location', label: 'Locatie' },
+    { key: 'shelfLocation', label: 'Kastlocatie' },
+    { key: 'binLocation', label: 'Vaklocatie' },
+    { key: 'variants', label: 'Varianten' },
+    { key: 'supplier', label: 'Leverancier SKU' },
     { key: 'active', label: 'Status' },
     { key: 'createdAt', label: 'Aangemaakt' }
   ]
@@ -129,17 +159,16 @@ export default function ProductsClient() {
       sku: item.sku || '',
       category: item.category || '',
       price: item.price !== null && item.price !== undefined ? String(item.price) : '',
-      stock_quantity:
-        item.stock_quantity !== null && item.stock_quantity !== undefined
-          ? String(item.stock_quantity)
-          : '',
-      min_stock:
-        item.min_stock !== null && item.min_stock !== undefined ? String(item.min_stock) : '',
+      cost: item.cost !== null && item.cost !== undefined ? String(item.cost) : '',
+      quantity: item.quantity !== null && item.quantity !== undefined ? String(item.quantity) : '',
+      minStock: item.minStock !== null && item.minStock !== undefined ? String(item.minStock) : '',
+      unit: item.unit || '',
+      supplier: item.supplier || '',
+      supplierSku: item.supplierSku || '',
+      shelfLocation: item.shelfLocation || '',
+      binLocation: item.binLocation || '',
       description: item.description || '',
-      image_url: item.image_url || '',
-      shelf_number: item.shelf_number || '',
-      bin_number: item.bin_number || '',
-      is_stocked: item.is_stocked !== false,
+      imageUrl: item.imageUrl || '',
       isActive: item.isActive !== false
     })
     setShowModal(true)
@@ -228,8 +257,10 @@ export default function ProductsClient() {
         item.sku,
         item.category,
         item.description,
-        item.shelf_number,
-        item.bin_number
+        item.shelfLocation,
+        item.binLocation,
+        item.supplierSku,
+        item.type
       ]
       return fields.some((value) => String(value || '').toLowerCase().includes(term))
     })
@@ -243,16 +274,26 @@ export default function ProductsClient() {
         switch (sortKey) {
           case 'name':
             return item.name || ''
+          case 'type':
+            return item.type || ''
           case 'sku':
             return item.sku || ''
           case 'category':
             return item.category || ''
           case 'price':
             return Number(item.price || 0)
+          case 'cost':
+            return Number(item.cost || 0)
           case 'stock':
-            return item.is_stocked === false ? -1 : Number(item.stock_quantity || 0)
-          case 'location':
-            return `${item.shelf_number || ''} ${item.bin_number || ''}`.trim()
+            return item.isInStock === false ? -1 : Number(item.quantity || 0)
+          case 'shelfLocation':
+            return item.shelfLocation || ''
+          case 'binLocation':
+            return item.binLocation || ''
+          case 'variants':
+            return item.variantCount || 0
+          case 'supplier':
+            return item.supplierSku || ''
           case 'active':
             return item.isActive === false ? 'inactief' : 'actief'
           case 'createdAt':
@@ -338,6 +379,13 @@ export default function ProductsClient() {
                       </button>
                     </th>
                   ) : null}
+                  {visibleColumns.includes('type') ? (
+                    <th className="px-4 py-2 text-left">
+                      <button type="button" onClick={() => updateSort('type')}>
+                        Type
+                      </button>
+                    </th>
+                  ) : null}
                   {visibleColumns.includes('sku') ? (
                     <th className="px-4 py-2 text-left">
                       <button type="button" onClick={() => updateSort('sku')}>
@@ -359,6 +407,13 @@ export default function ProductsClient() {
                       </button>
                     </th>
                   ) : null}
+                  {visibleColumns.includes('cost') ? (
+                    <th className="px-4 py-2 text-left">
+                      <button type="button" onClick={() => updateSort('cost')}>
+                        Kostprijs
+                      </button>
+                    </th>
+                  ) : null}
                   {visibleColumns.includes('stock') ? (
                     <th className="px-4 py-2 text-left">
                       <button type="button" onClick={() => updateSort('stock')}>
@@ -366,10 +421,31 @@ export default function ProductsClient() {
                       </button>
                     </th>
                   ) : null}
-                  {visibleColumns.includes('location') ? (
+                  {visibleColumns.includes('shelfLocation') ? (
                     <th className="px-4 py-2 text-left">
-                      <button type="button" onClick={() => updateSort('location')}>
-                        Locatie
+                      <button type="button" onClick={() => updateSort('shelfLocation')}>
+                        Kastlocatie
+                      </button>
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('binLocation') ? (
+                    <th className="px-4 py-2 text-left">
+                      <button type="button" onClick={() => updateSort('binLocation')}>
+                        Vaklocatie
+                      </button>
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('variants') ? (
+                    <th className="px-4 py-2 text-left">
+                      <button type="button" onClick={() => updateSort('variants')}>
+                        Varianten
+                      </button>
+                    </th>
+                  ) : null}
+                  {visibleColumns.includes('supplier') ? (
+                    <th className="px-4 py-2 text-left">
+                      <button type="button" onClick={() => updateSort('supplier')}>
+                        Leverancier SKU
                       </button>
                     </th>
                   ) : null}
@@ -396,9 +472,9 @@ export default function ProductsClient() {
                     {visibleColumns.includes('name') ? (
                       <td className="px-4 py-2 font-medium text-slate-900">
                         <div className="flex items-center gap-3">
-                          {item.image_url ? (
+                          {item.imageUrl ? (
                             <img
-                              src={item.image_url}
+                              src={item.imageUrl}
                               alt={item.name}
                               className="h-10 w-10 rounded-lg object-cover"
                             />
@@ -411,6 +487,13 @@ export default function ProductsClient() {
                         </div>
                       </td>
                     ) : null}
+                    {visibleColumns.includes('type') ? (
+                      <td className="px-4 py-2 text-slate-700">
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-800">
+                          {item.type || 'simple'}
+                        </span>
+                      </td>
+                    ) : null}
                     {visibleColumns.includes('sku') ? (
                       <td className="px-4 py-2 text-slate-700">{item.sku || '-'}</td>
                     ) : null}
@@ -418,18 +501,48 @@ export default function ProductsClient() {
                       <td className="px-4 py-2 text-slate-700">{item.category || '-'}</td>
                     ) : null}
                     {visibleColumns.includes('price') ? (
-                      <td className="px-4 py-2 text-slate-700">€ {Number(item.price || 0).toFixed(2)}</td>
+                      <td className="px-4 py-2 text-slate-700">
+                        €{Number(item.price || 0).toFixed(2)}
+                      </td>
+                    ) : null}
+                    {visibleColumns.includes('cost') ? (
+                      <td className="px-4 py-2 text-slate-700">
+                        {item.cost ? `€${Number(item.cost).toFixed(2)}` : '-'}
+                      </td>
                     ) : null}
                     {visibleColumns.includes('stock') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {item.is_stocked === false
-                          ? 'Niet-voorraadhoudend'
-                          : `Voorraad: ${item.stock_quantity ?? 0}`}
+                        {item.isInStock === false ? (
+                          <span className="text-red-600">Niet op voorraad</span>
+                        ) : (
+                          `${item.quantity ?? 0} stuks`
+                        )}
                       </td>
                     ) : null}
-                    {visibleColumns.includes('location') ? (
+                    {visibleColumns.includes('shelfLocation') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {item.shelf_number || '-'} · {item.bin_number || '-'}
+                        {item.shelfLocation || '-'}
+                      </td>
+                    ) : null}
+                    {visibleColumns.includes('binLocation') ? (
+                      <td className="px-4 py-2 text-slate-700">
+                        {item.binLocation || '-'}
+                      </td>
+                    ) : null}
+                    {visibleColumns.includes('variants') ? (
+                      <td className="px-4 py-2 text-slate-700">
+                        {item.hasVariants ? (
+                          <span className="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
+                            {item.variantCount} variant{item.variantCount !== 1 ? 'en' : ''}
+                          </span>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                    ) : null}
+                    {visibleColumns.includes('supplier') ? (
+                      <td className="px-4 py-2 text-slate-700">
+                        {item.supplierSku || '-'}
                       </td>
                     ) : null}
                     {visibleColumns.includes('active') ? (
@@ -483,6 +596,49 @@ export default function ProductsClient() {
                 Sluiten
               </button>
             </div>
+
+            {/* Variant Information Section */}
+            {editingItem && editingItem.hasVariants && editingItem.variants && editingItem.variants.length > 0 ? (
+              <div className="mt-4 rounded-lg border border-purple-200 bg-purple-50 p-4">
+                <h3 className="text-sm font-semibold text-purple-900 mb-3">
+                  🎨 Product Varianten ({editingItem.variants.length})
+                </h3>
+                <div className="grid gap-2">
+                  {editingItem.variants.map((variant: any) => (
+                    <div
+                      key={variant.id}
+                      className="rounded-lg bg-white border border-purple-100 p-3 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="font-medium text-slate-900">{variant.name}</div>
+                          <div className="text-xs text-slate-600 mt-1">SKU: {variant.sku}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold text-slate-900">
+                            €{variant.price ? Number(variant.price).toFixed(2) : '0.00'}
+                          </div>
+                          <div className={`text-xs mt-1 ${variant.isInStock ? 'text-green-600' : 'text-red-600'}`}>
+                            {variant.isInStock ? `${variant.quantity} stuks` : 'Niet op voorraad'}
+                          </div>
+                        </div>
+                      </div>
+                      {(variant.shelfLocation || variant.binLocation) ? (
+                        <div className="mt-2 pt-2 border-t border-purple-100 text-xs text-slate-600">
+                          📍 Locatie: 
+                          {variant.shelfLocation ? ` Kast ${variant.shelfLocation}` : ''}
+                          {variant.binLocation ? ` · Vak ${variant.binLocation}` : ''}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-purple-700">
+                  ℹ️ Dit is een configureerbaar product met varianten. Voorraad en locaties worden per variant beheerd.
+                </div>
+              </div>
+            ) : null}
+
             <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSave}>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Naam
@@ -522,33 +678,70 @@ export default function ProductsClient() {
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Kastnummer
+                Kostprijs (€)
                 <input
                   className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                  value={formData.shelf_number}
-                  onChange={(event) =>
-                    setFormData({ ...formData, shelf_number: event.target.value })
-                  }
-                  placeholder="Bijv. K-12"
+                  type="number"
+                  step="0.01"
+                  value={formData.cost}
+                  onChange={(event) => setFormData({ ...formData, cost: event.target.value })}
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Vaknummer
+                Voorraad
                 <input
                   className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                  value={formData.bin_number}
+                  type="number"
+                  value={formData.quantity}
+                  onChange={(event) => setFormData({ ...formData, quantity: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Minimale voorraad
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  type="number"
+                  value={formData.minStock}
+                  onChange={(event) => setFormData({ ...formData, minStock: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Leverancier SKU
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  value={formData.supplierSku}
+                  onChange={(event) => setFormData({ ...formData, supplierSku: event.target.value })}
+                  placeholder="Optioneel"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Kast Locatie
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  value={formData.shelfLocation}
                   onChange={(event) =>
-                    setFormData({ ...formData, bin_number: event.target.value })
+                    setFormData({ ...formData, shelfLocation: event.target.value })
                   }
-                  placeholder="Bijv. V-4"
+                  placeholder="Bijv. 12"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Vak Locatie
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  value={formData.binLocation}
+                  onChange={(event) =>
+                    setFormData({ ...formData, binLocation: event.target.value })
+                  }
+                  placeholder="Bijv. A2"
                 />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Afbeelding URL
                 <input
                   className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                  value={formData.image_url}
-                  onChange={(event) => setFormData({ ...formData, image_url: event.target.value })}
+                  value={formData.imageUrl}
+                  onChange={(event) => setFormData({ ...formData, imageUrl: event.target.value })}
                   placeholder="https://"
                 />
                 <button
@@ -568,42 +761,6 @@ export default function ProductsClient() {
                   placeholder="Optioneel"
                 />
               </label>
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={formData.is_stocked}
-                  onChange={(event) =>
-                    setFormData({ ...formData, is_stocked: event.target.checked })
-                  }
-                />
-                Voorraadhoudend product
-              </label>
-              {formData.is_stocked ? (
-                <>
-                  <label className="grid gap-2 text-sm font-medium text-slate-700">
-                    Voorraad
-                    <input
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                      type="number"
-                      value={formData.stock_quantity}
-                      onChange={(event) =>
-                        setFormData({ ...formData, stock_quantity: event.target.value })
-                      }
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm font-medium text-slate-700">
-                    Minimale voorraad
-                    <input
-                      className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                      type="number"
-                      value={formData.min_stock}
-                      onChange={(event) =>
-                        setFormData({ ...formData, min_stock: event.target.value })
-                      }
-                    />
-                  </label>
-                </>
-              ) : null}
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
                 <input
                   type="checkbox"
@@ -631,7 +788,7 @@ export default function ProductsClient() {
         isOpen={showMedia}
         onClose={() => setShowMedia(false)}
         onSelect={(url) => {
-          setFormData((prev) => ({ ...prev, image_url: url }))
+          setFormData((prev) => ({ ...prev, imageUrl: url }))
           setShowMedia(false)
         }}
         category="products"

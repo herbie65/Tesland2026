@@ -35,13 +35,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, user.password)
+    // Check password (support legacy plain-text and bcrypt)
+    const storedPassword = user.password
+    const isHashed = storedPassword.startsWith('$2a$') || storedPassword.startsWith('$2b$') || storedPassword.startsWith('$2y$')
+    const isValidPassword = isHashed
+      ? await bcrypt.compare(password, storedPassword)
+      : password === storedPassword
     if (!isValidPassword) {
       return NextResponse.json(
         { success: false, error: 'Invalid email or password' },
         { status: 401 }
       )
+    }
+
+    // Upgrade legacy plain-text password to bcrypt
+    if (!isHashed) {
+      const hashedPassword = await bcrypt.hash(password, 10)
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword },
+      })
     }
 
     // Check if account is active

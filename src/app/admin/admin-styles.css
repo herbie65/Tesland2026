@@ -28,6 +28,7 @@
   background-repeat: no-repeat;
   min-height: 100vh;
   position: relative;
+  isolation: isolate; /* Creates stacking context so portaled modals appear above */
 }
 
 .admin-background::before {
@@ -650,6 +651,10 @@
   padding: 1.5rem;
   box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
   animation: modal-pop 160ms ease;
+}
+
+.planning-modal.workorder-modal {
+  overflow: visible;
 }
 
 .workorder-modal {

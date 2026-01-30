@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { apiFetch } from "@/lib/api"
 
 type PlanningType = {
   id: string
@@ -22,9 +23,8 @@ export default function PlanningTypes() {
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch("/api/planning-types")
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch("/api/planning-types")
+      if (!data.success) {
         throw new Error(data.error || "Failed to load planning types")
       }
       setItems(data.items || [])
@@ -43,13 +43,12 @@ export default function PlanningTypes() {
     event.preventDefault()
     try {
       setError(null)
-      const response = await fetch("/api/planning-types", {
+      const data = await apiFetch("/api/planning-types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, color })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to create planning type")
       }
       setName("")
@@ -76,13 +75,12 @@ export default function PlanningTypes() {
     try {
       if (!editingId) return
       setError(null)
-      const response = await fetch(`/api/planning-types/${editingId}`, {
+      const data = await apiFetch(`/api/planning-types/${editingId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName, color: editColor })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to update planning type")
       }
       cancelEdit()
@@ -95,9 +93,8 @@ export default function PlanningTypes() {
   const handleDelete = async (item: PlanningType) => {
     if (!confirm(`Verwijder type "${item.name}"?`)) return
     try {
-      const response = await fetch(`/api/planning-types/${item.id}`, { method: "DELETE" })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch(`/api/planning-types/${item.id}`, { method: "DELETE" })
+      if (!data.success) {
         throw new Error(data.error || "Failed to delete planning type")
       }
       await loadItems()

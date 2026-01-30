@@ -247,9 +247,8 @@ export default function EmailTemplatesClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch("/api/admin/email-templates")
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch("/api/admin/email-templates")
+      if (!data.success) {
         throw new Error(data.error || "Templates laden mislukt")
       }
       const list = data.items || []

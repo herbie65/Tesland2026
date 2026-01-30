@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { apiFetch } from '@/lib/api'
 
 interface MediaItem {
@@ -8,6 +9,7 @@ interface MediaItem {
   url: string
   size?: number
   updatedAt?: string
+  loadError?: boolean
 }
 
 type MediaCategory = 'products' | 'uploads' | 'profile' | 'wallpapers'
@@ -36,9 +38,8 @@ export default function MediaPickerModal({
   const load = async () => {
     try {
       setError(null)
-      const res = await apiFetch(`/api/media/list?category=${category}`)
-      const data = await res.json()
-      if (res.ok && Array.isArray(data.files)) {
+      const data = await apiFetch(`/api/media/list?category=${category}`)
+      if (Array.isArray(data.files)) {
         setFiles(data.files)
         setFiltered(data.files)
       } else {
@@ -67,13 +68,11 @@ export default function MediaPickerModal({
       const form = new FormData()
       form.append('file', file)
       form.append('category', category)
-      const res = await apiFetch('/api/upload', { method: 'POST', body: form })
-      const data = await res.json()
-      if (res.ok) {
-        await load()
-      } else {
+      const data = await apiFetch('/api/upload', { method: 'POST', body: form })
+      if (data.error) {
         throw new Error(data.error || 'Upload mislukt')
       }
+      await load()
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -81,11 +80,29 @@ export default function MediaPickerModal({
     }
   }
 
-  if (!isOpen) return null
+  const [mounted, setMounted] = useState(false)
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-4xl max-h-[90vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col">
+  useEffect(() => {
+    setMounted(true)
+    return () => setMounted(false)
+  }, [])
+
+  if (!isOpen || !mounted) return null
+
+  const modalContent = (
+    <div 
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-4"
+      style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        bottom: 0, 
+        zIndex: 99999,
+        isolation: 'isolate'
+      }}
+    >
+      <div className="w-full max-w-4xl bg-white rounded-lg shadow-xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 2rem)' }}>
         <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0">
           <h3 className="text-lg font-semibold">{title}</h3>
           <button onClick={onClose} aria-label="Sluiten" className="text-slate-500 hover:text-slate-700">
@@ -141,13 +158,24 @@ export default function MediaPickerModal({
                         <div className="text-xs text-slate-600 mt-1">PDF</div>
                       </div>
                     </div>
+                  ) : f.loadError ? (
+                    <div className="w-full h-28 bg-slate-100 flex items-center justify-center rounded">
+                      <div className="text-xs text-slate-400">Kan niet laden</div>
+                    </div>
                   ) : (
-                    <img
-                      src={f.url}
-                      alt={f.name}
-                      className="w-full h-28 object-cover rounded"
-                      loading="lazy"
-                    />
+                    <div className="relative w-full h-28 bg-slate-100 rounded overflow-hidden">
+                      <img
+                        src={f.url}
+                        alt={f.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        onError={() => {
+                          setFiltered(prev => prev.map(item => 
+                            item.url === f.url ? { ...item, loadError: true } : item
+                          ))
+                        }}
+                      />
+                    </div>
                   )}
                   <div className="mt-2 text-xs break-all">{f.name}</div>
                 </button>
@@ -161,4 +189,6 @@ export default function MediaPickerModal({
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }

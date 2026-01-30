@@ -1,0 +1,46 @@
+import { PrismaClient } from '@prisma/client'
+
+const prisma = new PrismaClient()
+
+async function main() {
+  console.log('Running HR fields migration...')
+  
+  const statements = [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth TIMESTAMP`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS city TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS postal_code TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Nederland'`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS employment_end_date TIMESTAMP`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS has_fixed_term_contract BOOLEAN DEFAULT false`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS contract_hours_per_week DOUBLE PRECISION`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS annual_leave_days_or_hours DOUBLE PRECISION`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_relation TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_email TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS hr_notes TEXT`,
+  ]
+  
+  for (const statement of statements) {
+    try {
+      await prisma.$executeRawUnsafe(statement)
+      console.log('✓ Executed:', statement.substring(0, 60) + '...')
+    } catch (error: any) {
+      console.log('⚠ Skipped:', statement.substring(0, 60) + '... (already exists or error)')
+    }
+  }
+  
+  console.log('✅ HR fields migration completed successfully!')
+}
+
+main()
+  .catch((e) => {
+    console.error('❌ Migration failed:', e)
+    process.exit(1)
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })

@@ -19,11 +19,31 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    const item = await prisma.product.findUnique({
+    const item = await prisma.productCatalog.findUnique({
       where: { id },
       include: {
-        partsLines: true,
-        stockMoves: true
+        inventory: true,
+        images: true,
+        categories: {
+          include: {
+            category: true
+          }
+        },
+        childRelations: {
+          include: {
+            child: {
+              include: {
+                inventory: true,
+                images: { where: { isMain: true }, take: 1 }
+              }
+            }
+          }
+        },
+        parentRelations: {
+          include: {
+            parent: true
+          }
+        }
       }
     })
     if (!item) {
@@ -46,20 +66,50 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     
     const updateData: any = {}
     if (body.name !== undefined) updateData.name = body.name
-    if (body.sku !== undefined) updateData.sku = body.sku
-    if (body.category !== undefined) updateData.category = body.category
-    if (body.price !== undefined) updateData.price = Number(body.price)
-    if (body.cost !== undefined) updateData.cost = Number(body.cost)
-    if (body.stock !== undefined) updateData.stock = Number(body.stock)
-    if (body.unit !== undefined) updateData.unit = body.unit
-    if (body.supplier !== undefined) updateData.supplier = body.supplier
-    if (body.supplierSku !== undefined) updateData.supplierSku = body.supplierSku
     if (body.description !== undefined) updateData.description = body.description
-    if (body.isActive !== undefined) updateData.isActive = Boolean(body.isActive)
+    if (body.price !== undefined) updateData.price = Number(body.price)
+    if (body.cost !== undefined) updateData.costPrice = Number(body.cost)
+    if (body.supplierSku !== undefined) updateData.supplierSkus = body.supplierSku
+    if (body.shelfLocation !== undefined) updateData.shelfLocation = body.shelfLocation
+    if (body.binLocation !== undefined) updateData.binLocation = body.binLocation
+    if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl
+    if (body.isActive !== undefined) updateData.status = body.isActive ? 'enabled' : 'disabled'
     
-    const item = await prisma.product.update({
+    // Update inventory separately if stock data is provided
+    const product = await prisma.productCatalog.findUnique({
       where: { id },
-      data: updateData
+      include: { inventory: true }
+    })
+    
+    if (product && (body.quantity !== undefined || body.minStock !== undefined)) {
+      if (product.inventory) {
+        await prisma.productInventory.update({
+          where: { id: product.inventory.id },
+          data: {
+            ...(body.quantity !== undefined && { qty: Number(body.quantity), isInStock: Number(body.quantity) > 0 }),
+            ...(body.minStock !== undefined && { minQty: Number(body.minStock) })
+          }
+        })
+      } else if (body.quantity !== undefined) {
+        // Create inventory if it doesn't exist
+        await prisma.productInventory.create({
+          data: {
+            productId: id,
+            sku: product.sku,
+            qty: Number(body.quantity),
+            isInStock: Number(body.quantity) > 0,
+            minQty: body.minStock !== undefined ? Number(body.minStock) : 0
+          }
+        })
+      }
+    }
+    
+    const item = await prisma.productCatalog.update({
+      where: { id },
+      data: updateData,
+      include: {
+        inventory: true
+      }
     })
     
     return NextResponse.json({ success: true, item })
@@ -75,7 +125,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
-    await prisma.product.delete({
+    await prisma.productCatalog.delete({
       where: { id }
     })
     return NextResponse.json({ success: true })

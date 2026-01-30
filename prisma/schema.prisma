@@ -46,18 +46,59 @@ model User {
   // VoIP integration
   voipExtension String? @map("voip_extension") // Eindbestemming (bijv. "206")
 
+  // HR - Personal Information
+  firstName       String?   @map("first_name")
+  lastName        String?   @map("last_name")
+  dateOfBirth     DateTime? @map("date_of_birth")
+  address         String?
+  city            String?
+  postalCode      String?   @map("postal_code")
+  country         String?   @default("Nederland")
+  
+  // HR - Employment Information
+  employmentStartDate    DateTime? @map("employment_start_date")
+  employmentEndDate      DateTime? @map("employment_end_date")
+  hasFixedTermContract   Boolean?  @default(false) @map("has_fixed_term_contract")
+  contractHoursPerWeek   Float?    @map("contract_hours_per_week")
+  annualLeaveDaysOrHours Float?    @map("annual_leave_days_or_hours")
+  
+  // HR - Emergency Contact
+  emergencyContactName         String? @map("emergency_contact_name")
+  emergencyContactRelation     String? @map("emergency_contact_relation")
+  emergencyContactPhone        String? @map("emergency_contact_phone")
+  emergencyContactEmail        String? @map("emergency_contact_email")
+  
+  // HR - Financial Information
+  privateEmail String? @map("private_email")
+  iban         String? @map("iban")
+  
+  // HR - Notes
+  hrNotes String? @map("hr_notes")
+
+  // Verlof tegoed - SPLIT: Wettelijk en Bovenwettelijk
+  leaveBalanceLegal     Float?    @default(0) @map("leave_balance_legal")     // Wettelijke verlofdagen (20 dagen in NL)
+  leaveBalanceExtra     Float?    @default(0) @map("leave_balance_extra")     // Bovenwettelijke verlofdagen
+  leaveBalanceCarryover Float?    @default(0) @map("leave_balance_carryover")
+  leaveBalanceSpecial   Float?    @default(0) @map("leave_balance_special")
+  leaveUnit             String?   @default("DAYS") @map("leave_unit")
+  hoursPerDay           Float?    @default(8) @map("hours_per_day")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  roleRef        Role?            @relation(fields: [roleId], references: [id])
-  workOrders     WorkOrder[]      @relation("assignee")
-  planningItems  PlanningItem[]   @relation("assignee")
-  laborLines     LaborLine[]      @relation("labor_user")
-  uploadedPhotos WorkOrderPhoto[] @relation("photo_uploader")
-  auditLogs      AuditLog[]
-  notifications  Notification[]
-  preferences    UserPreference[]
+  roleRef               Role?            @relation(fields: [roleId], references: [id])
+  workOrders            WorkOrder[]      @relation("assignee")
+  planningItems         PlanningItem[]   @relation("assignee")
+  laborLines            LaborLine[]      @relation("labor_user")
+  uploadedPhotos        WorkOrderPhoto[] @relation("photo_uploader")
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  preferences           UserPreference[]
+  leaveRequests         LeaveRequest[]   @relation("employee")
+  reviewedLeaveRequests LeaveRequest[]   @relation("reviewer")
+  leaveBalances         LeaveBalance[]
+  leaveLedger           LeaveLedger[]    @relation("ledger")
 
   @@map("users")
 }
@@ -223,11 +264,12 @@ model PlanningItem {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relations
-  assignee     User?         @relation("assignee", fields: [assigneeId], references: [id])
-  customer     Customer?     @relation(fields: [customerId], references: [id])
-  vehicle      Vehicle?      @relation(fields: [vehicleId], references: [id])
-  planningType PlanningType? @relation(fields: [planningTypeId], references: [id])
-  workOrder    WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  assignee      User?          @relation("assignee", fields: [assigneeId], references: [id])
+  customer      Customer?      @relation(fields: [customerId], references: [id])
+  vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id])
+  planningType  PlanningType?  @relation(fields: [planningTypeId], references: [id])
+  workOrder     WorkOrder?     @relation(fields: [workOrderId], references: [id])
+  leaveRequest  LeaveRequest?  // One-to-one relation: a planning item may be linked to a leave request
 
   @@index([scheduledAt])
   @@index([assigneeId])
@@ -1092,4 +1134,83 @@ model VatReport {
   @@index([status])
   @@index([year])
   @@map("vat_reports")
+}
+
+// ========================================
+// HR & LEAVE MANAGEMENT
+// ========================================
+
+model LeaveRequest {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  absenceTypeCode  String    @map("absence_type_code") // VERLOF, ZIEK, DOKTER, etc.
+  startDate        DateTime  @map("start_date")
+  endDate          DateTime  @map("end_date")
+  startTime        String?   @map("start_time") // For partial day leave
+  endTime          String?   @map("end_time")   // For partial day leave
+  totalDays        Decimal   @map("total_days") @db.Decimal(5, 2)
+  totalHours       Decimal?  @map("total_hours") @db.Decimal(6, 2)
+  totalMinutes     Int?      @map("total_minutes")
+  status           String    @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  reason           String?   @db.Text
+  notes            String?   @db.Text
+  reviewedBy       String?   @map("reviewed_by")
+  reviewedAt       DateTime? @map("reviewed_at")
+  reviewNotes      String?   @map("review_notes") @db.Text
+  planningItemId   String?   @unique @map("planning_item_id") // Link to PlanningItem when approved (one-to-one)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user          User           @relation("employee", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer      User?          @relation("reviewer", fields: [reviewedBy], references: [id])
+  planningItem  PlanningItem?  @relation(fields: [planningItemId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([startDate])
+  @@index([planningItemId])
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  year        Int
+  periodKey   String   @map("period_key") // Format: "YYYY-MM" for monthly accrual
+  changeType  String   @map("change_type") // ACCRUAL, DEDUCT, ADJUSTMENT, CARRY_FORWARD
+  amountDays  Decimal  @map("amount_days") @db.Decimal(5, 2)
+  balanceType String   @map("balance_type") // LEGAL, EXTRA, CARRYOVER, SPECIAL
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   String?  @map("created_by") // User ID who made the change
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, periodKey, balanceType])
+  @@index([userId, year])
+  @@index([periodKey])
+  @@map("leave_balances")
+}
+
+model LeaveLedger {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  type            String   // ACCRUAL, TAKEN, ADJUSTMENT, CARRYOVER
+  amountMinutes   Int      @map("amount_minutes") // Positive for credit, negative for debit
+  periodKey       String?  @map("period_key") // Format: "YYYY-MM" or "CARRYOVER-YYYY"
+  leaveRequestId  String?  @map("leave_request_id")
+  createdBy       String?  @map("created_by")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation("ledger", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, periodKey])
+  @@index([userId])
+  @@index([type])
+  @@index([periodKey])
+  @@map("leave_ledger")
 }

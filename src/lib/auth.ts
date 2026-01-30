@@ -11,6 +11,7 @@ export type AuthUser = {
   roleId?: string | null
   roleName?: string | null
   permissions: string[]
+  pagePermissions?: { [path: string]: boolean } // Pages the user has access to
   isSystemAdmin: boolean
   displayName?: string | null
   isActive: boolean
@@ -66,6 +67,7 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
   const fallbackRole = user.role || null
 
   let permissions: string[] = []
+  let pagePermissions: { [path: string]: boolean } = {}
   let roleName: string | null = null
   let resolvedRole: string | null = fallbackRole
   let isSystemAdmin = user.isSystemAdmin || false
@@ -76,7 +78,13 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
     // Extract permissions from JSONB field
     const perms = user.roleRef.permissions as any
     if (perms && typeof perms === 'object') {
+      // Legacy format: flat object with true/false values
       permissions = Object.keys(perms).filter(key => perms[key] === true)
+      
+      // New format: nested pages object
+      if (perms.pages && typeof perms.pages === 'object') {
+        pagePermissions = perms.pages
+      }
     }
     resolvedRole = user.roleRef.name // FIX: Use name instead of id
   } else if (fallbackRole) {
@@ -91,6 +99,7 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
     roleId: roleId ? String(roleId) : resolvedRole,
     roleName,
     permissions,
+    pagePermissions,
     isSystemAdmin,
     displayName: user.displayName || null,
     isActive: user.isActive || true,
@@ -107,6 +116,16 @@ export const requireRole = async (request: NextRequest, roles: string[]) => {
     throw buildAuthError('Insufficient permissions', 403)
   }
   return user
+}
+
+// Helper to check if user is manager/admin
+export const isManager = (user: AuthUser): boolean => {
+  return user.isSystemAdmin || 
+         user.role === 'admin' || 
+         user.role === 'manager' ||
+         user.roleName === 'admin' ||
+         user.roleName === 'manager' ||
+         user.role === 'MANAGEMENT'
 }
 
 // Helper to generate JWT token

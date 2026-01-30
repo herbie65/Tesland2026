@@ -197,6 +197,18 @@ export default function PlanningClient() {
   const [location, setLocation] = useState('')
   const [customerId, setCustomerId] = useState('none')
   const [vehicleId, setVehicleId] = useState('none')
+  const [vehicleSearchTerm, setVehicleSearchTerm] = useState('')
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
+  const [showVehicleSearch, setShowVehicleSearch] = useState(false)
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false)
+  const [suggestedCustomerId, setSuggestedCustomerId] = useState<string | null>(null)
+  const [showOwnerConfirm, setShowOwnerConfirm] = useState(false)
+  const [searchingVehicles, setSearchingVehicles] = useState(false)
+  const [searchingCustomers, setSearchingCustomers] = useState(false)
+  const [vehicleSearchResults, setVehicleSearchResults] = useState<any[]>([])
+  const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([])
+  const [selectedVehicleData, setSelectedVehicleData] = useState<any>(null)
+  const [selectedCustomerData, setSelectedCustomerData] = useState<any>(null)
   const [planningTypeId, setPlanningTypeId] = useState('none')
   const [notes, setNotes] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -213,7 +225,71 @@ export default function PlanningClient() {
   const dayScrollRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
   const selectedUser = users.find((item) => item.id === assigneeId)
-  const selectedCustomer = customers.find((item) => item.id === customerId)
+  const selectedCustomer = selectedCustomerData || 
+    customers.find((item) => item.id === customerId) || 
+    customerSearchResults.find((item) => item.id === customerId)
+  const selectedVehicle = selectedVehicleData ||
+    vehicles.find((item) => item.id === vehicleId) ||
+    vehicleSearchResults.find((item) => item.id === vehicleId)
+  const suggestedCustomer = customers.find((item) => item.id === suggestedCustomerId) ||
+    customerSearchResults.find((item) => item.id === suggestedCustomerId)
+  
+  // Live search vehicles via API
+  useEffect(() => {
+    if (!showVehicleSearch) {
+      return
+    }
+    
+    const timer = setTimeout(async () => {
+      setSearchingVehicles(true)
+      try {
+        const searchQuery = vehicleSearchTerm.trim() 
+          ? `?search=${encodeURIComponent(vehicleSearchTerm)}&limit=20`
+          : '?limit=20'
+        const data = await apiFetch(`/api/vehicles${searchQuery}`)
+        if (data.success) {
+          setVehicleSearchResults(data.items || [])
+        }
+      } catch (error) {
+        console.error('Vehicle search error:', error)
+      } finally {
+        setSearchingVehicles(false)
+      }
+    }, vehicleSearchTerm ? 300 : 0) // No debounce on initial load
+    
+    return () => clearTimeout(timer)
+  }, [vehicleSearchTerm, showVehicleSearch])
+  
+  // Live search customers via API
+  useEffect(() => {
+    if (!showCustomerSearch) {
+      return
+    }
+    
+    const timer = setTimeout(async () => {
+      setSearchingCustomers(true)
+      try {
+        const searchQuery = customerSearchTerm.trim()
+          ? `?search=${encodeURIComponent(customerSearchTerm)}&limit=20`
+          : '?limit=20'
+        const data = await apiFetch(`/api/customers${searchQuery}`)
+        if (data.success) {
+          setCustomerSearchResults(data.items || [])
+        }
+      } catch (error) {
+        console.error('Customer search error:', error)
+      } finally {
+        setSearchingCustomers(false)
+      }
+    }, customerSearchTerm ? 300 : 0) // No debounce on initial load
+    
+    return () => clearTimeout(timer)
+  }, [customerSearchTerm, showCustomerSearch])
+  
+  // Filtered lists for search (removed - now using API search)
+  const filteredVehicles = vehicleSearchResults
+  const filteredCustomers = customerSearchResults
+  
   const roleNameMap = useMemo(() => {
     return new Map(roles.map((role) => [role.id, role.name || '']))
   }, [roles])
@@ -227,6 +303,9 @@ export default function PlanningClient() {
   const [agreementAmount, setAgreementAmount] = useState('')
   const [agreementNotes, setAgreementNotes] = useState('')
   const [activeTab, setActiveTab] = useState<ModalTab>('opdracht')
+  const [checklistItems, setChecklistItems] = useState<Array<{ id: string; text: string; checked: boolean }>>([
+    { id: crypto.randomUUID(), text: '', checked: false }
+  ])
   const [approving, setApproving] = useState(false)
   const [sendEmail, setSendEmail] = useState(false)
   const [hoveredPopover, setHoveredPopover] = useState<{
@@ -615,6 +694,58 @@ export default function PlanningClient() {
     )
   }
 
+  // Checklist handlers
+  const handleChecklistItemChange = (id: string, text: string) => {
+    setChecklistItems((items) =>
+      items.map((item) => (item.id === id ? { ...item, text } : item))
+    )
+  }
+
+  const handleChecklistItemToggle = (id: string) => {
+    setChecklistItems((items) =>
+      items.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item))
+    )
+  }
+
+  const handleChecklistItemKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, id: string, index: number) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const newItem = { id: crypto.randomUUID(), text: '', checked: false }
+      setChecklistItems((items) => {
+        const newItems = [...items]
+        newItems.splice(index + 1, 0, newItem)
+        return newItems
+      })
+      // Focus on the new input after a short delay
+      setTimeout(() => {
+        const inputs = document.querySelectorAll('[data-checklist-input]')
+        const nextInput = inputs[index + 1] as HTMLInputElement
+        if (nextInput) {
+          nextInput.focus()
+        }
+      }, 10)
+    } else if (event.key === 'Backspace' && !checklistItems[index].text && checklistItems.length > 1) {
+      event.preventDefault()
+      setChecklistItems((items) => items.filter((item) => item.id !== id))
+      // Focus on the previous input
+      setTimeout(() => {
+        const inputs = document.querySelectorAll('[data-checklist-input]')
+        const prevInput = inputs[Math.max(0, index - 1)] as HTMLInputElement
+        if (prevInput) {
+          prevInput.focus()
+        }
+      }, 10)
+    }
+  }
+
+  const handleChecklistItemRemove = (id: string) => {
+    if (checklistItems.length > 1) {
+      setChecklistItems((items) => items.filter((item) => item.id !== id))
+    } else {
+      setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
+    }
+  }
+
   const getPartsDotColor = (item: PlanningItem) => {
     if (item.partsRequired !== true) return null
     const summary = item.partsSummaryStatus || ''
@@ -750,15 +881,15 @@ export default function PlanningClient() {
   const loadLookups = async () => {
     try {
       const [
-        customersResponse,
-        vehiclesResponse,
-        usersResponse,
-        rolesResponse,
-        typesResponse,
-        statusResponse,
-        indicatorResponse,
-        partsLogicResponse,
-        warehouseResponse
+        customersData,
+        vehiclesData,
+        usersData,
+        rolesData,
+        typesData,
+        statusData,
+        indicatorData,
+        partsLogicData,
+        warehouseData
       ] = await Promise.all([
         apiFetch('/api/customers'),
         apiFetch('/api/vehicles'),
@@ -770,28 +901,20 @@ export default function PlanningClient() {
         apiFetch('/api/settings/partsLogic'),
         apiFetch('/api/settings/warehouseStatuses')
       ])
-      const customersData = await customersResponse.json()
-      const vehiclesData = await vehiclesResponse.json()
-      const usersData = await usersResponse.json()
-      const rolesData = await rolesResponse.json()
-      const typesData = await typesResponse.json()
-      const statusData = await statusResponse.json()
-      const indicatorData = await indicatorResponse.json()
-      const partsLogicData = await partsLogicResponse.json()
-      const warehouseData = await warehouseResponse.json()
-      if (customersResponse.ok && customersData.success) {
+      
+      if (customersData.success) {
         setCustomers(customersData.items || [])
       }
-      if (vehiclesResponse.ok && vehiclesData.success) {
+      if (vehiclesData.success) {
         setVehicles(vehiclesData.items || [])
       }
-      if (rolesResponse.ok && rolesData.success) {
+      if (rolesData.success) {
         setRoles(rolesData.items || [])
       }
-      if (typesResponse.ok && typesData.success) {
+      if (typesData.success) {
         setPlanningTypes(typesData.items || [])
       }
-      if (statusResponse.ok && statusData.success) {
+      if (statusData.success) {
         const list = statusData.item?.data?.workOrder || []
         setWorkOrderStatuses(
           Array.isArray(list)
@@ -806,7 +929,7 @@ export default function PlanningClient() {
         setWorkOrderStatuses([])
         setStatusLoadError(statusData?.error || 'Statuslijst ontbreekt')
       }
-      if (indicatorResponse.ok && indicatorData.success) {
+      if (indicatorData.success) {
         const data = indicatorData.item?.data || indicatorData.item || {}
         const normalize = (entries: any) =>
           Array.isArray(entries)
@@ -827,7 +950,7 @@ export default function PlanningClient() {
         setUiIndicators(null)
         setUiIndicatorsError(indicatorData?.error || 'Indicator settings ontbreken')
       }
-      if (partsLogicResponse.ok && partsLogicData.success) {
+      if (partsLogicData.success) {
         const data = partsLogicData.item?.data || partsLogicData.item || {}
         const complete = Array.isArray(data.completeSummaryStatuses)
           ? data.completeSummaryStatuses.map((code: any) => String(code || '').trim()).filter(Boolean)
@@ -836,7 +959,7 @@ export default function PlanningClient() {
       } else {
         setPartsLogic(null)
       }
-      if (warehouseResponse.ok && warehouseData.success) {
+      if (warehouseData.success) {
         const list =
           warehouseData.item?.data?.items ||
           warehouseData.item?.data?.statuses ||
@@ -853,7 +976,7 @@ export default function PlanningClient() {
       } else {
         setWarehouseStatuses([])
       }
-      if (usersResponse.ok && usersData.success) {
+      if (usersData.success) {
         const roleLookup = new Map(
           (rolesData.items || []).map((role: any) => [role.id, role.includeInPlanning])
         )
@@ -893,9 +1016,8 @@ export default function PlanningClient() {
       setLoading(true)
       setError(null)
       setWarning(null)
-      const response = await apiFetch('/api/planning')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/planning')
+      if (!data.success) {
         throw new Error(data.error || 'Failed to load planning items')
       }
       const normalized = (data.items || []).map((item: any) => {
@@ -942,8 +1064,7 @@ export default function PlanningClient() {
         
         try {
           console.log(`Fetching iCal for ${user.name} (${user.icalUrl})`)
-          const response = await apiFetch(`/api/ical?userId=${user.id}&start=${start.toISOString()}&end=${end.toISOString()}`)
-          const data = await response.json()
+          const data = await apiFetch(`/api/ical?userId=${user.id}&start=${start.toISOString()}&end=${end.toISOString()}`)
           
           console.log(`iCal response for ${user.name}:`, data)
           
@@ -997,26 +1118,32 @@ export default function PlanningClient() {
   const loadPlanningSettings = async () => {
     try {
       setSettingsWarning(null)
-      const response = await apiFetch('/api/settings/planning')
-      if (!response.ok) {
-        setSettingsWarning('Planning instellingen ontbreken. Stel deze in bij Instellingen.')
-        return
-      }
-      const data = await response.json()
+      const data = await apiFetch('/api/settings/planning')
       if (!data.success) {
         setSettingsWarning(data.error || 'Planning instellingen niet beschikbaar.')
         return
       }
+      const payload = data.item?.data
+      if (!payload) {
+        setSettingsWarning('Planning instellingen ontbreken in de database.')
+        return
+      }
+      const requiredFields = ['defaultDurationMinutes', 'dayStart', 'dayEnd', 'slotMinutes', 'dayViewDays']
+      const missing = requiredFields.filter((field) => payload[field] === undefined || payload[field] === null || payload[field] === '')
+      if (missing.length) {
+        setSettingsWarning('Planning instellingen onvolledig. Vul ze in via instellingen.')
+        return
+      }
       const next = {
-        defaultDurationMinutes: Number(data.item?.data?.defaultDurationMinutes ?? 60),
-        dayStart: data.item?.data?.dayStart || '08:00',
-        dayEnd: data.item?.data?.dayEnd || '17:00',
-        slotMinutes: Number(data.item?.data?.slotMinutes ?? 60),
-        dayViewDays: Number(data.item?.data?.dayViewDays ?? 3),
-        selectableSaturday: Boolean(data.item?.data?.selectableSaturday),
-        selectableSunday: Boolean(data.item?.data?.selectableSunday),
-        breaks: Array.isArray(data.item?.data?.breaks)
-          ? data.item.data.breaks.map((entry: any) => ({
+        defaultDurationMinutes: Number(payload.defaultDurationMinutes),
+        dayStart: String(payload.dayStart),
+        dayEnd: String(payload.dayEnd),
+        slotMinutes: Number(payload.slotMinutes),
+        dayViewDays: Number(payload.dayViewDays),
+        selectableSaturday: Boolean(payload.selectableSaturday),
+        selectableSunday: Boolean(payload.selectableSunday),
+        breaks: Array.isArray(payload.breaks)
+          ? payload.breaks.map((entry: any) => ({
               start: String(entry?.start || ''),
               end: String(entry?.end || '')
             }))
@@ -1173,6 +1300,25 @@ export default function PlanningClient() {
     setPlanningTypeId(item.planningTypeId || 'none')
     setNotes(item.notes || '')
     setAssignmentText(item.assignmentText || '')
+    
+    // Parse checklist items from assignmentText if it's JSON, otherwise create a default item
+    try {
+      if (item.assignmentText) {
+        const parsed = JSON.parse(item.assignmentText)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChecklistItems(parsed)
+        } else {
+          // If it's an old-style text, convert it to a checklist item
+          setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText, checked: false }])
+        }
+      } else {
+        setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
+      }
+    } catch (e) {
+      // If parsing fails (old-style text), convert it to a checklist item
+      setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText || '', checked: false }])
+    }
+    
     setAgreementAmount(
       item.agreementAmount !== null && item.agreementAmount !== undefined
         ? String(item.agreementAmount)
@@ -1188,6 +1334,61 @@ export default function PlanningClient() {
     setShowModal(true)
   }
 
+  // Vehicle selection with owner confirmation
+  const handleVehicleSelect = (vId: string) => {
+    console.log('Selecting vehicle:', vId)
+    
+    // Find and store the full vehicle data
+    const vehicle = vehicles.find(v => v.id === vId) || vehicleSearchResults.find(v => v.id === vId)
+    console.log('Found vehicle:', vehicle)
+    
+    if (!vehicle) {
+      console.error('Vehicle not found in cache or search results!')
+      return
+    }
+    
+    setVehicleId(vId)
+    setSelectedVehicleData(vehicle)
+    setShowVehicleSearch(false)
+    setVehicleSearchTerm('')
+    
+    // Find the vehicle's owner
+    if (vehicle && vehicle.customerId) {
+      console.log('Vehicle has owner:', vehicle.customerId)
+      setSuggestedCustomerId(vehicle.customerId)
+      setShowOwnerConfirm(true)
+    } else {
+      console.log('Vehicle has no owner, opening customer search')
+      // No owner, open customer search
+      setSuggestedCustomerId(null)
+      setShowOwnerConfirm(false)
+      setShowCustomerSearch(true)
+    }
+  }
+
+  const handleConfirmOwner = (useOwner: boolean) => {
+    if (useOwner && suggestedCustomerId) {
+      const customer = customers.find(c => c.id === suggestedCustomerId) || 
+        customerSearchResults.find(c => c.id === suggestedCustomerId)
+      setCustomerId(suggestedCustomerId)
+      setSelectedCustomerData(customer || null)
+    } else {
+      // User wants different owner
+      setShowCustomerSearch(true)
+    }
+    setShowOwnerConfirm(false)
+    setSuggestedCustomerId(null)
+  }
+
+  const handleCustomerSelect = (cId: string) => {
+    const customer = customers.find(c => c.id === cId) || 
+      customerSearchResults.find(c => c.id === cId)
+    setCustomerId(cId)
+    setSelectedCustomerData(customer || null)
+    setShowCustomerSearch(false)
+    setCustomerSearchTerm('')
+  }
+
   const resetForm = () => {
     setEditingItem(null)
     setTitle('')
@@ -1196,9 +1397,20 @@ export default function PlanningClient() {
     setLocation('')
     setCustomerId('none')
     setVehicleId('none')
+    setVehicleSearchTerm('')
+    setCustomerSearchTerm('')
+    setShowVehicleSearch(false)
+    setShowCustomerSearch(false)
+    setSuggestedCustomerId(null)
+    setShowOwnerConfirm(false)
+    setVehicleSearchResults([])
+    setCustomerSearchResults([])
+    setSelectedVehicleData(null)
+    setSelectedCustomerData(null)
     setPlanningTypeId('none')
     setNotes('')
     setAssignmentText('')
+    setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
     setAgreementAmount('')
     setAgreementNotes('')
     setPriority('medium')
@@ -2016,18 +2228,24 @@ export default function PlanningClient() {
                         }}
                       >
                         <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
-                          {plate ? (
-                            <span
-                              className={`license-plate text-[0.7rem] ${
-                                item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                              }`}
-                            >
-                              {plate}
-                            </span>
-                          ) : null}
-                          {customer ? (
-                            <span className="min-w-0 truncate font-semibold">{customer}</span>
-                          ) : null}
+                          {item.status === 'AFWEZIG' ? (
+                            <span className="text-lg">🏖️</span>
+                          ) : (
+                            <>
+                              {plate ? (
+                                <span
+                                  className={`license-plate text-[0.7rem] ${
+                                    item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                                  }`}
+                                >
+                                  {plate}
+                                </span>
+                              ) : null}
+                              {customer ? (
+                                <span className="min-w-0 truncate font-semibold">{customer}</span>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                         <div className="mt-1 truncate text-[0.72rem] font-semibold">
                           {item.title || item.planningTypeName || 'Planning'}
@@ -2189,18 +2407,24 @@ export default function PlanningClient() {
                         }}
                       >
                         <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
-                          {plate ? (
-                            <span
-                              className={`license-plate text-[0.7rem] ${
-                                item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
-                              }`}
-                            >
-                              {plate}
-                            </span>
-                          ) : null}
-                          {customer ? (
-                            <span className="min-w-0 truncate font-semibold">{customer}</span>
-                          ) : null}
+                          {item.status === 'AFWEZIG' ? (
+                            <span className="text-lg">🏖️</span>
+                          ) : (
+                            <>
+                              {plate ? (
+                                <span
+                                  className={`license-plate text-[0.7rem] ${
+                                    item.vehiclePlate && isDutchLicensePlate(item.vehiclePlate) ? 'nl' : ''
+                                  }`}
+                                >
+                                  {plate}
+                                </span>
+                              ) : null}
+                              {customer ? (
+                                <span className="min-w-0 truncate font-semibold">{customer}</span>
+                              ) : null}
+                            </>
+                          )}
                         </div>
                         <div className="mt-1 truncate text-[0.72rem] font-semibold">
                           {item.title || item.planningTypeName || 'Planning'}
@@ -2388,7 +2612,7 @@ export default function PlanningClient() {
         planningTypeName: selectedType?.name || null,
         planningTypeColor: selectedType?.color || null,
         notes: notes || null,
-        assignmentText: assignmentText || null,
+        assignmentText: JSON.stringify(checklistItems),
         agreementAmount: agreementAmount ? Number(agreementAmount) : null,
         agreementNotes: agreementNotes || null,
         priority,
@@ -2398,7 +2622,7 @@ export default function PlanningClient() {
         sendEmail
       }
 
-      const response = await apiFetch(
+      const data = await apiFetch(
         editingItem ? `/api/planning/${editingItem.id}` : '/api/planning',
         {
           method: editingItem ? 'PATCH' : 'POST',
@@ -2406,8 +2630,7 @@ export default function PlanningClient() {
           body: JSON.stringify(payload)
         }
       )
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to create planning item')
       }
       setWarning(data.warning || null)
@@ -2488,13 +2711,12 @@ export default function PlanningClient() {
       if (!item.workOrderId) {
         throw new Error('Geen gekoppelde werkorder.')
       }
-      const response = await apiFetch(`/api/workorders/${item.workOrderId}/status`, {
+      const data = await apiFetch(`/api/workorders/${item.workOrderId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: nextStatus })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to update status')
       }
       await loadItems()
@@ -2506,9 +2728,8 @@ export default function PlanningClient() {
   const handleDelete = async (item: PlanningItem) => {
     if (!confirm(`Verwijder planning item "${item.title}"?`)) return
     try {
-      const response = await apiFetch(`/api/planning/${item.id}`, { method: 'DELETE' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch(`/api/planning/${item.id}`, { method: 'DELETE' })
+      if (!data.success) {
         throw new Error(data.error || 'Failed to delete planning item')
       }
       await loadItems()
@@ -2521,7 +2742,7 @@ export default function PlanningClient() {
     if (!editingItem) return
     try {
       setApproving(true)
-      const response = await apiFetch(`/api/planning/${editingItem.id}`, {
+      const data = await apiFetch(`/api/planning/${editingItem.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2531,8 +2752,7 @@ export default function PlanningClient() {
           title: editingItem.title?.replace(/^Aanvraag:\s*/i, '') || editingItem.title
         })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Goedkeuren mislukt')
       }
       await loadItems()
@@ -3049,42 +3269,148 @@ export default function PlanningClient() {
                 </div>
               </div>
               <label className="workorder-field">
-                <span className="workorder-label">Klant</span>
-                <select
-                  className="workorder-input"
-                  value={customerId}
-                  onChange={(event) => setCustomerId(event.target.value)}
-                >
-                  <option value="none">Geen klant</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="workorder-field">
                 <span className="workorder-label">Voertuig (kenteken)</span>
-                <select
-                  className="workorder-input"
-                  value={vehicleId}
-                  onChange={(event) => setVehicleId(event.target.value)}
-                >
-                  <option value="none">Geen voertuig</option>
-                  {editingItem?.vehicleId && !vehicles.some(v => v.id === editingItem.vehicleId) ? (
-                    <option value={editingItem.vehicleId}>
-                      {editingItem.vehicleLabel || `Voertuig ${editingItem.vehiclePlate || '(onbekend)'}`} (niet beschikbaar)
-                    </option>
-                  ) : null}
-                  {vehicles.map((vehicle) => (
-                    <option key={vehicle.id} value={vehicle.id}>
-                      {vehicle.brand} {vehicle.model}
-                      {vehicle.licensePlate
-                        ? ` (${normalizeLicensePlate(vehicle.licensePlate)})`
-                        : ''}
-                    </option>
-                  ))}
-                </select>
+                {!showVehicleSearch && vehicleId === 'none' ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowVehicleSearch(true)}
+                    className="workorder-input text-left text-slate-500 hover:bg-slate-50"
+                  >
+                    Klik om voertuig te zoeken...
+                  </button>
+                ) : vehicleId !== 'none' && !showVehicleSearch ? (
+                  <div className="flex gap-2">
+                    <div className="workorder-input flex-1 bg-slate-50">
+                      {selectedVehicle ? (
+                        <>
+                          {selectedVehicle.make || selectedVehicle.brand} {selectedVehicle.model}
+                          {selectedVehicle.licensePlate && ` (${normalizeLicensePlate(selectedVehicle.licensePlate)})`}
+                        </>
+                      ) : 'Voertuig geselecteerd'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVehicleId('none')
+                        setSelectedVehicleData(null)
+                        setShowVehicleSearch(true)
+                      }}
+                      className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
+                    >
+                      Wijzig
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className="workorder-input"
+                      placeholder="Zoek op kenteken, merk of model..."
+                      value={vehicleSearchTerm}
+                      onChange={(e) => setVehicleSearchTerm(e.target.value)}
+                      autoFocus
+                    />
+                    {searchingVehicles && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                    {!searchingVehicles && (
+                      <div className="absolute z-[100] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {filteredVehicles.length === 0 ? (
+                          <div className="p-3 text-sm text-slate-500">
+                            {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Laden...'}
+                          </div>
+                        ) : (
+                          filteredVehicles.map((vehicle) => (
+                            <button
+                              key={vehicle.id}
+                              type="button"
+                              onClick={() => handleVehicleSelect(vehicle.id)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-sm">
+                                {vehicle.make || vehicle.brand} {vehicle.model}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate) : 'Geen kenteken'}
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </label>
+              
+              <label className="workorder-field">
+                <span className="workorder-label">Klant</span>
+                {!showCustomerSearch && customerId === 'none' ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomerSearch(true)}
+                    className="workorder-input text-left text-slate-500 hover:bg-slate-50"
+                  >
+                    Klik om klant te zoeken...
+                  </button>
+                ) : customerId !== 'none' && !showCustomerSearch ? (
+                  <div className="flex gap-2">
+                    <div className="workorder-input flex-1 bg-slate-50">
+                      {selectedCustomer?.name || 'Klant geselecteerd'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerId('none')
+                        setSelectedCustomerData(null)
+                        setShowCustomerSearch(true)
+                      }}
+                      className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
+                    >
+                      Wijzig
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className="workorder-input"
+                      placeholder="Zoek op naam, email of telefoon..."
+                      value={customerSearchTerm}
+                      onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                      autoFocus
+                    />
+                    {searchingCustomers && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                    {!searchingCustomers && (
+                      <div className="absolute z-[100] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {filteredCustomers.length === 0 ? (
+                          <div className="p-3 text-sm text-slate-500">
+                            {customerSearchTerm ? 'Geen klanten gevonden' : 'Laden...'}
+                          </div>
+                        ) : (
+                          filteredCustomers.map((customer) => (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              onClick={() => handleCustomerSelect(customer.id)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                            >
+                              <div className="font-medium text-sm">{customer.name}</div>
+                              {customer.email && (
+                                <div className="text-xs text-slate-500">{customer.email}</div>
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </label>
               <label className="workorder-field">
                 <span className="workorder-label">Planningstype</span>
@@ -3149,16 +3475,42 @@ export default function PlanningClient() {
                 </div>
                 <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                   {activeTab === 'opdracht' ? (
-                    <label className="workorder-field">
+                    <div className="workorder-field">
                       <span className="workorder-label">Opdracht</span>
-                      <textarea
-                        className="workorder-input"
-                        rows={4}
-                        value={assignmentText}
-                        onChange={(event) => setAssignmentText(event.target.value)}
-                        placeholder="Omschrijving van de opdracht"
-                      />
-                    </label>
+                      <div className="space-y-2">
+                        {checklistItems.map((item, index) => (
+                          <div key={item.id} className="flex items-start gap-2 group">
+                            <input
+                              type="checkbox"
+                              checked={item.checked}
+                              onChange={() => handleChecklistItemToggle(item.id)}
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                            />
+                            <input
+                              type="text"
+                              value={item.text}
+                              onChange={(e) => handleChecklistItemChange(item.id, e.target.value)}
+                              onKeyDown={(e) => handleChecklistItemKeyDown(e, item.id, index)}
+                              placeholder="Typ opdracht en druk op Enter voor nieuwe regel"
+                              data-checklist-input
+                              className="flex-1 rounded border border-slate-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                            {checklistItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleChecklistItemRemove(item.id)}
+                                className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+                                title="Verwijder regel"
+                              >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <p className="text-sm text-slate-500">Binnenkort beschikbaar.</p>
                   )}
@@ -3284,6 +3636,43 @@ export default function PlanningClient() {
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Owner Confirmation Modal */}
+      {showOwnerConfirm && suggestedCustomer && selectedVehicle ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Klant bevestigen</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Het geselecteerde voertuig (<strong>{selectedVehicle.make || selectedVehicle.brand} {selectedVehicle.model}</strong>
+              {selectedVehicle.licensePlate && ` - ${normalizeLicensePlate(selectedVehicle.licensePlate)}`}) 
+              is geregistreerd op naam van:
+            </p>
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="font-medium text-slate-900">{suggestedCustomer.name}</p>
+              {suggestedCustomer.email && (
+                <p className="text-sm text-slate-600">{suggestedCustomer.email}</p>
+              )}
+            </div>
+            <p className="mt-3 text-sm text-slate-700">Is dit de eigenaar voor deze afspraak?</p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleConfirmOwner(true)}
+                className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Ja, gebruik deze klant
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmOwner(false)}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Nee, andere klant
+              </button>
             </div>
           </div>
         </div>

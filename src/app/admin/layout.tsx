@@ -9,17 +9,20 @@ import {
   ArrowDownTrayIcon,
   ArrowUturnLeftIcon,
   CalendarIcon,
+  CalendarDaysIcon,
   ChartBarIcon,
   ChevronDownIcon,
   Cog6ToothIcon,
   CubeIcon,
   DocumentTextIcon,
   FolderIcon,
+  HomeIcon,
   ReceiptRefundIcon,
   WrenchScrewdriverIcon,
   ShoppingCartIcon,
   TruckIcon,
-  UsersIcon
+  UsersIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline'
 import './admin-styles.css'
 import AdminAuthGate from './components/AdminAuthGate'
@@ -40,6 +43,17 @@ const NAV_ITEMS: NavItem[] = [
     ]
   },
   { type: 'link', name: 'Planning', href: '/admin/planning', icon: CalendarIcon },
+  {
+    type: 'group',
+    name: 'HR',
+    icon: UserGroupIcon,
+    children: [
+      { type: 'link', name: 'Mijn Dashboard', href: '/admin/my-dashboard', icon: HomeIcon },
+      { type: 'link', name: 'Verlof Beheer', href: '/admin/leave-management', icon: CalendarDaysIcon },
+      { type: 'link', name: 'Rapportage', href: '/admin/leave-reports', icon: ChartBarIcon },
+      { type: 'link', name: 'HR Instellingen', href: '/admin/hr-settings', icon: Cog6ToothIcon }
+    ]
+  },
   { type: 'link', name: 'Werkoverzicht', href: '/admin/workoverzicht', icon: ChartBarIcon },
   { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },
@@ -54,7 +68,6 @@ const NAV_ITEMS: NavItem[] = [
     ]
   },
   { type: 'link', name: 'Magazijn', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
-  { type: 'link', name: 'Gebruikers', href: '/admin/users', icon: UsersIcon },
   {
     type: 'group',
     name: 'Verkopen',
@@ -77,10 +90,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [salesOpen, setSalesOpen] = useState(false)
   const [productsOpen, setProductsOpen] = useState(false)
+  const [hrOpen, setHrOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [pagePermissions, setPagePermissions] = useState<{ [path: string]: boolean }>({})
+  const [isSystemAdmin, setIsSystemAdmin] = useState(false)
+  const [pendingLeaveRequests, setPendingLeaveRequests] = useState(0)
   const [notificationsPos, setNotificationsPos] = useState<{ top: number; right: number } | null>(
     null
   )
@@ -94,6 +111,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const unreadCount = notifications.filter(
     (item) => !Array.isArray(item.readBy) || !currentUserId || !item.readBy.includes(currentUserId)
   ).length
+
+  // Helper function to check if user has access to a page
+  const hasPageAccess = (path: string): boolean => {
+    // System admins have access to everything
+    if (isSystemAdmin) return true
+    
+    // If no permissions are set, deny access (secure by default)
+    if (!pagePermissions || Object.keys(pagePermissions).length === 0) {
+      return false
+    }
+    
+    // Check if the page is explicitly allowed
+    return pagePermissions[path] === true
+  }
+
+  // Helper function to check if a group has any accessible children
+  const hasAccessToGroupChildren = (children: NavLink[]): boolean => {
+    return children.some(child => hasPageAccess(child.href))
+  }
 
   // Load sidebar width from localStorage
   useEffect(() => {
@@ -159,14 +195,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // Load user profile and settings from API
     const loadProfile = async () => {
       try {
-        const meResponse = await apiFetch('/api/admin/me')
-        const meData = await meResponse.json()
-        if (meResponse.ok && meData.success) {
+        const meData = await apiFetch('/api/admin/me')
+        if (meData.success) {
           setUserRole(meData.user?.role || null)
+          setPagePermissions(meData.user?.pagePermissions || {})
+          setIsSystemAdmin(meData.user?.isSystemAdmin || false)
         }
-        const response = await apiFetch('/api/admin/profile')
-        const data = await response.json()
-        if (response.ok && data.success) {
+        const data = await apiFetch('/api/admin/profile')
+        if (data.success) {
           const transparency = Number(data.profile?.transparency ?? 30)
           const opacity = Math.max(0.05, Math.min(0.95, transparency / 100))
           document.documentElement.style.setProperty('--admin-glass-opacity', String(opacity))
@@ -190,9 +226,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     
     const loadNotifications = async () => {
       try {
-        const response = await apiFetch('/api/notifications')
-        if (!response.ok) return
-        const data = await response.json()
+        const data = await apiFetch('/api/notifications')
         if (data.success) {
           setNotifications(data.items || [])
         }
@@ -201,20 +235,37 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
     }
     
+    const loadPendingLeaveRequests = async () => {
+      try {
+        const data = await apiFetch('/api/leave-requests')
+        if (data.success || data.items) {
+          const items = data.items || []
+          const pending = items.filter((item: any) => item.status === 'PENDING')
+          setPendingLeaveRequests(pending.length)
+        }
+      } catch (error) {
+        // Silently fail - user might not have access
+        console.error('Failed to load leave requests', error)
+      }
+    }
+    
     loadNotifications()
-    const interval = setInterval(loadNotifications, 30000)
+    loadPendingLeaveRequests()
+    const interval = setInterval(() => {
+      loadNotifications()
+      loadPendingLeaveRequests()
+    }, 30000)
     
     return () => clearInterval(interval)
   }, [])
 
   const markAllRead = async () => {
     try {
-      const response = await apiFetch('/api/notifications', {
+      await apiFetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markAll: true })
       })
-      if (!response.ok) return
       setNotifications((prev) =>
         prev.map((item) => ({
           ...item,
@@ -232,12 +283,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const markRead = async (id: string) => {
     try {
-      const response = await apiFetch('/api/notifications', {
+      await apiFetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: [id] })
       })
-      if (!response.ok) return
       setNotifications((prev) =>
         prev.map((item) =>
           item.id === id
@@ -271,6 +321,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const isActive = productsGroup.children.some((child) => child.href === pathname)
       if (isActive) {
         setProductsOpen(true)
+      }
+    }
+    
+    const hrGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'HR')
+    if (hrGroup && hrGroup.type === 'group') {
+      const isActive = hrGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setHrOpen(true)
       }
     }
   }, [pathname])
@@ -411,12 +469,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </header>
 
       <div className="m-4 flex flex-col gap-4 lg:flex-row">
-        <div className="relative hidden lg:block">
+        <div className="relative hidden lg:block lg:sticky lg:top-4 lg:self-start">
           <aside 
             className="glass-sidebar rounded-2xl transition-all duration-300 ease-in-out"
             style={{ 
               width: isHovering && sidebarWidth < 150 ? '256px' : `${sidebarWidth}px`,
-              transitionProperty: isResizing ? 'none' : 'width'
+              transitionProperty: isResizing ? 'none' : 'width',
+              maxHeight: 'calc(100vh - 2rem)'
             }}
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={() => setIsHovering(false)}
@@ -434,17 +493,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
               )}
             </div>
-            <nav className="px-4 py-4">
+            <nav className="px-4 py-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
               <div className="space-y-1">
                 {NAV_ITEMS.map((item) => {
                   if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
                     return null
                   }
+                  
+                  // Check page access for single links
+                  if (item.type === 'link' && !hasPageAccess(item.href)) {
+                    return null
+                  }
+                  
+                  // Check group access - hide if no children are accessible
+                  if (item.type === 'group' && !hasAccessToGroupChildren(item.children)) {
+                    return null
+                  }
+                  
                   if (item.type === 'group') {
                     const isActive = item.children.some((child) => child.href === pathname)
                     const showText = sidebarWidth >= 150 || isHovering
-                    const isOpen = item.name === 'Verkopen' ? salesOpen : item.name === 'Producten' ? productsOpen : false
-                    const setOpen = item.name === 'Verkopen' ? setSalesOpen : item.name === 'Producten' ? setProductsOpen : () => {}
+                    const isOpen = 
+                      item.name === 'Verkopen' ? salesOpen : 
+                      item.name === 'Producten' ? productsOpen : 
+                      item.name === 'HR' ? hrOpen : 
+                      false
+                    const setOpen = 
+                      item.name === 'Verkopen' ? setSalesOpen : 
+                      item.name === 'Producten' ? setProductsOpen : 
+                      item.name === 'HR' ? setHrOpen :
+                      () => {}
                     
                     return (
                       <div key={item.name} className="space-y-1">
@@ -475,7 +553,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         {isOpen && showText ? (
                           <div className="ml-6 space-y-1 border-l border-slate-200 pl-3">
                             {item.children.map((child) => {
+                              // Filter out pages the user doesn't have access to
+                              if (!hasPageAccess(child.href)) {
+                                return null
+                              }
+                              
                               const childActive = pathname === child.href
+                              const showBadge = child.name === 'Verlof Beheer' && pendingLeaveRequests > 0
                               return (
                                 <Link
                                   key={child.href}
@@ -493,7 +577,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                       className={`h-4 w-4 ${childActive ? 'text-white' : 'text-gray-600'}`}
                                     />
                                   </div>
-                                  <span className="whitespace-nowrap overflow-hidden">{child.name}</span>
+                                  <span className="whitespace-nowrap overflow-hidden flex-1">{child.name}</span>
+                                  {showBadge && (
+                                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                                      {pendingLeaveRequests}
+                                    </span>
+                                  )}
                                 </Link>
                               )
                             })}
@@ -562,10 +651,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
                   return null
                 }
+                
+                // Check page access for single links
+                if (item.type === 'link' && !hasPageAccess(item.href)) {
+                  return null
+                }
+                
+                // Check group access - hide if no children are accessible
+                if (item.type === 'group' && !hasAccessToGroupChildren(item.children)) {
+                  return null
+                }
+                
                 if (item.type === 'group') {
                   const isActive = item.children.some((child) => child.href === pathname)
-                  const isOpen = item.name === 'Verkopen' ? salesOpen : item.name === 'Producten' ? productsOpen : false
-                  const setOpen = item.name === 'Verkopen' ? setSalesOpen : item.name === 'Producten' ? setProductsOpen : () => {}
+                  const isOpen = 
+                    item.name === 'Verkopen' ? salesOpen : 
+                    item.name === 'Producten' ? productsOpen : 
+                    item.name === 'HR' ? hrOpen : 
+                    false
+                  const setOpen = 
+                    item.name === 'Verkopen' ? setSalesOpen : 
+                    item.name === 'Producten' ? setProductsOpen : 
+                    item.name === 'HR' ? setHrOpen :
+                    () => {}
                   
                   return (
                     <div key={item.name} className="space-y-1">
@@ -591,7 +699,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       {isOpen ? (
                         <div className="ml-6 space-y-1 border-l border-slate-200 pl-3">
                           {item.children.map((child) => {
+                            // Filter out pages the user doesn't have access to
+                            if (!hasPageAccess(child.href)) {
+                              return null
+                            }
+                            
                             const childActive = pathname === child.href
+                            const showBadge = child.name === 'Verlof Beheer' && pendingLeaveRequests > 0
                             return (
                               <Link
                                 key={child.href}
@@ -609,7 +723,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     className={`h-4 w-4 ${childActive ? 'text-white' : 'text-gray-600'}`}
                                   />
                                 </div>
-                                {child.name}
+                                <span className="flex-1">{child.name}</span>
+                                {showBadge && (
+                                  <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                                    {pendingLeaveRequests}
+                                  </span>
+                                )}
                               </Link>
                             )
                           })}

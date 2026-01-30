@@ -13,21 +13,37 @@ export async function GET(request: NextRequest) {
       where: { group: 'planning' }
     })
     
-    const planningSettings = settingsDoc?.data as any || {}
-    const selectableSaturday = planningSettings.selectableSaturday ?? false
-    const selectableSunday = planningSettings.selectableSunday ?? false
-    const dayStartHour = planningSettings.dayStartHour ?? 8
-    const dayEndHour = planningSettings.dayEndHour ?? 17
-    const slotDuration = planningSettings.slotDuration ?? 30 // minutes
+    const planningSettings = settingsDoc?.data as any
+    if (!planningSettings) {
+      return NextResponse.json({ success: false, error: 'Planning instellingen ontbreken' }, { status: 404 })
+    }
+    const selectableSaturday = Boolean(planningSettings.selectableSaturday)
+    const selectableSunday = Boolean(planningSettings.selectableSunday)
+    const dayStart = String(planningSettings.dayStart || '').trim()
+    const dayEnd = String(planningSettings.dayEnd || '').trim()
+    const slotDuration = Number(planningSettings.slotMinutes)
+    if (!dayStart || !dayEnd || !Number.isFinite(slotDuration) || slotDuration <= 0) {
+      return NextResponse.json({ success: false, error: 'Planning instellingen onvolledig' }, { status: 400 })
+    }
+    const [dayStartHour, dayStartMinute] = dayStart.split(':').map(Number)
+    const [dayEndHour, dayEndMinute] = dayEnd.split(':').map(Number)
+    if (!Number.isFinite(dayStartHour) || !Number.isFinite(dayStartMinute) || !Number.isFinite(dayEndHour) || !Number.isFinite(dayEndMinute)) {
+      return NextResponse.json({ success: false, error: 'Planning tijden ongeldig' }, { status: 400 })
+    }
+    const dayStartMinutes = dayStartHour * 60 + dayStartMinute
+    const dayEndMinutes = dayEndHour * 60 + dayEndMinute
+    if (dayEndMinutes <= dayStartMinutes) {
+      return NextResponse.json({ success: false, error: 'Eindtijd moet na starttijd liggen' }, { status: 400 })
+    }
 
     // If specific date is requested, return slots for that day
     if (date) {
       const slots = []
-      const totalMinutes = (dayEndHour - dayStartHour) * 60
+      const totalMinutes = dayEndMinutes - dayStartMinutes
       const numberOfSlots = Math.floor(totalMinutes / slotDuration)
 
       for (let i = 0; i < numberOfSlots; i++) {
-        const minutes = dayStartHour * 60 + i * slotDuration
+        const minutes = dayStartMinutes + i * slotDuration
         const hours = Math.floor(minutes / 60)
         const mins = minutes % 60
         const timeString = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`

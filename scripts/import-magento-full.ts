@@ -281,6 +281,14 @@ class MagentoFullImporter {
               metaTitle: this.getCustomAttribute(fullProduct, 'meta_title'),
               metaDescription: this.getCustomAttribute(fullProduct, 'meta_description'),
               metaKeywords: this.getCustomAttribute(fullProduct, 'meta_keyword'),
+              // Warehouse location fields
+              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
+              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
+              // Supplier fields
+              supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
+              // Stock fields
+              stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
+              chooseYear: null, // Not available in Magento
             },
             update: {
               name: fullProduct.name,
@@ -289,6 +297,14 @@ class MagentoFullImporter {
               costPrice: this.getCustomAttribute(fullProduct, 'cost'),
               specialPrice: this.getCustomAttribute(fullProduct, 'special_price'),
               status: fullProduct.status === 1 ? 'enabled' : 'disabled',
+              // Warehouse location fields
+              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
+              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
+              // Supplier fields
+              supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
+              // Stock fields
+              stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
+              chooseYear: null, // Not available in Magento
             },
           });
 
@@ -657,6 +673,44 @@ class MagentoFullImporter {
   private getCustomAttribute(product: any, code: string): any {
     const attr = product.custom_attributes?.find((a: any) => a.attribute_code === code);
     return attr?.value || null;
+  }
+
+  /**
+   * Helper: Parse supplier SKUs from JSON array
+   */
+  private parseSupplierSkus(value: any): string | null {
+    if (!value) return null;
+    
+    try {
+      // If it's already a string, return it
+      if (typeof value === 'string') {
+        // Try to parse as JSON
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return parsed
+              .map((item: any) => item.article_number)
+              .filter((sku: string) => sku && sku !== '-')
+              .join(', ');
+          }
+        } catch {
+          // Not JSON, return as is
+          return value;
+        }
+      }
+      
+      // If it's an array
+      if (Array.isArray(value)) {
+        return value
+          .map((item: any) => item.article_number)
+          .filter((sku: string) => sku && sku !== '-')
+          .join(', ');
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /**

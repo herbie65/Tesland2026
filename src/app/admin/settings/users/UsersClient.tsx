@@ -24,13 +24,38 @@ type PlanningRole = {
   id: string
   name: string
   isSystemAdmin?: boolean
+  permissions?: any
 }
+
+const ALL_PAGES = [
+  { path: '/admin', label: 'Dashboard', group: 'Basis' },
+  { path: '/admin/my-dashboard', label: 'Mijn Dashboard (HR)', group: 'HR' },
+  { path: '/admin/leave-management', label: 'Verlof Beheer', group: 'HR' },
+  { path: '/admin/leave-reports', label: 'Verlof Rapportage', group: 'HR' },
+  { path: '/admin/hr-settings', label: 'HR Instellingen', group: 'HR' },
+  { path: '/admin/planning', label: 'Planning', group: 'Planning' },
+  { path: '/admin/workoverzicht', label: 'Werkoverzicht', group: 'Planning' },
+  { path: '/admin/workorders', label: 'Werkorders', group: 'Werkorders' },
+  { path: '/admin/customers', label: 'Klanten', group: 'CRM' },
+  { path: '/admin/vehicles', label: 'Voertuigen', group: 'CRM' },
+  { path: '/admin/products', label: 'Producten', group: 'Voorraad' },
+  { path: '/admin/categories', label: 'Categorieën', group: 'Voorraad' },
+  { path: '/admin/magazijn', label: 'Magazijn', group: 'Voorraad' },
+  { path: '/admin/orders', label: 'Orders', group: 'Verkoop' },
+  { path: '/admin/invoices', label: 'Facturen', group: 'Verkoop' },
+  { path: '/admin/credit-invoices', label: 'Creditfacturen', group: 'Verkoop' },
+  { path: '/admin/rmas', label: 'RMA', group: 'Verkoop' },
+  { path: '/admin/tools', label: 'Tools', group: 'Admin' },
+  { path: '/admin/import', label: 'Import', group: 'Admin' },
+  { path: '/admin/settings', label: 'Instellingen', group: 'Admin' },
+]
 
 export default function UsersClient() {
   const [items, setItems] = useState<User[]>([])
   const [roles, setRoles] = useState<PlanningRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'users' | 'permissions'>('users')
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -53,6 +78,11 @@ export default function UsersClient() {
   const [editVoipExtension, setEditVoipExtension] = useState("")
   const [showPhotoPicker, setShowPhotoPicker] = useState(false)
   const [showEditPhotoPicker, setShowEditPhotoPicker] = useState(false)
+  
+  // Role permissions state
+  const [selectedRoleForPermissions, setSelectedRoleForPermissions] = useState<string | null>(null)
+  const [rolePermissions, setRolePermissions] = useState<{ [key: string]: boolean }>({})
+  const [savingPermissions, setSavingPermissions] = useState(false)
 
   const dayLabels: Record<string, string> = {
     mon: "Ma",
@@ -68,9 +98,8 @@ export default function UsersClient() {
     try {
       setLoading(true)
       setError(null)
-      const usersResponse = await apiFetch("/api/users")
-      const usersData = await usersResponse.json()
-      if (!usersResponse.ok || !usersData.success) {
+      const usersData = await apiFetch("/api/users")
+      if (!usersData.success) {
         throw new Error(usersData.error || "Failed to load users")
       }
       setItems(usersData.items || [])
@@ -83,9 +112,8 @@ export default function UsersClient() {
 
   const loadRoles = async () => {
     try {
-      const response = await apiFetch("/api/roles")
-      const data = await response.json()
-      if (response.ok && data.success) {
+      const data = await apiFetch("/api/roles")
+      if (data.success) {
         setRoles(data.items || [])
       } else {
         setRoles([])
@@ -114,7 +142,7 @@ export default function UsersClient() {
         setError("Selecteer een rol.")
         return
       }
-      const response = await apiFetch("/api/users", {
+      const data = await apiFetch("/api/users", {
         method: "POST",
         body: JSON.stringify({
           displayName: name,
@@ -128,8 +156,7 @@ export default function UsersClient() {
           workingDays
         })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to create user")
       }
       setName("")
@@ -150,9 +177,8 @@ export default function UsersClient() {
   const handleDelete = async (item: User) => {
     if (!confirm(`Verwijder gebruiker "${item.name}"?`)) return
     try {
-      const response = await apiFetch(`/api/users/${item.id}`, { method: "DELETE" })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch(`/api/users/${item.id}`, { method: "DELETE" })
+      if (!data.success) {
         throw new Error(data.error || "Failed to delete user")
       }
       await loadItems()
@@ -163,12 +189,11 @@ export default function UsersClient() {
 
   const handleColorUpdate = async (item: User, nextColor: string) => {
     try {
-      const response = await apiFetch(`/api/users/${item.id}`, {
+      const data = await apiFetch(`/api/users/${item.id}`, {
         method: "PATCH",
         body: JSON.stringify({ color: nextColor })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to update user")
       }
       await loadItems()
@@ -234,7 +259,7 @@ export default function UsersClient() {
       const voipExtensionValue = editVoipExtension?.trim() || null
       console.log('Saving user with icalUrl:', icalUrlValue)
       
-      const response = await apiFetch(`/api/users/${editingId}`, {
+      const data = await apiFetch(`/api/users/${editingId}`, {
         method: "PATCH",
         body: JSON.stringify({
           displayName: editName,
@@ -249,11 +274,10 @@ export default function UsersClient() {
           voipExtension: voipExtensionValue
         })
       })
-      const data = await response.json()
       
       console.log('Save response:', data)
       
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || "Failed to update user")
       }
       
@@ -281,6 +305,54 @@ export default function UsersClient() {
       .map((part) => part.charAt(0).toUpperCase())
       .join("") || "?"
   }
+
+  const handleRoleSelect = (role: PlanningRole) => {
+    setSelectedRoleForPermissions(role.id)
+    const perms = role.permissions?.pages || {}
+    setRolePermissions(perms)
+  }
+
+  const togglePageAccess = (path: string) => {
+    setRolePermissions({
+      ...rolePermissions,
+      [path]: !rolePermissions[path],
+    })
+  }
+
+  const handleSavePermissions = async () => {
+    if (!selectedRoleForPermissions) return
+
+    try {
+      setSavingPermissions(true)
+      const data = await apiFetch(`/api/roles/${selectedRoleForPermissions}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          permissions: {
+            pages: rolePermissions,
+          },
+        }),
+      })
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to save permissions')
+      }
+
+      alert('Permissies opgeslagen!')
+      await loadRoles()
+    } catch (error: any) {
+      console.error('Failed to save permissions:', error)
+      alert('Er is een fout opgetreden: ' + error.message)
+    } finally {
+      setSavingPermissions(false)
+    }
+  }
+
+  const selectedRoleData = roles.find((r) => r.id === selectedRoleForPermissions)
+  const groupedPages = ALL_PAGES.reduce((acc, page) => {
+    if (!acc[page.group]) acc[page.group] = []
+    acc[page.group].push(page)
+    return acc
+  }, {} as Record<string, typeof ALL_PAGES>)
 
   const formatAddress = (address: any): string => {
     if (!address) return '-'
@@ -327,6 +399,35 @@ export default function UsersClient() {
 
   return (
     <div className="space-y-8">
+      {/* Tabs */}
+      <div className="border-b border-slate-200">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'users'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Gebruikers ({items.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('permissions')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'permissions'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Rol Permissies
+          </button>
+        </nav>
+      </div>
+
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <>
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold">Nieuwe gebruiker</h2>
         <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
@@ -767,6 +868,87 @@ export default function UsersClient() {
         title="Kies profielfoto"
         category="profile"
       />
+        </>
+      )}
+
+      {/* Permissions Tab */}
+      {activeTab === 'permissions' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Roles List */}
+          <div className="lg:col-span-1">
+            <div className="bg-white shadow-sm rounded-lg p-4">
+              <h3 className="font-semibold mb-4">Rollen</h3>
+              <div className="space-y-2">
+                {roles.map((role) => (
+                  <button
+                    key={role.id}
+                    onClick={() => handleRoleSelect(role)}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition ${
+                      selectedRoleForPermissions === role.id
+                        ? 'bg-blue-50 border-blue-500'
+                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-medium">{role.name}</div>
+                    {role.isSystemAdmin && (
+                      <div className="text-xs text-slate-500 mt-1">System Admin</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Permissions Grid */}
+          <div className="lg:col-span-2">
+            {selectedRoleData ? (
+              <div className="bg-white shadow-sm rounded-lg p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold">{selectedRoleData.name}</h3>
+                  <button
+                    onClick={handleSavePermissions}
+                    disabled={savingPermissions}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {savingPermissions ? 'Opslaan...' : 'Opslaan'}
+                  </button>
+                </div>
+
+                <div className="space-y-6 max-h-[calc(100vh-300px)] overflow-y-auto pr-2">
+                  {Object.entries(groupedPages).map(([group, pages]) => (
+                    <div key={group} className="border-t pt-4 first:border-t-0 first:pt-0">
+                      <h4 className="font-medium text-slate-900 mb-3">{group}</h4>
+                      <div className="space-y-2">
+                        {pages.map((page) => (
+                          <label
+                            key={page.path}
+                            className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                          >
+                            <div>
+                              <div className="font-medium text-sm">{page.label}</div>
+                              <div className="text-xs text-slate-500">{page.path}</div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={rolePermissions[page.path] || false}
+                              onChange={() => togglePageAccess(page.path)}
+                              className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white shadow-sm rounded-lg p-12 text-center text-slate-500">
+                Selecteer een rol om permissies in te stellen
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

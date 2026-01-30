@@ -1,14 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const search = searchParams.get('search') || ''
+    const limit = parseInt(searchParams.get('limit') || '100')
+    
+    if (!search) {
+      // No search - return all
+      const items = await prisma.customer.findMany({
+        orderBy: { name: 'asc' },
+        take: limit,
+        include: {
+          vehicles: true,
+        },
+      })
+      return NextResponse.json({ success: true, items })
+    }
+    
+    // With search
     const items = await prisma.customer.findMany({
+      where: {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { company: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      },
       orderBy: { name: 'asc' },
+      take: limit,
       include: {
-        vehicles: true, // Include related vehicles for admin page
+        vehicles: true,
       },
     })
+    
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     console.error('Error fetching customers:', error)

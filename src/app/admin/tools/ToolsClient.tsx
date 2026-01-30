@@ -29,9 +29,8 @@ export default function ToolsClient() {
   useEffect(() => {
     const loadRole = async () => {
       try {
-        const response = await apiFetch('/api/admin/me')
-        const data = await response.json()
-        if (!response.ok || !data.success) {
+        const data = await apiFetch('/api/admin/me')
+        if (!data.success) {
           setAllowed(false)
           return
         }
@@ -52,9 +51,8 @@ export default function ToolsClient() {
   const loadSettingsHealth = async () => {
     try {
       setSettingsHealthError(null)
-      const response = await apiFetch('/api/admin/settings-health')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/settings-health')
+      if (!data.success) {
         throw new Error(data.error || 'Laden mislukt')
       }
       setSettingsHealth(data.items || [])
@@ -67,9 +65,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setCoreSeedResult(null)
-      const response = await apiFetch('/api/settings/bootstrap', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/settings/bootstrap', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setCoreSeedResult(`Core settings seeded: ${data.created?.length || 0}`)
@@ -83,9 +80,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setUiSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-ui-indicators', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-ui-indicators', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setUiSeedResult(`UI indicators seeded: ${data.created?.length || 0}`)
@@ -99,9 +95,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setTransitionsSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-workorder-transitions', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-workorder-transitions', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setTransitionsSeedResult(`Workorder transitions seeded: ${data.created?.length || 0}`)
@@ -115,9 +110,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setWarehouseSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-warehouse-statuses', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-warehouse-statuses', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setWarehouseSeedResult(`Warehouse statuses seeded: ${data.created?.length || 0}`)
@@ -132,13 +126,12 @@ export default function ToolsClient() {
       setError(null)
       setSettingsResult(null)
       const parsed = JSON.parse(settingsPayload || '{}')
-      const response = await apiFetch('/api/admin/bootstrap-settings', {
+      const data = await apiFetch('/api/admin/bootstrap-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed)
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Bootstrap failed')
       }
       setSettingsResult(`OK: ${data.updated || []}`)
@@ -151,11 +144,10 @@ export default function ToolsClient() {
     try {
       setError(null)
       setMigrationResult(null)
-      const response = await apiFetch('/api/admin/migrate-planning-to-workorders', {
+      const data = await apiFetch('/api/admin/migrate-planning-to-workorders', {
         method: 'POST'
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Migration failed')
       }
       setMigrationResult(
@@ -172,11 +164,10 @@ export default function ToolsClient() {
     try {
       setError(null)
       setWorkOrderMigrationResult(null)
-      const response = await apiFetch('/api/admin/migrate-workorders-to-planningitems', {
+      const data = await apiFetch('/api/admin/migrate-workorders-to-planningitems', {
         method: 'POST'
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Migratie mislukt')
       }
       setWorkOrderMigrationResult(
@@ -193,9 +184,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setPagesSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-pages', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-pages', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setPagesSeedResult(`Pages seeded: ${data.id}`)
@@ -208,9 +198,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setEmailSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-email', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-email', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setEmailSeedResult(`Email seed klaar: ${data.created?.length || 0}`)
@@ -223,9 +212,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setEmailSeedResult(null)
-      const response = await apiFetch('/api/admin/seed-email?force=1', { method: 'POST' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/admin/seed-email?force=1', { method: 'POST' })
+      if (!data.success) {
         throw new Error(data.error || 'Seed mislukt')
       }
       setEmailSeedResult(`Email seed bijgewerkt: ${data.created?.length || 0}`)
@@ -238,9 +226,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setStatusDebug(null)
-      const response = await apiFetch('/api/settings/statuses')
-      const data = await response.json()
-      setStatusDebug(JSON.stringify({ status: response.status, ...data }, null, 2))
+      const data = await apiFetch('/api/settings/statuses')
+      setStatusDebug(JSON.stringify(data, null, 2))
     } catch (err: any) {
       setError(err.message)
     }
@@ -270,9 +257,8 @@ export default function ToolsClient() {
     try {
       setError(null)
       setIndicatorPreview(null)
-      const response = await apiFetch('/api/settings/uiIndicators')
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch('/api/settings/uiIndicators')
+      if (!data.success) {
         throw new Error(data.error || 'Laden mislukt')
       }
       const payload = data.item?.data || data.item || {}

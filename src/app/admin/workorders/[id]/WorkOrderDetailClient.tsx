@@ -112,10 +112,9 @@ export default function WorkOrderDetailClient() {
     try {
       setLoading(true)
       setError(null)
-      const response = await apiFetch(`/api/workorders/${workOrderId}`)
-      const data = await response.json()
+      const data = await apiFetch(`/api/workorders/${workOrderId}`)
 
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Werkorder laden mislukt')
       }
 

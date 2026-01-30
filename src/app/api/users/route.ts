@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
       ...user,
       name: user.displayName || user.email, // Fallback to email if no displayName
       photoUrl: user.photoURL,
+      role: user.roleRef?.name || user.role || null, // Use roleRef.name if available, fallback to old role field
     }))
     
     return NextResponse.json({ success: true, items })

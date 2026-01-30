@@ -241,6 +241,19 @@ export class MagentoClient {
   }
 
   /**
+   * Get stock status for a product by SKU
+   */
+  async getStockStatus(sku: string): Promise<StockItem | null> {
+    try {
+      const encodedSku = encodeURIComponent(sku);
+      return await this.request<StockItem>('GET', `/stockStatuses/${encodedSku}`);
+    } catch (error) {
+      // Return null if not found or error
+      return null;
+    }
+  }
+
+  /**
    * Sleep helper for rate limiting
    */
   async sleep(ms: number = 500): Promise<void> {

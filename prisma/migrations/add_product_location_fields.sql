@@ -1,0 +1,6 @@
+-- Add location fields to products table
+ALTER TABLE products ADD COLUMN IF NOT EXISTS min_stock INTEGER;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS shelf_number VARCHAR(255);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS bin_number VARCHAR(255);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS location VARCHAR(255);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url TEXT;

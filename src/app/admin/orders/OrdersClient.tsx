@@ -263,9 +263,8 @@ export default function OrdersClient() {
   const handleDelete = async (item: Order) => {
     if (!confirm(`Verwijder order "${item.title}"?`)) return
     try {
-      const response = await apiFetch(`/api/orders/${item.id}`, { method: 'DELETE' })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
+      const data = await apiFetch(`/api/orders/${item.id}`, { method: 'DELETE' })
+      if (!data.success) {
         throw new Error(data.error || 'Failed to delete order')
       }
       await loadItems()
