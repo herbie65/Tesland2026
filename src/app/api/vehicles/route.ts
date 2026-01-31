@@ -8,7 +8,42 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
     const search = searchParams.get('search') || ''
+    const customerId = searchParams.get('customerId') || ''
     const skip = (page - 1) * limit
+
+    // If filtering by customerId
+    if (customerId) {
+      const [items, total] = await Promise.all([
+        prisma.vehicle.findMany({
+          where: { customerId },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+                mobile: true,
+              },
+            },
+          },
+        }),
+        prisma.vehicle.count({ where: { customerId } }),
+      ])
+
+      return NextResponse.json({
+        success: true,
+        items,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      })
+    }
 
     if (!search) {
       // No search - use normal query

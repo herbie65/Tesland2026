@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
 import ClickToDialButton from '@/components/ClickToDialButton'
+import { DateTimePicker } from '@/components/ui/DateTimePicker'
 import {
   addDays,
   addMinutes,
@@ -105,6 +106,20 @@ type ICalEvent = {
   userColor?: string
 }
 
+type LeaveRequest = {
+  id: string
+  userId: string
+  userName: string
+  absenceTypeCode: string
+  startDate: string
+  endDate: string
+  startTime?: string | null
+  endTime?: string | null
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  totalHours: number
+  totalDays: number
+}
+
 type PlanningSettings = {
   defaultDurationMinutes: number
   dayStart: string
@@ -165,8 +180,9 @@ export default function PlanningClient() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [users, setUsers] = useState<User[]>([])
-  const [otherUsers, setOtherUsers] = useState<User[]>([]) // Non-plannable users (vrij, ziek, etc.)
+  const [otherUsers, setOtherUsers] = useState<User[]>([])
   const [icalEvents, setIcalEvents] = useState<ICalEvent[]>([])
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [planningTypes, setPlanningTypes] = useState<PlanningType[]>([])
   const [roles, setRoles] = useState<
     Array<{ id: string; name?: string; includeInPlanning?: boolean }>
@@ -209,6 +225,13 @@ export default function PlanningClient() {
   const [customerSearchResults, setCustomerSearchResults] = useState<any[]>([])
   const [selectedVehicleData, setSelectedVehicleData] = useState<any>(null)
   const [selectedCustomerData, setSelectedCustomerData] = useState<any>(null)
+  const [showVehicleSelectModal, setShowVehicleSelectModal] = useState(false)
+  const [customerVehiclesList, setCustomerVehiclesList] = useState<any[]>([])
+  const [newVehicleMode, setNewVehicleMode] = useState(false)
+  const [newVehicleLicensePlate, setNewVehicleLicensePlate] = useState('')
+  const [newVehicleMake, setNewVehicleMake] = useState('')
+  const [newVehicleModel, setNewVehicleModel] = useState('')
+  const [existingVehicleConflict, setExistingVehicleConflict] = useState<any>(null)
   const [planningTypeId, setPlanningTypeId] = useState('none')
   const [notes, setNotes] = useState('')
   const [priority, setPriority] = useState('medium')
@@ -1102,18 +1125,52 @@ export default function PlanningClient() {
     loadLookups()
     loadPlanningSettings()
   }, [authReady, hasUser])
-  
-  // Load iCal events when users change (check both plannable and other users)
-  useEffect(() => {
-    const allActiveUsers = [...users, ...otherUsers]
-    const usersWithIcal = allActiveUsers.filter(u => u.icalUrl)
-    console.log('Users with iCal:', usersWithIcal.map(u => ({ name: u.name, icalUrl: u.icalUrl })))
-    if (usersWithIcal.length > 0) {
-      loadIcalEvents(usersWithIcal)
-    } else {
-      console.log('No users with iCal URLs found')
+  const loadLeaveRequests = async () => {
+    try {
+      console.log('Loading leave requests...')
+      
+      // Calculate date range based on current view
+      const start = new Date(currentDate)
+      start.setDate(start.getDate() - 7) // Load 1 week before
+      const end = new Date(currentDate)
+      end.setDate(end.getDate() + 30) // Load 30 days ahead
+      
+      const data = await apiFetch('/api/leave-requests')
+      
+      if (data.success && data.items) {
+        // Filter for approved and pending requests within date range
+        const filtered = data.items.filter((req: any) => {
+          if (req.status !== 'APPROVED' && req.status !== 'PENDING') return false
+          
+          const reqStart = new Date(req.startDate)
+          const reqEnd = new Date(req.endDate)
+          
+          // Check if request overlaps with visible range
+          return reqStart <= end && reqEnd >= start
+        })
+        
+        console.log(`Loaded ${filtered.length} leave requests`)
+        setLeaveRequests(filtered)
+      }
+    } catch (err) {
+      console.error('Failed to load leave requests:', err)
     }
-  }, [users, otherUsers, currentDate])
+  }
+
+// Load iCal events when users change (check both plannable and other users)
+useEffect(() => {
+  const allActiveUsers = [...users, ...otherUsers]
+  const usersWithIcal = allActiveUsers.filter(u => u.icalUrl)
+  console.log('Users with iCal:', usersWithIcal.map(u => ({ name: u.name, icalUrl: u.icalUrl })))
+  if (usersWithIcal.length > 0) {
+    loadIcalEvents(usersWithIcal)
+  } else {
+    console.log('No users with iCal URLs found')
+  }
+  
+  // Load leave requests
+  loadLeaveRequests()
+}, [users, otherUsers, currentDate])
 
   const loadPlanningSettings = async () => {
     try {
@@ -1334,35 +1391,53 @@ export default function PlanningClient() {
     setShowModal(true)
   }
 
-  // Vehicle selection with owner confirmation
+  // Vehicle selection - simplified flow
   const handleVehicleSelect = (vId: string) => {
-    console.log('Selecting vehicle:', vId)
+    console.log('=== VEHICLE SELECT START ===')
+    console.log('vehicleId:', vId)
+    console.log('showVehicleSearch BEFORE:', showVehicleSearch)
     
     // Find and store the full vehicle data
     const vehicle = vehicles.find(v => v.id === vId) || vehicleSearchResults.find(v => v.id === vId)
     console.log('Found vehicle:', vehicle)
     
     if (!vehicle) {
-      console.error('Vehicle not found in cache or search results!')
+      console.error('Vehicle not found!')
       return
     }
     
-    setVehicleId(vId)
+    // EERST: Sla het volledige vehicle object op
     setSelectedVehicleData(vehicle)
-    setShowVehicleSearch(false)
-    setVehicleSearchTerm('')
+    console.log('Set selectedVehicleData')
     
-    // Find the vehicle's owner
-    if (vehicle && vehicle.customerId) {
-      console.log('Vehicle has owner:', vehicle.customerId)
-      setSuggestedCustomerId(vehicle.customerId)
-      setShowOwnerConfirm(true)
-    } else {
-      console.log('Vehicle has no owner, opening customer search')
-      // No owner, open customer search
-      setSuggestedCustomerId(null)
-      setShowOwnerConfirm(false)
-      setShowCustomerSearch(true)
+    // DAN: Set de vehicleId en clear de search
+    setVehicleId(vId)
+    console.log('Set vehicleId')
+    
+    setShowVehicleSearch(false)
+    console.log('Set showVehicleSearch to FALSE')
+    
+    setVehicleSearchTerm('')
+    setVehicleSearchResults([])
+    console.log('Cleared search term and results')
+    console.log('=== VEHICLE SELECT END ===')
+    
+    // If vehicle has an owner, automatically select that customer
+    if (vehicle.customerId) {
+      setCustomerId(vehicle.customerId)
+      
+      // Try to find customer data
+      let customerData = customers.find(c => c.id === vehicle.customerId) ||
+        customerSearchResults.find(c => c.id === vehicle.customerId)
+      
+      // Check if vehicle has embedded customer data (from API)
+      if (!customerData && (vehicle as any).customer) {
+        customerData = (vehicle as any).customer
+      }
+      
+      if (customerData) {
+        setSelectedCustomerData(customerData)
+      }
     }
   }
 
@@ -1381,12 +1456,171 @@ export default function PlanningClient() {
   }
 
   const handleCustomerSelect = (cId: string) => {
+    console.log('=== CUSTOMER SELECT START ===')
+    console.log('customerId:', cId)
+    
     const customer = customers.find(c => c.id === cId) || 
       customerSearchResults.find(c => c.id === cId)
+    console.log('Found customer:', customer)
+    
+    if (!customer) {
+      console.error('Customer not found!')
+      return
+    }
+    
+    // EERST: Sla het volledige customer object op
+    setSelectedCustomerData(customer)
+    console.log('Set selectedCustomerData')
+    
+    // DAN: Set de customerId en clear de search
     setCustomerId(cId)
-    setSelectedCustomerData(customer || null)
+    console.log('Set customerId')
+    
     setShowCustomerSearch(false)
+    console.log('Set showCustomerSearch to FALSE')
+    
     setCustomerSearchTerm('')
+    setCustomerSearchResults([])
+    console.log('Cleared search term and results')
+    
+    // Check voor voertuigen van deze klant
+    checkCustomerVehicles(cId)
+    
+    console.log('=== CUSTOMER SELECT END ===')
+  }
+  
+  const checkCustomerVehicles = async (customerId: string) => {
+    try {
+      // Fetch vehicles voor deze klant
+      const response = await apiFetch(`/api/vehicles?customerId=${customerId}`)
+      if (response.success && response.items) {
+        const customerVehicles = response.items
+        
+        if (customerVehicles.length === 0) {
+          // Geen voertuigen - laat veld leeg
+          console.log('Customer has no vehicles')
+        } else if (customerVehicles.length === 1) {
+          // 1 voertuig - automatisch selecteren
+          const vehicle = customerVehicles[0]
+          console.log('Auto-selecting single vehicle:', vehicle.id)
+          setVehicleId(vehicle.id)
+          setSelectedVehicleData(vehicle)
+        } else {
+          // Meerdere voertuigen - toon popup
+          console.log('Customer has multiple vehicles:', customerVehicles.length)
+          setCustomerVehiclesList(customerVehicles)
+          setShowVehicleSelectModal(true)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching customer vehicles:', error)
+    }
+  }
+  
+  const handleSelectExistingVehicle = (vehicle: any) => {
+    setVehicleId(vehicle.id)
+    setSelectedVehicleData(vehicle)
+    setShowVehicleSelectModal(false)
+    setCustomerVehiclesList([])
+  }
+  
+  const handleNewVehicleForCustomer = () => {
+    setNewVehicleMode(true)
+  }
+  
+  const handleCreateNewVehicle = async () => {
+    if (!newVehicleLicensePlate.trim()) {
+      raiseError('Kenteken is verplicht')
+      return
+    }
+    
+    // Check of kenteken al bestaat
+    try {
+      const checkResponse = await apiFetch(`/api/vehicles?search=${encodeURIComponent(newVehicleLicensePlate)}`)
+      if (checkResponse.success && checkResponse.items && checkResponse.items.length > 0) {
+        // Kenteken bestaat al
+        const existingVehicle = checkResponse.items[0]
+        if (existingVehicle.customerId && existingVehicle.customerId !== customerId) {
+          // Voertuig is van een andere klant
+          setExistingVehicleConflict(existingVehicle)
+          return
+        }
+      }
+      
+      // Maak nieuw voertuig aan
+      const createResponse = await apiFetch('/api/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licensePlate: newVehicleLicensePlate,
+          make: newVehicleMake || null,
+          model: newVehicleModel || null,
+          customerId: customerId,
+        }),
+      })
+      
+      if (createResponse.success && createResponse.item) {
+        // Selecteer het nieuwe voertuig
+        const newVehicle = createResponse.item
+        setVehicleId(newVehicle.id)
+        setSelectedVehicleData(newVehicle)
+        setShowVehicleSelectModal(false)
+        setNewVehicleMode(false)
+        setNewVehicleLicensePlate('')
+        setNewVehicleMake('')
+        setNewVehicleModel('')
+        setCustomerVehiclesList([])
+      } else {
+        raiseError(createResponse.error || 'Fout bij aanmaken voertuig')
+      }
+    } catch (error: any) {
+      console.error('Error creating vehicle:', error)
+      raiseError(error.message || 'Fout bij aanmaken voertuig')
+    }
+  }
+  
+  const handleTransferVehicleOwnership = async () => {
+    if (!existingVehicleConflict) return
+    
+    try {
+      // Update vehicle ownership
+      const updateResponse = await apiFetch(`/api/vehicles/${existingVehicleConflict.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: customerId,
+        }),
+      })
+      
+      if (updateResponse.success) {
+        // Selecteer het voertuig
+        const updatedVehicle = { ...existingVehicleConflict, customerId: customerId }
+        setVehicleId(updatedVehicle.id)
+        setSelectedVehicleData(updatedVehicle)
+        setShowVehicleSelectModal(false)
+        setNewVehicleMode(false)
+        setExistingVehicleConflict(null)
+        setNewVehicleLicensePlate('')
+        setNewVehicleMake('')
+        setNewVehicleModel('')
+        setCustomerVehiclesList([])
+      } else {
+        raiseError(updateResponse.error || 'Fout bij overdragen eigenaar')
+      }
+    } catch (error: any) {
+      console.error('Error transferring ownership:', error)
+      raiseError(error.message || 'Fout bij overdragen eigenaar')
+    }
+  }
+  
+  const handleCancelVehicleSelect = () => {
+    setShowVehicleSelectModal(false)
+    setNewVehicleMode(false)
+    setExistingVehicleConflict(null)
+    setNewVehicleLicensePlate('')
+    setNewVehicleMake('')
+    setNewVehicleModel('')
+    setCustomerVehiclesList([])
   }
 
   const resetForm = () => {
@@ -1869,8 +2103,21 @@ export default function PlanningClient() {
     })
   }
 
-  const renderWeekList = (day: Date) => {
-    const dayItems = getItemsForDay(day)
+  // Helper to check if a user is a workshop user (has includeInPlanning role)
+  const isWorkshopUser = (userId: string | null | undefined) => {
+    if (!userId) return false
+    return users.some(u => u.id === userId)
+  }
+
+  const renderWeekList = (day: Date, filterType: 'workshop' | 'other' | 'all' = 'all') => {
+    let dayItems = getItemsForDay(day)
+    
+    // Filter items based on filterType
+    if (filterType === 'workshop') {
+      dayItems = dayItems.filter(item => isWorkshopUser(item.assigneeId))
+    } else if (filterType === 'other') {
+      dayItems = dayItems.filter(item => !isWorkshopUser(item.assigneeId))
+    }
     
     // Get iCal events for this day
     const dayIcalEvents = icalEvents.filter(event => {
@@ -1883,7 +2130,14 @@ export default function PlanningClient() {
       return eventStart <= dayEnd && eventEnd >= dayStart
     })
     
-    if (dayItems.length === 0 && dayIcalEvents.length === 0) {
+    // For 'other' filter, also filter iCal events
+    const filteredIcalEvents = filterType === 'other' 
+      ? dayIcalEvents.filter(event => otherUsers.some(u => u.id === event.userId))
+      : filterType === 'workshop'
+      ? dayIcalEvents.filter(event => users.some(u => u.id === event.userId))
+      : dayIcalEvents
+    
+    if (dayItems.length === 0 && filteredIcalEvents.length === 0) {
       return <p className="p-2 text-xs text-slate-400">Geen items</p>
     }
     return (
@@ -1983,7 +2237,7 @@ export default function PlanningClient() {
             </div>
           )
         })}
-        {dayIcalEvents.map((event) => {
+        {filteredIcalEvents.map((event) => {
           const eventStart = new Date(event.start)
           const eventEnd = new Date(event.end)
           const backgroundColor = event.userColor || '#6366f1'
@@ -2315,6 +2569,58 @@ export default function PlanningClient() {
                         </div>
                       )
                     })}
+                    {/* Leave requests for this user */}
+{leaveRequests
+  .filter(req => req.userId === user.id)
+  .filter(req => {
+    // Check if this day is a working day (Monday-Friday)
+    const dayOfWeek = day.getDay()
+    if (dayOfWeek === 0 || dayOfWeek === 6) return false // Skip weekends
+    
+    const reqStart = new Date(req.startDate)
+    const reqEnd = new Date(req.endDate)
+    const dayStart = new Date(day)
+    dayStart.setHours(0, 0, 0, 0)
+    const dayEnd = new Date(day)
+    dayEnd.setHours(23, 59, 59, 999)
+    return reqStart <= dayEnd && reqEnd >= dayStart
+  })
+  .map((req) => {
+    const startMinutes = viewStartMinutes
+    const endMinutes = viewStartMinutes + timelineMinutes
+    
+    const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
+    const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
+    
+    const isPending = req.status === 'PENDING'
+    const backgroundColor = '#8b5cf6'
+    const textColor = '#ffffff'
+    
+    return (
+      <div
+        key={`leave-${req.id}`}
+        className="planning-day-block"
+        style={{
+          left: `${leftPercent}%`,
+          width: `${widthPercent}%`,
+          top: '2px',
+          height: `${laneHeight - 4}px`,
+          borderColor: backgroundColor,
+          backgroundColor: backgroundColor,
+          color: textColor,
+          opacity: isPending ? 0.5 : 1,
+          pointerEvents: 'none'
+        }}
+        title={`${req.absenceTypeCode} ${isPending ? '(AANGEVRAAGD)' : ''}`}
+      >
+        <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
+          <span className="truncate font-medium">
+            🏖️ {req.absenceTypeCode} {isPending ? '(AANGEVRAAGD)' : ''}
+          </span>
+        </div>
+      </div>
+    )
+  })}
                 </div>
               </div>
             )
@@ -2541,6 +2847,58 @@ export default function PlanningClient() {
                             </div>
                           )
                         })}
+                       {/* Leave requests for this other user */}
+{leaveRequests
+  .filter(req => req.userId === user.id)
+  .filter(req => {
+    // Check if this day is a working day (Monday-Friday)
+    const dayOfWeek = day.getDay()
+    if (dayOfWeek === 0 || dayOfWeek === 6) return false // Skip weekends
+    
+    const reqStart = new Date(req.startDate)
+    const reqEnd = new Date(req.endDate)
+    const dayStart = new Date(day)
+    dayStart.setHours(0, 0, 0, 0)
+    const dayEnd = new Date(day)
+    dayEnd.setHours(23, 59, 59, 999)
+    return reqStart <= dayEnd && reqEnd >= dayStart
+  })
+  .map((req) => {
+    const startMinutes = viewStartMinutes
+    const endMinutes = viewStartMinutes + timelineMinutes
+    
+    const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
+    const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
+    
+    const isPending = req.status === 'PENDING'
+    const backgroundColor = '#8b5cf6'
+    const textColor = '#ffffff'
+    
+    return (
+      <div
+        key={`leave-other-${req.id}`}
+        className="planning-day-block"
+        style={{
+          left: `${leftPercent}%`,
+          width: `${widthPercent}%`,
+          top: '2px',
+          height: '36px',
+          borderColor: backgroundColor,
+          backgroundColor: backgroundColor,
+          color: textColor,
+          opacity: isPending ? 0.5 : 1,
+          pointerEvents: 'none'
+        }}
+        title={`${req.absenceTypeCode} ${isPending ? '(AANGEVRAAGD)' : ''}`}
+      >
+        <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
+          <span className="truncate font-medium">
+            🏖️ {req.absenceTypeCode} {isPending ? '(AANGEVRAAGD)' : ''}
+          </span>
+        </div>
+      </div>
+    )
+  })}
                     </div>
                   </div>
                 )
@@ -3040,6 +3398,7 @@ export default function PlanningClient() {
                   )
                 })}
               </div>
+              {/* Werkplaats planning */}
               <div
                 className="grid gap-2"
                 style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(0, 1fr))` }}
@@ -3055,11 +3414,94 @@ export default function PlanningClient() {
                       }`}
                       onDoubleClick={() => startCreate(day)}
                     >
-                      {renderWeekList(day)}
+                      {renderWeekList(day, 'workshop')}
                     </div>
                   )
                 })}
               </div>
+              
+              {/* Overige werknemers sectie */}
+              {otherUsers.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-slate-200">
+                  <div className="mb-3 text-sm font-semibold text-slate-600">
+                    Overige werknemers
+                  </div>
+                  <div className="space-y-3">
+                    {otherUsers.map((user) => {
+                      const roleName = user.roleId && roleNameMap.get(user.roleId) ? roleNameMap.get(user.roleId) : ''
+                      return (
+                        <div key={user.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-2">
+                          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-200">
+                            <span
+                              className="flex h-6 w-6 items-center justify-center rounded-full text-[0.6rem] font-bold text-white"
+                              style={{ backgroundColor: user.color || '#64748b' }}
+                            >
+                              {getInitials(user.name)}
+                            </span>
+                            <span className="text-sm font-medium text-slate-800">{user.name}</span>
+                            {roleName && (
+                              <span className="text-xs text-slate-500">({roleName})</span>
+                            )}
+                          </div>
+                          <div
+                            className="grid gap-2"
+                            style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(0, 1fr))` }}
+                          >
+                            {Array.from({ length: visibleDays }).map((_, index) => {
+                              const day = addDays(currentDate, index)
+                              const userDayItems = getItemsForDay(day).filter(item => item.assigneeId === user.id)
+                              const userIcalEvents = icalEvents.filter(event => {
+                                if (event.userId !== user.id) return false
+                                const eventStart = new Date(event.start)
+                                const eventEnd = new Date(event.end)
+                                const dayStart = new Date(day)
+                                dayStart.setHours(0, 0, 0, 0)
+                                const dayEnd = new Date(day)
+                                dayEnd.setHours(23, 59, 59, 999)
+                                return eventStart <= dayEnd && eventEnd >= dayStart
+                              })
+                              
+                              return (
+                                <div key={day.toISOString()} className="min-h-[60px] rounded border border-slate-200 bg-white p-1.5">
+                                  {userDayItems.length === 0 && userIcalEvents.length === 0 ? (
+                                    <p className="text-[0.65rem] text-slate-300">-</p>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {userDayItems.map(item => (
+                                        <div
+                                          key={item.id}
+                                          className="rounded px-1.5 py-1 text-[0.65rem] cursor-pointer hover:opacity-80"
+                                          style={{ backgroundColor: item.planningTypeColor || '#e2e8f0' }}
+                                          onClick={() => handlePlanningClick(item)}
+                                        >
+                                          <p className="font-semibold truncate">{item.title || item.planningTypeName}</p>
+                                          <p className="text-slate-600">{format(new Date(item.scheduledAt), 'HH:mm')}</p>
+                                        </div>
+                                      ))}
+                                      {userIcalEvents.map(event => (
+                                        <div
+                                          key={`ical-${event.uid}`}
+                                          className="rounded px-1.5 py-1 text-[0.65rem] border-dashed border"
+                                          style={{ backgroundColor: event.userColor || '#6366f1', opacity: 0.85 }}
+                                        >
+                                          <p className="font-semibold truncate text-white">{event.summary}</p>
+                                          <p className="text-white/80">
+                                            {event.allDay ? 'Hele dag' : format(new Date(event.start), 'HH:mm')}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -3220,16 +3662,14 @@ export default function PlanningClient() {
                   required
                 />
               </label>
-              <label className="workorder-field">
-                <span className="workorder-label">Vanaf (datum/tijd)</span>
-                <input
-                  className="workorder-input"
-                  type="datetime-local"
+              <div className="workorder-field">
+                <DateTimePicker
+                  label="Vanaf (datum/tijd)"
                   value={scheduledAt}
-                  onChange={(event) => setScheduledAt(event.target.value)}
+                  onChange={(value) => setScheduledAt(value)}
                   required
                 />
-              </label>
+              </div>
               {dateWarning ? <div className="workorder-alert sm:col-span-2">{dateWarning}</div> : null}
               {overlapWarning ? (
                 <div className="workorder-alert sm:col-span-2">{overlapWarning}</div>
@@ -3273,7 +3713,15 @@ export default function PlanningClient() {
                 {!showVehicleSearch && vehicleId === 'none' ? (
                   <button
                     type="button"
-                    onClick={() => setShowVehicleSearch(true)}
+                    onClick={() => {
+                      setShowVehicleSearch(true)
+                      setVehicleSearchResults([]) // Clear previous results when opening
+                      // Immediately trigger search
+                      setSearchingVehicles(true)
+                      apiFetch('/api/vehicles?limit=20').then(data => {
+                        if (data.success) setVehicleSearchResults(data.items || [])
+                      }).catch(console.error).finally(() => setSearchingVehicles(false))
+                    }}
                     className="workorder-input text-left text-slate-500 hover:bg-slate-50"
                   >
                     Klik om voertuig te zoeken...
@@ -3294,6 +3742,12 @@ export default function PlanningClient() {
                         setVehicleId('none')
                         setSelectedVehicleData(null)
                         setShowVehicleSearch(true)
+                        setVehicleSearchResults([]) // Clear previous results when opening
+                        // Immediately trigger search
+                        setSearchingVehicles(true)
+                        apiFetch('/api/vehicles?limit=20').then(data => {
+                          if (data.success) setVehicleSearchResults(data.items || [])
+                        }).catch(console.error).finally(() => setSearchingVehicles(false))
                       }}
                       className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
                     >
@@ -3315,18 +3769,29 @@ export default function PlanningClient() {
                         <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
                       </div>
                     )}
-                    {!searchingVehicles && (
-                      <div className="absolute z-[100] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {filteredVehicles.length === 0 ? (
+                    {showVehicleSearch && (vehicleSearchResults.length > 0 || searchingVehicles || vehicleSearchTerm) && (
+                    
+                      <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {searchingVehicles ? (
+                          <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                            Laden...
+                          </div>
+                        ) : filteredVehicles.length === 0 ? (
                           <div className="p-3 text-sm text-slate-500">
-                            {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Laden...'}
+                            {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Typ om te zoeken...'}
                           </div>
                         ) : (
                           filteredVehicles.map((vehicle) => (
                             <button
                               key={vehicle.id}
                               type="button"
-                              onClick={() => handleVehicleSelect(vehicle.id)}
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                console.log('Button clicked for vehicle:', vehicle.id)
+                                handleVehicleSelect(vehicle.id)
+                              }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
                             >
                               <div className="font-medium text-sm">
@@ -3349,7 +3814,15 @@ export default function PlanningClient() {
                 {!showCustomerSearch && customerId === 'none' ? (
                   <button
                     type="button"
-                    onClick={() => setShowCustomerSearch(true)}
+                    onClick={() => {
+                      setShowCustomerSearch(true)
+                      setCustomerSearchResults([]) // Clear previous results when opening
+                      // Immediately trigger search
+                      setSearchingCustomers(true)
+                      apiFetch('/api/customers?limit=20').then(data => {
+                        if (data.success) setCustomerSearchResults(data.items || [])
+                      }).catch(console.error).finally(() => setSearchingCustomers(false))
+                    }}
                     className="workorder-input text-left text-slate-500 hover:bg-slate-50"
                   >
                     Klik om klant te zoeken...
@@ -3365,6 +3838,12 @@ export default function PlanningClient() {
                         setCustomerId('none')
                         setSelectedCustomerData(null)
                         setShowCustomerSearch(true)
+                        setCustomerSearchResults([]) // Clear previous results when opening
+                        // Immediately trigger search
+                        setSearchingCustomers(true)
+                        apiFetch('/api/customers?limit=20').then(data => {
+                          if (data.success) setCustomerSearchResults(data.items || [])
+                        }).catch(console.error).finally(() => setSearchingCustomers(false))
                       }}
                       className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
                     >
@@ -3386,29 +3865,39 @@ export default function PlanningClient() {
                         <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
                       </div>
                     )}
-                    {!searchingCustomers && (
-                      <div className="absolute z-[100] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {filteredCustomers.length === 0 ? (
-                          <div className="p-3 text-sm text-slate-500">
-                            {customerSearchTerm ? 'Geen klanten gevonden' : 'Laden...'}
-                          </div>
-                        ) : (
-                          filteredCustomers.map((customer) => (
-                            <button
-                              key={customer.id}
-                              type="button"
-                              onClick={() => handleCustomerSelect(customer.id)}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              {customer.email && (
-                                <div className="text-xs text-slate-500">{customer.email}</div>
-                              )}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
+                    {showCustomerSearch && (customerSearchResults.length > 0 || searchingCustomers || customerSearchTerm) && (
+  <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {searchingCustomers ? (
+                        <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                          Laden...
+                        </div>
+                      ) : filteredCustomers.length === 0 ? (
+                        <div className="p-3 text-sm text-slate-500">
+                          {customerSearchTerm ? 'Geen klanten gevonden' : 'Typ om te zoeken...'}
+                        </div>
+                      ) : (
+                        filteredCustomers.map((customer) => (
+                          <button
+                            key={customer.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              console.log('Button clicked for customer:', customer.id)
+                              handleCustomerSelect(customer.id)
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                          >
+                            <div className="font-medium text-sm">{customer.name}</div>
+                            {customer.email && (
+                              <div className="text-xs text-slate-500">{customer.email}</div>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                     )}
                   </div>
                 )}
               </label>
@@ -3672,6 +4161,153 @@ export default function PlanningClient() {
                 className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Nee, andere klant
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Vehicle Select Modal - Multiple vehicles or new vehicle */}
+      {showVehicleSelectModal && !existingVehicleConflict ? (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              {newVehicleMode ? 'Nieuw voertuig toevoegen' : 'Selecteer voertuig'}
+            </h3>
+            
+            {!newVehicleMode ? (
+              <>
+                <p className="mt-2 text-sm text-slate-600">
+                  Deze klant heeft meerdere voertuigen. Selecteer er één:
+                </p>
+                <div className="mt-4 max-h-60 space-y-2 overflow-y-auto">
+                  {customerVehiclesList.map((vehicle) => (
+                    <button
+                      key={vehicle.id}
+                      type="button"
+                      onClick={() => handleSelectExistingVehicle(vehicle)}
+                      className="w-full rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50"
+                    >
+                      <div className="font-medium text-slate-900">
+                        {vehicle.make || vehicle.brand} {vehicle.model}
+                      </div>
+                      <div className="text-sm text-slate-600">
+                        {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate) : 'Geen kenteken'}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleNewVehicleForCustomer}
+                    className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    + Nieuwe auto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelVehicleSelect}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Annuleren
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Kenteken <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newVehicleLicensePlate}
+                      onChange={(e) => setNewVehicleLicensePlate(e.target.value.toUpperCase())}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="XX-XX-XX"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">Merk</label>
+                    <input
+                      type="text"
+                      value={newVehicleMake}
+                      onChange={(e) => setNewVehicleMake(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Bijv. Toyota"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">Model</label>
+                    <input
+                      type="text"
+                      value={newVehicleModel}
+                      onChange={(e) => setNewVehicleModel(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Bijv. Yaris"
+                    />
+                  </div>
+                </div>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCreateNewVehicle}
+                    className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+                  >
+                    Toevoegen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewVehicleMode(false)}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Terug
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Vehicle Ownership Conflict Modal */}
+      {existingVehicleConflict ? (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Voertuig bestaat al</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Het kenteken <strong>{normalizeLicensePlate(existingVehicleConflict.licensePlate)}</strong> 
+              {' '}({existingVehicleConflict.make || existingVehicleConflict.brand} {existingVehicleConflict.model}) 
+              is al geregistreerd bij een andere klant.
+            </p>
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-medium text-amber-900">Huidige eigenaar:</p>
+              <p className="text-sm text-amber-800">
+                {existingVehicleConflict.customer?.name || 'Onbekende klant'}
+              </p>
+            </div>
+            <p className="mt-3 text-sm text-slate-700">
+              Is <strong>{selectedCustomer?.name}</strong> de nieuwe eigenaar van dit voertuig?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={handleTransferVehicleOwnership}
+                className="flex-1 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Ja, eigenaar wijzigen
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExistingVehicleConflict(null)
+                  setNewVehicleLicensePlate('')
+                }}
+                className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Nee, annuleren
               </button>
             </div>
           </div>
