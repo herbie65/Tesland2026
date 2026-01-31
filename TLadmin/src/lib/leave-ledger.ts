@@ -93,9 +93,12 @@ const toMinutesFromAnnualValue = (value: number, unit: 'DAYS' | 'HOURS', hoursPe
 }
 
 export const getUserLeaveConfig = (user: LeaveUserConfig) => {
-  const hoursPerDay = Number.isFinite(Number(user.hoursPerDay)) && Number(user.hoursPerDay) > 0
-    ? Number(user.hoursPerDay)
-    : 8
+  // GEEN FALLBACKS - alles moet uit database komen
+  if (!Number.isFinite(Number(user.hoursPerDay)) || Number(user.hoursPerDay) <= 0) {
+    throw new Error('hoursPerDay niet ingesteld of ongeldig voor gebruiker')
+  }
+  
+  const hoursPerDay = Number(user.hoursPerDay)
   const annualLeaveValue = Number.isFinite(Number(user.annualLeaveDaysOrHours))
     ? Number(user.annualLeaveDaysOrHours)
     : null
@@ -106,64 +109,154 @@ export const getUserLeaveConfig = (user: LeaveUserConfig) => {
   return { hoursPerDay, leaveUnit, annualLeaveMinutes, employmentStartDate: user.employmentStartDate }
 }
 
+/**
+ * VERLOF = ALLEEN WERKUREN, NOOIT KALENDERUREN
+ * 
+ * Fundamenteel principe:
+ * Verlof wordt uitsluitend berekend over ingeplande werkuren volgens het rooster van de werknemer.
+ * NIET over nachten, weekenden, pauzes, vrije dagen of kalenderuren.
+ * 
+ * Verlof ≠ tijd tussen start en eind
+ * Verlof = som van werkuren die binnen die periode vallen
+ * 
+ * Voor elke werkdag:
+ * - Eerste dag: startTime tot dayEnd
+ * - Tussenliggende dagen: dayStart tot dayEnd (volledige werkdag)
+ * - Laatste dag: dayStart tot endTime
+ * - Als het dezelfde dag is: startTime tot endTime
+ * 
+ * Algoritme:
+ * Voor elke kalenderdag in de verlofperiode:
+ *   - Als werknemer die dag werkt volgens rooster:
+ *     - Bepaal correcte start/eind tijd voor die dag
+ *     - Tel werkuren op (minus pauzes)
+ */
 export const calculateRequestedMinutes = async (input: {
   startDate: string
   endDate: string
   startTime?: string | null
   endTime?: string | null
   hoursPerDay: number
+  workingDays?: string[] // bijv ["mon","tue","wed","thu","fri"]
+  userId?: string
 }) => {
   const settings = await getLeaveSettings()
   const breaks = await getPlanningBreaks()
-  const { startDate, endDate, startTime, endTime, hoursPerDay } = input
+  
+  // Haal planning settings op voor werkdag start/eind - GEEN FALLBACKS!
+  const planningSetting = await prisma.setting.findUnique({ where: { group: 'planning' } })
+  const planningData = planningSetting?.data as any
+  const dayStart = planningData?.dayStart
+  const dayEnd = planningData?.dayEnd
+  
+  if (!dayStart || !dayEnd) {
+    throw new Error('Planning instellingen (dayStart/dayEnd) niet gevonden in database')
+  }
+  
+  const { startDate, endDate, startTime, endTime, hoursPerDay, workingDays, userId } = input
+
+  // Haal werkdagen op van gebruiker - VERPLICHT!
+  let userWorkingDays = workingDays
+  if (userId && !userWorkingDays) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { workingDays: true }
+    })
+    userWorkingDays = user?.workingDays
+  }
+  
+  if (!userWorkingDays || userWorkingDays.length === 0) {
+    throw new Error('Werkdagen niet gevonden voor gebruiker. Configureer dit in HR instellingen.')
+  }
+  
+  const workDaySet = new Set(userWorkingDays)
 
   if ((startTime && !endTime) || (!startTime && endTime)) {
     throw new Error('Starttijd en eindtijd moeten beide worden opgegeven')
   }
 
-  let minutes = 0
-
-  if (startTime && endTime) {
-    const start = new Date(`${startDate}T${startTime}`)
-    const end = new Date(`${endDate}T${endTime}`)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new Error('Ongeldige datum of tijd')
-    }
-    if (end <= start) {
-      throw new Error('Eindtijd moet na starttijd liggen')
-    }
-    
-    // Check of het om één dag gaat of meerdere dagen
-    const startDay = new Date(start)
-    startDay.setHours(0, 0, 0, 0)
-    const endDay = new Date(end)
-    endDay.setHours(0, 0, 0, 0)
-    
-    if (startDay.getTime() === endDay.getTime()) {
-      // Enkele dag met tijden: bereken exacte minuten
-      minutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60))
-      const breakOverlap = calculateBreakOverlapMinutes(start, end, breaks)
-      minutes = Math.max(0, minutes - breakOverlap)
-    } else {
-      // Meerdere dagen met tijden: tel alleen werkdagen × werkuren per dag
-      // De tijden worden genegeerd omdat we alleen hele werkdagen tellen
-      const workDays = calculateWorkDays(startDay, endDay)
-      minutes = Math.round(workDays * hoursPerDay * 60)
-    }
-  } else {
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new Error('Ongeldige datum')
-    }
-    if (end < start) {
-      throw new Error('Einddatum moet na startdatum liggen')
-    }
-    const workDays = calculateWorkDays(start, end)
-    minutes = Math.round(workDays * hoursPerDay * 60)
+  // Use provided times or fall back to planning settings
+  const reqStartTime = startTime || dayStart
+  const reqEndTime = endTime || dayEnd
+  
+  const startDateTime = new Date(`${startDate}T${reqStartTime}`)
+  const endDateTime = new Date(`${endDate}T${reqEndTime}`)
+  
+  if (Number.isNaN(startDateTime.getTime()) || Number.isNaN(endDateTime.getTime())) {
+    throw new Error('Ongeldige datum of tijd')
+  }
+  if (endDateTime <= startDateTime) {
+    throw new Error('Einddatum/tijd moet na startdatum/tijd liggen')
   }
 
-  const roundedMinutes = roundToMinutes(minutes, settings.roundingMinutes)
+  let totalMinutes = 0
+
+  // Parse datums (zonder tijd)
+  const startDateOnly = new Date(startDate)
+  startDateOnly.setHours(0, 0, 0, 0)
+  const endDateOnly = new Date(endDate)
+  endDateOnly.setHours(0, 0, 0, 0)
+  
+  const isSameDay = startDateOnly.getTime() === endDateOnly.getTime()
+
+  // Itereer over elke kalenderdag in de periode
+  const currentDate = new Date(startDateOnly)
+
+  const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+
+  while (currentDate <= endDateOnly) {
+    const dayOfWeek = currentDate.getDay()
+    const dayName = dayNames[dayOfWeek]
+    const isFirstDay = currentDate.getTime() === startDateOnly.getTime()
+    const isLastDay = currentDate.getTime() === endDateOnly.getTime()
+    
+    // Check of werknemer deze dag werkt volgens rooster
+    if (workDaySet.has(dayName)) {
+      // Bepaal de start/eind tijd voor deze specifieke dag
+      let dayStartTime = dayStart
+      let dayEndTime = dayEnd
+      
+      if (isSameDay) {
+        // Zelfde dag: gebruik exact de aangevraagde tijden
+        dayStartTime = reqStartTime
+        dayEndTime = reqEndTime
+      } else if (isFirstDay) {
+        // Eerste dag: start op aangevraagde tijd, eind op werkdag eind
+        dayStartTime = reqStartTime
+        dayEndTime = dayEnd
+      } else if (isLastDay) {
+        // Laatste dag: start op werkdag start, eind op aangevraagde tijd
+        dayStartTime = dayStart
+        dayEndTime = reqEndTime
+      }
+      // Anders: tussenliggende dag, gebruik volledige werkdag (dayStart - dayEnd)
+      
+      // Maak datetime objecten voor deze dag
+      const workStartThisDay = new Date(currentDate)
+      const [startHour, startMin] = dayStartTime.split(':').map(Number)
+      workStartThisDay.setHours(startHour, startMin, 0, 0)
+      
+      const workEndThisDay = new Date(currentDate)
+      const [endHour, endMin] = dayEndTime.split(':').map(Number)
+      workEndThisDay.setHours(endHour, endMin, 0, 0)
+
+      if (workEndThisDay > workStartThisDay) {
+        // Bereken minuten voor deze dag
+        let dayMinutes = Math.round((workEndThisDay.getTime() - workStartThisDay.getTime()) / (1000 * 60))
+        
+        // Trek pauzes af die binnen deze werkuren vallen
+        const breakOverlap = calculateBreakOverlapMinutes(workStartThisDay, workEndThisDay, breaks)
+        dayMinutes = Math.max(0, dayMinutes - breakOverlap)
+        
+        totalMinutes += dayMinutes
+      }
+    }
+    
+    // Volgende dag
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  const roundedMinutes = roundToMinutes(totalMinutes, settings.roundingMinutes)
   return {
     requestedMinutes: roundedMinutes,
     roundedMinutes,

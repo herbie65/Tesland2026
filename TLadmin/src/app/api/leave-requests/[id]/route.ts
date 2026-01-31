@@ -133,20 +133,37 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     // Managers can edit any request (no status restriction)
     
     const userData = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { hoursPerDay: true },
+      where: { id: leaveRequest.userId },
+      select: { 
+        hoursPerDay: true,
+        workingDays: true,
+      },
     })
+    
+    if (!userData?.hoursPerDay) {
+      return NextResponse.json({ 
+        error: 'Uren per dag niet ingesteld voor gebruiker. Configureer dit in HR instellingen.' 
+      }, { status: 400 })
+    }
+    
+    if (!userData.workingDays || userData.workingDays.length === 0) {
+      return NextResponse.json({ 
+        error: 'Werkdagen niet ingesteld voor gebruiker. Configureer dit in HR instellingen.' 
+      }, { status: 400 })
+    }
 
     const { requestedMinutes } = await calculateRequestedMinutes({
       startDate: body.startDate,
       endDate: body.endDate,
       startTime: body.startTime,
       endTime: body.endTime,
-      hoursPerDay: Number(userData?.hoursPerDay || 8),
+      hoursPerDay: Number(userData.hoursPerDay),
+      workingDays: userData.workingDays,
+      userId: leaveRequest.userId,
     })
 
     const totalHours = Math.round((requestedMinutes / 60) * 100) / 100
-    const totalDays = Math.round((totalHours / Number(userData?.hoursPerDay || 8)) * 100) / 100
+    const totalDays = Math.round((totalHours / Number(userData.hoursPerDay)) * 100) / 100
 
     const updated = await prisma.leaveRequest.update({
       where: { id },
@@ -196,7 +213,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
     
     // Check if user can cancel
-    const isManager = user.role && ['admin', 'manager'].includes(user.role)
+    const isManager = user.roles?.some(r => ['admin', 'manager'].includes(r.role.name))
     if (!isManager && leaveRequest.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }

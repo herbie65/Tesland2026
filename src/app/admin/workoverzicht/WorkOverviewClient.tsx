@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
+import { DatePicker } from '@/components/ui/DatePicker'
 
 type WorkOverviewSettings = {
   columns: string[]
@@ -138,15 +139,13 @@ type PlanningType = {
         <h2 className="text-2xl font-semibold text-slate-900">Werkoverzicht</h2>
         <p className="text-sm text-slate-600">Overzicht van werkstatussen per kolom.</p>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
-          <label className="flex items-center gap-2">
-            Datum
-            <input
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
-              type="date"
+          <div className="flex items-center gap-2">
+            <DatePicker
+              label="Datum"
               value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value)}
+              onChange={(date) => setSelectedDate(date)}
             />
-          </label>
+          </div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
             {planningTypes
               .filter((type) => Boolean(type.color) && Boolean(type.name))

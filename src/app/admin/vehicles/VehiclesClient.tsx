@@ -55,6 +55,8 @@ type Vehicle = {
   customer?: {
     id: string
     name: string
+    phone?: string | null
+    mobile?: string | null
   } | null
   // RDW fields (flattened from rdwData)
   rdwColor?: string | null
@@ -279,7 +281,7 @@ export default function VehiclesClient() {
   }, [])
 
   // Debounced save function
-  const debouncedSaveRef = useRef<NodeJS.Timeout>()
+  const debouncedSaveRef = useRef<NodeJS.Timeout | undefined>(undefined)
   
   const savePreference = async (key: string, value: any) => {
     try {

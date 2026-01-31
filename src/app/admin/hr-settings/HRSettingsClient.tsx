@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
+import { DatePicker } from '@/components/ui/DatePicker'
 
 type User = {
   id: string
@@ -32,6 +33,9 @@ type User = {
   leaveBalanceLegal: number
   leaveBalanceExtra: number
   leaveBalanceCarryover: number
+  // Planning fields
+  color: string | null
+  planningHoursPerDay: number | null
 }
 
 export default function HRSettingsClient() {
@@ -129,6 +133,8 @@ export default function HRSettingsClient() {
       contractHoursPerWeek: user.contractHoursPerWeek || 40,
       annualLeaveDaysOrHours: user.annualLeaveDaysOrHours || 25,
       workingDays: user.workingDays || ['ma', 'di', 'wo', 'do', 'vr'],
+      color: user.color || '#4f46e5',
+      planningHoursPerDay: user.planningHoursPerDay || 8,
       emergencyContactName: user.emergencyContactName || '',
       emergencyContactRelation: user.emergencyContactRelation || '',
       emergencyContactPhone: user.emergencyContactPhone || '',
@@ -283,18 +289,12 @@ export default function HRSettingsClient() {
                         required
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Geboortedatum <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.dateOfBirth || ''}
-                        onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                        required
-                      />
-                    </div>
+                    <DatePicker
+                      label="Geboortedatum"
+                      value={formData.dateOfBirth || ''}
+                      onChange={(date) => setFormData({ ...formData, dateOfBirth: date })}
+                      required
+                    />
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">
                         Functie
@@ -350,18 +350,12 @@ export default function HRSettingsClient() {
                         </button>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Startdatum dienstverband <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={formData.employmentStartDate || ''}
-                        onChange={(e) => setFormData({ ...formData, employmentStartDate: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                        required
-                      />
-                    </div>
+                    <DatePicker
+                      label="Startdatum dienstverband"
+                      value={formData.employmentStartDate || ''}
+                      onChange={(date) => setFormData({ ...formData, employmentStartDate: date })}
+                      required
+                    />
                   </div>
 
                   {/* Verlof Saldo */}
@@ -424,14 +418,10 @@ export default function HRSettingsClient() {
 
                   {formData.hasFixedTermContract && (
                     <div className="mt-4">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Einddatum dienstverband
-                      </label>
-                      <input
-                        type="date"
+                      <DatePicker
+                        label="Einddatum dienstverband"
                         value={formData.employmentEndDate || ''}
-                        onChange={(e) => setFormData({ ...formData, employmentEndDate: e.target.value })}
-                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                        onChange={(date) => setFormData({ ...formData, employmentEndDate: date })}
                       />
                     </div>
                   )}
@@ -455,6 +445,37 @@ export default function HRSettingsClient() {
                           {day}
                         </button>
                       ))}
+                    </div>
+                  </div>
+                  
+                  {/* Planning instellingen */}
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Uren per dag (planning)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        step="0.5"
+                        value={formData.planningHoursPerDay || 8}
+                        onChange={(e) => setFormData({ ...formData, planningHoursPerDay: Number(e.target.value) })}
+                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Aantal uren per werkdag voor planning</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Kleur (planning)
+                      </label>
+                      <input
+                        type="color"
+                        value={formData.color || '#4f46e5'}
+                        onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                        className="w-full h-10 border border-slate-300 rounded-lg px-1"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Kleur in de planning kalender</p>
                     </div>
                   </div>
                 </div>

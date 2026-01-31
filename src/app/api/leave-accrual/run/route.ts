@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         userId: user.id,
         leaveBalanceVacation: (user.leaveBalanceLegal || 0) + (user.leaveBalanceExtra || 0),
         leaveBalanceCarryover: user.leaveBalanceCarryover,
-        leaveUnit: config.leaveUnit,
+        leaveUnit: (config.leaveUnit || 'DAYS') as 'DAYS' | 'HOURS',
         hoursPerDay: config.hoursPerDay,
       })
 

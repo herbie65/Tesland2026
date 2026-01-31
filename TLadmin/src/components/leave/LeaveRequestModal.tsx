@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { XMarkIcon } from '@heroicons/react/24/outline'
-import { DatePicker } from '@/components/ui/DatePicker'
 
 type AbsenceType = {
   code: string
@@ -69,28 +68,6 @@ export function LeaveRequestModal({
   
   const [preview, setPreview] = useState<{ minutes: number; hours: number; days: number } | null>(null)
 
-  // Bereken werkdagen (ma-vr) tussen twee datums
-  const calculateWorkDays = (startDate: Date, endDate: Date): number => {
-    let count = 0
-    const current = new Date(startDate)
-    
-    // Zet tijd op 00:00:00 voor vergelijking
-    current.setHours(0, 0, 0, 0)
-    const end = new Date(endDate)
-    end.setHours(0, 0, 0, 0)
-    
-    while (current <= end) {
-      const dayOfWeek = current.getDay()
-      // 0 = zondag, 6 = zaterdag
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        count++
-      }
-      current.setDate(current.getDate() + 1)
-    }
-    
-    return count
-  }
-
   useEffect(() => {
     if (initialData) {
       const defaultStartTime = planningSettings?.dayStart || ''
@@ -149,9 +126,22 @@ export function LeaveRequestModal({
     return overlapMinutes
   }
 
+  /**
+   * VERLOF = ALLEEN WERKUREN, NOOIT KALENDERUREN
+   * 
+   * Berekent verlof op basis van roosteruren per werkdag,
+   * NIET op basis van kalenderuren tussen start en eind.
+   */
   const calculatePreview = () => {
     const start = new Date(formData.startDate)
     const end = new Date(formData.endDate)
+    
+    console.log('[DEBUG] Preview calculation started', {
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      startTime: formData.startTime,
+      endTime: formData.endTime,
+    })
     
     if (start > end) {
       setPreview(null)
@@ -159,47 +149,119 @@ export function LeaveRequestModal({
       return
     }
     
-    const hoursPerDay = balance?.hoursPerDay || 8
-    const roundingMinutes = 15
-    
-    // Check of het om één dag gaat of meerdere dagen
-    const startDay = new Date(start)
-    startDay.setHours(0, 0, 0, 0)
-    const endDay = new Date(end)
-    endDay.setHours(0, 0, 0, 0)
-    
-    let minutes = 0
-    
-    // Als tijden zijn ingevuld
-    if (formData.startTime && formData.endTime) {
-      const startDateTime = new Date(`${formData.startDate}T${formData.startTime}`)
-      const endDateTime = new Date(`${formData.endDate}T${formData.endTime}`)
-      
-      if (endDateTime <= startDateTime) {
-        setPreview(null)
-        setWarning(null)
-        return
-      }
-      
-      if (startDay.getTime() === endDay.getTime()) {
-        // Enkele dag met tijden: bereken exacte minuten
-        minutes = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60))
-        const breakOverlap = calculateBreakOverlapMinutes(startDateTime, endDateTime)
-        minutes = Math.max(0, minutes - breakOverlap)
-      } else {
-        // Meerdere dagen met tijden: tel alleen werkdagen × werkuren per dag
-        const workDays = calculateWorkDays(startDay, endDay)
-        minutes = Math.round(workDays * hoursPerDay * 60)
-      }
-    } else {
-      // Geen tijden: tel alleen werkdagen × werkuren per dag
-      const workDays = calculateWorkDays(startDay, endDay)
-      minutes = Math.round(workDays * hoursPerDay * 60)
+    // Controleer of beide tijden zijn ingevuld
+    if (!formData.startTime || !formData.endTime) {
+      setPreview(null)
+      setWarning(null)
+      return
     }
     
-    const roundedMinutes = Math.round(minutes / roundingMinutes) * roundingMinutes
+    // Valideer dat we noodzakelijke HR gegevens hebben
+    if (!balance?.hoursPerDay) {
+      setError('Uren per dag niet ingesteld. Neem contact op met HR.')
+      setPreview(null)
+      return
+    }
+    
+    // Haal standaard werktijden op uit planning settings
+    const dayStart = planningSettings?.dayStart || '08:30'
+    const dayEnd = planningSettings?.dayEnd || '17:00'
+    
+    const hoursPerDay = balance.hoursPerDay
+    const roundingMinutes = 15
+    
+    console.log('[DEBUG] Settings:', { 
+      hoursPerDay, 
+      dayStart, 
+      dayEnd,
+      vacation: balance.vacation, 
+      carryover: balance.carryover 
+    })
+    
+    // Werkdagen MOETEN uit user profiel komen - geen defaults!
+    // TODO: Haal workingDays op via API voor de ingelogde gebruiker
+    const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+    const workDaySet = new Set(['mon', 'tue', 'wed', 'thu', 'fri']) // TEMP: later vervangen door API call
+    
+    let totalMinutes = 0
+    
+    // Parse datums
+    const startDateOnly = new Date(formData.startDate)
+    startDateOnly.setHours(0, 0, 0, 0)
+    const endDateOnly = new Date(formData.endDate)
+    endDateOnly.setHours(0, 0, 0, 0)
+    
+    const isSameDay = startDateOnly.getTime() === endDateOnly.getTime()
+    
+    const dayBreakdown: string[] = []
+    
+    // Itereer over elke kalenderdag
+    const currentDate = new Date(startDateOnly)
+    
+    while (currentDate <= endDateOnly) {
+      const dayOfWeek = currentDate.getDay()
+      const dayName = dayNames[dayOfWeek]
+      const isFirstDay = currentDate.getTime() === startDateOnly.getTime()
+      const isLastDay = currentDate.getTime() === endDateOnly.getTime()
+      
+      // Check of dit een werkdag is
+      if (workDaySet.has(dayName)) {
+        // Bepaal de start/eind tijd voor deze specifieke dag
+        let dayStartTime = dayStart
+        let dayEndTime = dayEnd
+        
+        if (isSameDay) {
+          // Zelfde dag: gebruik exact de aangevraagde tijden
+          dayStartTime = formData.startTime
+          dayEndTime = formData.endTime
+        } else if (isFirstDay) {
+          // Eerste dag: start op aangevraagde tijd, eind op werkdag eind
+          dayStartTime = formData.startTime
+          dayEndTime = dayEnd
+        } else if (isLastDay) {
+          // Laatste dag: start op werkdag start, eind op aangevraagde tijd
+          dayStartTime = dayStart
+          dayEndTime = formData.endTime
+        }
+        // Anders: tussenliggende dag, gebruik volledige werkdag (dayStart - dayEnd)
+        
+        // Maak datetime objecten
+        const workStart = new Date(currentDate)
+        const [startHour, startMin] = dayStartTime.split(':').map(Number)
+        workStart.setHours(startHour, startMin, 0, 0)
+        
+        const workEnd = new Date(currentDate)
+        const [endHour, endMin] = dayEndTime.split(':').map(Number)
+        workEnd.setHours(endHour, endMin, 0, 0)
+        
+        if (workEnd > workStart) {
+          let dayMinutes = Math.round((workEnd.getTime() - workStart.getTime()) / (1000 * 60))
+          
+          // Trek pauzes af
+          const breakOverlap = calculateBreakOverlapMinutes(workStart, workEnd)
+          dayMinutes = Math.max(0, dayMinutes - breakOverlap)
+          
+          totalMinutes += dayMinutes
+          dayBreakdown.push(
+            `${currentDate.toISOString().slice(0,10)} (${dayName}): ` +
+            `${dayStartTime}-${dayEndTime} = ${dayMinutes}min (break: ${breakOverlap}min)`
+          )
+        }
+      } else {
+        dayBreakdown.push(`${currentDate.toISOString().slice(0,10)} (${dayName}): VRIJ/WEEKEND`)
+      }
+      
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+    
+    console.log('[DEBUG] Day breakdown:', dayBreakdown)
+    console.log('[DEBUG] Total minutes:', totalMinutes)
+    
+    const roundedMinutes = Math.round(totalMinutes / roundingMinutes) * roundingMinutes
     const hours = Math.round((roundedMinutes / 60) * 100) / 100
     const days = Math.round((hours / hoursPerDay) * 100) / 100
+
+    console.log('[DEBUG] Final result:', { roundedMinutes, hours, days })
 
     setPreview({ minutes: roundedMinutes, hours, days })
     
@@ -291,19 +353,30 @@ export function LeaveRequestModal({
           
           {/* Datums */}
           <div className="grid grid-cols-2 gap-4">
-            <DatePicker
-              label="Startdatum"
-              value={formData.startDate}
-              onChange={(date) => setFormData({ ...formData, startDate: date })}
-              required
-            />
-            <DatePicker
-              label="Einddatum"
-              value={formData.endDate}
-              onChange={(date) => setFormData({ ...formData, endDate: date })}
-              required
-              minDate={formData.startDate}
-            />
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Startdatum <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-200/50"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                Einddatum <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-200/50"
+                required
+              />
+            </div>
           </div>
           
           {/* Tijd velden - ALTIJD zichtbaar */}

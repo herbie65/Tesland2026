@@ -132,24 +132,9 @@ export const calculateRequestedMinutes = async (input: {
     if (end <= start) {
       throw new Error('Eindtijd moet na starttijd liggen')
     }
-    
-    // Check of het om één dag gaat of meerdere dagen
-    const startDay = new Date(start)
-    startDay.setHours(0, 0, 0, 0)
-    const endDay = new Date(end)
-    endDay.setHours(0, 0, 0, 0)
-    
-    if (startDay.getTime() === endDay.getTime()) {
-      // Enkele dag met tijden: bereken exacte minuten
-      minutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60))
-      const breakOverlap = calculateBreakOverlapMinutes(start, end, breaks)
-      minutes = Math.max(0, minutes - breakOverlap)
-    } else {
-      // Meerdere dagen met tijden: tel alleen werkdagen × werkuren per dag
-      // De tijden worden genegeerd omdat we alleen hele werkdagen tellen
-      const workDays = calculateWorkDays(startDay, endDay)
-      minutes = Math.round(workDays * hoursPerDay * 60)
-    }
+    minutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60))
+    const breakOverlap = calculateBreakOverlapMinutes(start, end, breaks)
+    minutes = Math.max(0, minutes - breakOverlap)
   } else {
     const start = new Date(startDate)
     const end = new Date(endDate)

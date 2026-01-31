@@ -518,46 +518,7 @@ export default function UsersClient() {
               Maak in Rollen eerst een rol met “Is admin” aan.
             </p>
           ) : null}
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Kleur
-            <input
-              className="h-11 rounded-lg border border-slate-200 bg-white px-3"
-              type="color"
-              value={color}
-              onChange={(event) => setColor(event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Uren per dag
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              type="number"
-              min="1"
-              max="12"
-              step="0.5"
-              value={planningHoursPerDay}
-              onChange={(event) => setPlanningHoursPerDay(Number(event.target.value))}
-            />
-          </label>
-          <div className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-            Werkdagen
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(dayLabels).map(([dayKey, label]) => (
-                <button
-                  key={dayKey}
-                  type="button"
-                  className={`rounded-lg border px-3 py-1 text-sm ${
-                    workingDays.includes(dayKey)
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
-                  }`}
-                  onClick={() => toggleWorkingDay(dayKey)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Kleur, Uren per dag en Werkdagen worden beheerd in HR Instellingen */}
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
@@ -683,29 +644,7 @@ export default function UsersClient() {
                             Maak in Rollen eerst een rol met “Is admin” aan.
                           </p>
                         ) : null}
-                        <label className="grid gap-2 text-sm font-medium text-slate-700">
-                          Kleur
-                          <input
-                            className="h-11 rounded-lg border border-slate-200 bg-white px-3"
-                            type="color"
-                            value={editColor}
-                            onChange={(event) => setEditColor(event.target.value)}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm font-medium text-slate-700">
-                          Uren per dag
-                          <input
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-                            type="number"
-                            min="1"
-                            max="12"
-                            step="0.5"
-                            value={editPlanningHoursPerDay}
-                            onChange={(event) =>
-                              setEditPlanningHoursPerDay(Number(event.target.value))
-                            }
-                          />
-                        </label>
+                        {/* Kleur, Uren per dag en Werkdagen worden beheerd in HR Instellingen */}
                         <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
                           <span>Actief</span>
                           <label className="relative inline-block h-6 w-11 cursor-pointer">
@@ -719,25 +658,6 @@ export default function UsersClient() {
                             <span className="absolute left-1 top-1 h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ease-in-out peer-checked:translate-x-5" />
                           </label>
                         </label>
-                      </div>
-                      <div className="grid gap-2 text-sm font-medium text-slate-700">
-                        Werkdagen
-                        <div className="flex flex-wrap gap-2">
-                          {Object.entries(dayLabels).map(([dayKey, label]) => (
-                            <button
-                              key={dayKey}
-                              type="button"
-                              className={`rounded-lg border px-3 py-1 text-sm ${
-                                editWorkingDays.includes(dayKey)
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-slate-200 text-slate-700 hover:bg-slate-50"
-                              }`}
-                              onClick={() => toggleEditWorkingDay(dayKey)}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
                       </div>
                       <div className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
                         <label className="grid gap-2">
@@ -800,12 +720,6 @@ export default function UsersClient() {
                         <p className="mt-1 text-xs text-slate-500">
                           {item.active === false ? "Inactief" : "Actief"}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.planningHoursPerDay ? `${item.planningHoursPerDay} uur/dag` : "Uren onbekend"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.workingDays?.length ? item.workingDays.map((day) => dayLabels[day]).join(", ") : "Geen werkdagen"}
-                        </p>
                         {item.icalUrl ? (
                           <p className="mt-1 text-xs flex items-center gap-1">
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700 font-medium">
@@ -819,16 +733,6 @@ export default function UsersClient() {
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center gap-2 text-sm text-slate-700">
-                          <span className="text-xs text-slate-500">Kleur</span>
-                          <input
-                            className="h-9 w-12 rounded-lg border border-slate-200 bg-white"
-                            type="color"
-                            value={item.color || "#4f46e5"}
-                            onChange={(event) => handleColorUpdate(item, event.target.value)}
-                            title="Kleur van deze werknemer"
-                          />
-                        </label>
                         <button
                           className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
                           type="button"

@@ -114,11 +114,24 @@ export async function POST(request: NextRequest) {
         leaveBalanceCarryover: true,
         leaveUnit: true,
         hoursPerDay: true,
+        workingDays: true,
       }
     })
 
     if (!userData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    
+    if (!userData.hoursPerDay) {
+      return NextResponse.json({ 
+        error: 'Uren per dag niet ingesteld voor gebruiker. Configureer dit in HR instellingen.' 
+      }, { status: 400 })
+    }
+    
+    if (!userData.workingDays || userData.workingDays.length === 0) {
+      return NextResponse.json({ 
+        error: 'Werkdagen niet ingesteld voor gebruiker. Configureer dit in HR instellingen.' 
+      }, { status: 400 })
     }
 
     await seedOpeningBalanceIfMissing({
@@ -126,7 +139,7 @@ export async function POST(request: NextRequest) {
       leaveBalanceVacation: (userData.leaveBalanceLegal || 0) + (userData.leaveBalanceExtra || 0),
       leaveBalanceCarryover: userData.leaveBalanceCarryover,
       leaveUnit: userData.leaveUnit === 'HOURS' ? 'HOURS' : 'DAYS',
-      hoursPerDay: Number(userData.hoursPerDay || 8),
+      hoursPerDay: Number(userData.hoursPerDay),
     })
 
     const { requestedMinutes } = await calculateRequestedMinutes({
@@ -134,11 +147,13 @@ export async function POST(request: NextRequest) {
       endDate,
       startTime,
       endTime,
-      hoursPerDay: Number(userData.hoursPerDay || 8),
+      hoursPerDay: Number(userData.hoursPerDay),
+      workingDays: userData.workingDays,
+      userId: user.id,
     })
 
     const totalHours = Math.round((requestedMinutes / 60) * 100) / 100
-    const totalDays = Math.round((totalHours / Number(userData.hoursPerDay || 8)) * 100) / 100
+    const totalDays = Math.round((totalHours / Number(userData.hoursPerDay)) * 100) / 100
 
     // Check if user has enough balance (only for vacation types)
     let willBeNegative = false
@@ -237,7 +252,7 @@ export async function POST(request: NextRequest) {
           endDate: new Date(endDate).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
           totalDays: String(totalDays),
           reason: reason || 'Geen reden opgegeven',
-          warning: willBeNegative ? `⚠️ LET OP: Saldo wordt negatief met ${negativeAmountHours.toFixed(2)} uur. Goedkeuring door bedrijfsleiding is vereist.` : '',
+          warning: willBeNegative ? `⚠️ LET OP: Saldo wordt negatief met ${negativeAmountHours.toFixed(2)} uur. Goedkeuring door bedrijfsleiding is vereist.` : undefined,
         }
       }).catch(err => {
         console.error('Failed to send email to manager:', err)

@@ -26,6 +26,9 @@ type Product = {
   visibility?: string
   createdAt?: string | Date | null
   updatedAt?: string | Date | null
+  is_stocked?: boolean
+  stock_quantity?: number | null
+  min_stock?: number | null
   // Configurable product fields
   hasVariants?: boolean
   variantCount?: number
@@ -56,7 +59,10 @@ const emptyForm = {
   binLocation: '',
   description: '',
   imageUrl: '',
-  isActive: true
+  isActive: true,
+  is_stocked: false,
+  stock_quantity: '',
+  min_stock: ''
 }
 
 export default function ProductsClient() {
@@ -169,7 +175,10 @@ export default function ProductsClient() {
       binLocation: item.binLocation || '',
       description: item.description || '',
       imageUrl: item.imageUrl || '',
-      isActive: item.isActive !== false
+      isActive: item.isActive !== false,
+      is_stocked: Boolean(item.is_stocked),
+      stock_quantity: item.stock_quantity !== null && item.stock_quantity !== undefined ? String(item.stock_quantity) : '',
+      min_stock: item.min_stock !== null && item.min_stock !== undefined ? String(item.min_stock) : ''
     })
     setShowModal(true)
   }
@@ -188,9 +197,9 @@ export default function ProductsClient() {
         min_stock:
           formData.is_stocked && formData.min_stock ? Number(formData.min_stock) : 0,
         description: formData.description.trim() || null,
-        image_url: formData.image_url.trim() || null,
-        shelf_number: formData.shelf_number.trim() || null,
-        bin_number: formData.bin_number.trim() || null,
+        image_url: formData.imageUrl.trim() || null,
+        shelf_number: formData.shelfLocation.trim() || null,
+        bin_number: formData.binLocation.trim() || null,
         is_stocked: Boolean(formData.is_stocked),
         isActive: Boolean(formData.isActive)
       }

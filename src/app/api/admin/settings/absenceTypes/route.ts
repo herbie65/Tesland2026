@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       where: { group: 'absenceTypes' }
     })
 
-    const items = Array.isArray(setting?.data?.items) ? setting?.data?.items : []
+    const items = Array.isArray((setting?.data as any)?.items) ? (setting?.data as any)?.items : []
     if (!items.length) {
       return NextResponse.json({ error: 'absenceTypes settings ontbreken' }, { status: 404 })
     }

@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { formatHoursAsDaysAndHours } from '@/lib/time-utils'
+import { DatePicker } from '@/components/ui/DatePicker'
 
 type LeaveRequest = {
   id: string
@@ -967,30 +968,19 @@ export default function LeaveManagementClient() {
 
               {/* Datums */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Startdatum *
-                  </label>
-                  <input
-                    type="date"
-                    value={editFormData.startDate}
-                    onChange={(e) => setEditFormData({ ...editFormData, startDate: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Einddatum *
-                  </label>
-                  <input
-                    type="date"
-                    value={editFormData.endDate}
-                    onChange={(e) => setEditFormData({ ...editFormData, endDate: e.target.value })}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2"
-                    required
-                  />
-                </div>
+                <DatePicker
+                  label="Startdatum"
+                  value={editFormData.startDate}
+                  onChange={(date) => setEditFormData({ ...editFormData, startDate: date })}
+                  required
+                />
+                <DatePicker
+                  label="Einddatum"
+                  value={editFormData.endDate}
+                  onChange={(date) => setEditFormData({ ...editFormData, endDate: date })}
+                  required
+                  minDate={editFormData.startDate}
+                />
               </div>
 
               {/* Tijden (optioneel) */}

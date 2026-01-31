@@ -91,6 +91,16 @@ export default function SettingsClient() {
   const [emailSaving, setEmailSaving] = useState(false)
   const [emailTesting, setEmailTesting] = useState(false)
   const [rdwSaving, setRdwSaving] = useState(false)
+  
+  // Password change state
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  })
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [showPasswordSuccessModal, setShowPasswordSuccessModal] = useState(false)
 
   const loadSettings = async () => {
     try {
@@ -420,6 +430,89 @@ export default function SettingsClient() {
             </div>
           </div>
         )}
+        
+        {/* Wachtwoord wijzigen sectie */}
+        <div className="mt-6 pt-5 border-t border-slate-200/50">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Wachtwoord wijzigen</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+              Huidig wachtwoord
+              <input
+                type="password"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, currentPassword: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+              Nieuw wachtwoord
+              <input
+                type="password"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-slate-700">
+              Bevestig wachtwoord
+              <input
+                type="password"
+                className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              className="rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50"
+              type="button"
+              disabled={passwordSaving || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+              onClick={async () => {
+                try {
+                  setPasswordSaving(true)
+                  setPasswordError(null)
+                  
+                  if (passwordData.newPassword !== passwordData.confirmPassword) {
+                    throw new Error("Wachtwoorden komen niet overeen")
+                  }
+                  
+                  if (passwordData.newPassword.length < 6) {
+                    throw new Error("Wachtwoord moet minimaal 6 tekens zijn")
+                  }
+                  
+                  const data = await apiFetch("/api/admin/change-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      currentPassword: passwordData.currentPassword,
+                      newPassword: passwordData.newPassword
+                    })
+                  })
+                  
+                  if (!data.success) {
+                    throw new Error(data.error || "Wachtwoord wijzigen mislukt")
+                  }
+                  
+                  setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
+                  setShowPasswordSuccessModal(true)
+                } catch (err: any) {
+                  setPasswordError(err.message)
+                } finally {
+                  setPasswordSaving(false)
+                }
+              }}
+            >
+              {passwordSaving ? "Bezig..." : "Wachtwoord wijzigen"}
+            </button>
+            {passwordError && (
+              <span className="text-xs text-red-600">{passwordError}</span>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
@@ -1245,6 +1338,29 @@ export default function SettingsClient() {
       {loading ? (
         <p className="text-sm text-slate-500">Instellingen laden...</p>
       ) : null}
+
+      {/* Wachtwoord succes modal */}
+      {showPasswordSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/95 to-slate-50/95 p-6 shadow-2xl backdrop-blur-xl max-w-sm w-full mx-4 animate-in fade-in zoom-in duration-200">
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-green-600 shadow-lg">
+                <svg className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Wachtwoord gewijzigd</h3>
+              <p className="text-sm text-slate-600 mb-5">Je wachtwoord is succesvol gewijzigd.</p>
+              <button
+                className="w-full rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-md transition-all duration-300 hover:shadow-lg hover:scale-105 active:scale-95"
+                onClick={() => setShowPasswordSuccessModal(false)}
+              >
+                Sluiten
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

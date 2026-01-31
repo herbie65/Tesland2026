@@ -57,10 +57,10 @@ export async function GET() {
       minStock: item.inventory?.minQty ? Number(item.inventory.minQty) : 0,
       unit: item.weight ? `${item.weight}kg` : null,
       supplier: null, // Not in old Product model
-      supplierSku: item.supplierSkus || null,
-      shelfLocation: item.shelfLocation,
-      binLocation: item.binLocation,
-      stockAgain: item.stockAgain,
+      supplierSku: (item as any).supplierSkus || null,
+      shelfLocation: (item as any).shelfLocation || null,
+      binLocation: (item as any).binLocation || null,
+      stockAgain: (item as any).stockAgain || null,
       category: item.categories[0]?.category?.name || null,
       description: item.description,
       imageUrl: item.images[0]?.localPath || item.images[0]?.url || null,
@@ -78,8 +78,8 @@ export async function GET() {
         price: rel.child.price ? Number(rel.child.price) : null,
         quantity: rel.child.inventory?.qty ? Number(rel.child.inventory.qty) : 0,
         isInStock: rel.child.inventory?.isInStock ?? true,
-        shelfLocation: rel.child.shelfLocation,
-        binLocation: rel.child.binLocation
+        shelfLocation: (rel.child as any).shelfLocation || null,
+        binLocation: (rel.child as any).binLocation || null
       }))
     }))
 
