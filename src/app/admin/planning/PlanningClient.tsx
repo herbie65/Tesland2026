@@ -235,7 +235,7 @@ export default function PlanningClient() {
   const [planningTypeId, setPlanningTypeId] = useState('none')
   const [notes, setNotes] = useState('')
   const [priority, setPriority] = useState('medium')
-  const [durationMinutes, setDurationMinutes] = useState('')
+  const [durationMinutes, setDurationMinutes] = useState('60')
   const [statusFilter, setStatusFilter] = useState('all')
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -3572,400 +3572,466 @@ useEffect(() => {
                 ✕
               </button>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {editingItem?.isRequest ? (
-                <button
-                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-500 disabled:opacity-60"
-                  type="button"
-                  onClick={handleApproveRequest}
-                  disabled={approving}
-                >
-                  {approving ? 'Goedkeuren...' : 'Goedkeuren'}
-                </button>
-              ) : null}
-              {editingItem?.partsRequired === true && editingItem?.workOrderId ? (
-                <button
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  type="button"
-                  onClick={() => router.push(`/admin/magazijn/${editingItem.workOrderId}`)}
-                >
-                  Onderdelen klaarleggen
-                </button>
-              ) : null}
-            </div>
-            {editingItem?.workOrderId ? (
-              <div className="workorder-toggle-row">
-                <span className="workorder-label">Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} aangemaakt</span>
-                <button
-                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700"
-                  type="button"
-                  onClick={() => router.push(`/admin/workorders/${editingItem.workOrderId}`)}
-                >
-                  Bekijk werkorder
-                </button>
-              </div>
-            ) : (
-              <div className="workorder-toggle-row">
-                <span className="workorder-label">Werkorder aanmaken</span>
-                <label className="glass-toggle">
-                  <input
-                    type="checkbox"
-                    checked={createWorkOrder}
-                    onChange={(event) => {
-                      const nextValue = event.target.checked
-                      setCreateWorkOrder(nextValue)
-                      if (!nextValue) {
-                        setPartsRequired(false)
-                      }
-                    }}
-                  />
-                  <span className="glass-toggle-track" />
-                  <span className="glass-toggle-thumb" />
-                </label>
-              </div>
-            )}
-            {createWorkOrder ? (
-              <div className="workorder-toggle-row">
-                <span className="workorder-label">Onderdelen nodig</span>
-                <label className="glass-toggle">
-                  <input
-                    type="checkbox"
-                    checked={partsRequired}
-                    onChange={(event) => setPartsRequired(event.target.checked)}
-                  />
-                  <span className="glass-toggle-track" />
-                  <span className="glass-toggle-thumb" />
-                </label>
-              </div>
-            ) : null}
-            {selectedCustomer?.email ? (
-              <div className="workorder-toggle-row">
-                <span className="workorder-label">Bevestigingsmail sturen</span>
-                <label className="glass-toggle">
-                  <input
-                    type="checkbox"
-                    checked={sendEmail}
-                    onChange={(event) => setSendEmail(event.target.checked)}
-                  />
-                  <span className="glass-toggle-track" />
-                  <span className="glass-toggle-thumb" />
-                </label>
-              </div>
-            ) : null}
-            <form className="workorder-form sm:grid-cols-2" onSubmit={handleCreate}>
-              <label className="workorder-field">
-                <span className="workorder-label">Omschrijving</span>
-                <input
-                  className="workorder-input"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  required
-                />
-              </label>
-              <div className="workorder-field">
-                <DateTimePicker
-                  label="Vanaf (datum/tijd)"
-                  value={scheduledAt}
-                  onChange={(value) => setScheduledAt(value)}
-                  required
-                />
-              </div>
-              {dateWarning ? <div className="workorder-alert sm:col-span-2">{dateWarning}</div> : null}
-              {overlapWarning ? (
-                <div className="workorder-alert sm:col-span-2">{overlapWarning}</div>
-              ) : null}
-              <label className="workorder-field">
-                <span className="workorder-label">Werknemer</span>
-                <select
-                  className="workorder-input"
-                  value={assigneeId}
-                  onChange={(event) => setAssigneeId(event.target.value)}
-                  required
-                >
-                  <option value="none">Kies werknemer</option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="workorder-field">
-                <span className="workorder-label">Beschikbaarheid</span>
-                <div className="workorder-value">
-                  {selectedUser ? (
-                    <>
-                      {selectedUser.planningHoursPerDay
-                        ? `${selectedUser.planningHoursPerDay} uur/dag`
-                        : 'Uren onbekend'}
-                      {' · '}
-                      {selectedUser.workingDays?.length
-                        ? selectedUser.workingDays.map((day) => DAY_LABELS[day]).join(', ')
-                        : 'Geen werkdagen'}
-                    </>
-                  ) : (
-                    'Kies eerst een werknemer.'
-                  )}
-                </div>
-              </div>
-              <label className="workorder-field">
-                <span className="workorder-label">Voertuig (kenteken)</span>
-                {!showVehicleSearch && vehicleId === 'none' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowVehicleSearch(true)
-                      setVehicleSearchResults([]) // Clear previous results when opening
-                      // Immediately trigger search
-                      setSearchingVehicles(true)
-                      apiFetch('/api/vehicles?limit=20').then(data => {
-                        if (data.success) setVehicleSearchResults(data.items || [])
-                      }).catch(console.error).finally(() => setSearchingVehicles(false))
-                    }}
-                    className="workorder-input text-left text-slate-500 hover:bg-slate-50"
-                  >
-                    Klik om voertuig te zoeken...
-                  </button>
-                ) : vehicleId !== 'none' && !showVehicleSearch ? (
-                  <div className="flex gap-2">
-                    <div className="workorder-input flex-1 bg-slate-50">
-                      {selectedVehicle ? (
-                        <>
-                          {selectedVehicle.make || selectedVehicle.brand} {selectedVehicle.model}
-                          {selectedVehicle.licensePlate && ` (${normalizeLicensePlate(selectedVehicle.licensePlate)})`}
-                        </>
-                      ) : 'Voertuig geselecteerd'}
-                    </div>
+
+            {/* Main Content Area - Vehicle & Customer at top */}
+            <div className="space-y-4">
+              {/* Vehicle & Customer Cards - Prominent at top */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Vehicle Card */}
+                <div className="rounded-xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 hover:border-slate-300 transition-colors">
+                  <label className="block mb-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Voertuig</span>
+                  </label>
+                  {!showVehicleSearch && vehicleId === 'none' ? (
                     <button
                       type="button"
                       onClick={() => {
-                        setVehicleId('none')
-                        setSelectedVehicleData(null)
                         setShowVehicleSearch(true)
-                        setVehicleSearchResults([]) // Clear previous results when opening
-                        // Immediately trigger search
+                        setVehicleSearchResults([])
                         setSearchingVehicles(true)
                         apiFetch('/api/vehicles?limit=20').then(data => {
                           if (data.success) setVehicleSearchResults(data.items || [])
                         }).catch(console.error).finally(() => setSearchingVehicles(false))
                       }}
-                      className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
                     >
-                      Wijzig
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Klik om voertuig te selecteren
                     </button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <input
-                      type="text"
-                      className="workorder-input"
-                      placeholder="Zoek op kenteken, merk of model..."
-                      value={vehicleSearchTerm}
-                      onChange={(e) => setVehicleSearchTerm(e.target.value)}
-                      autoFocus
-                    />
-                    {searchingVehicles && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {showVehicleSearch && (vehicleSearchResults.length > 0 || searchingVehicles || vehicleSearchTerm) && (
-                    
-                      <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {searchingVehicles ? (
-                          <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                            Laden...
+                  ) : vehicleId !== 'none' && !showVehicleSearch ? (
+                    <div className="space-y-3">
+                      {/* License Plate */}
+                      {selectedVehicle?.licensePlate && (
+                        <div className="flex justify-center">
+                          <div className="inline-flex items-center justify-center px-4 py-2 bg-yellow-400 border-2 border-black rounded font-bold text-black text-lg tracking-wider shadow-md" style={{ fontFamily: 'monospace' }}>
+                            {normalizeLicensePlate(selectedVehicle.licensePlate).toUpperCase()}
                           </div>
-                        ) : filteredVehicles.length === 0 ? (
-                          <div className="p-3 text-sm text-slate-500">
-                            {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Typ om te zoeken...'}
-                          </div>
-                        ) : (
-                          filteredVehicles.map((vehicle) => (
-                            <button
-                              key={vehicle.id}
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                console.log('Button clicked for vehicle:', vehicle.id)
-                                handleVehicleSelect(vehicle.id)
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                            >
-                              <div className="font-medium text-sm">
-                                {vehicle.make || vehicle.brand} {vehicle.model}
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate) : 'Geen kenteken'}
-                              </div>
-                            </button>
-                          ))
-                        )}
+                        </div>
+                      )}
+                      {/* Make & Model */}
+                      <div className="text-center">
+                        <p className="text-lg font-semibold text-slate-900">
+                          {selectedVehicle?.make || selectedVehicle?.brand} {selectedVehicle?.model}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                )}
-              </label>
-              
-              <label className="workorder-field">
-                <span className="workorder-label">Klant</span>
-                {!showCustomerSearch && customerId === 'none' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCustomerSearch(true)
-                      setCustomerSearchResults([]) // Clear previous results when opening
-                      // Immediately trigger search
-                      setSearchingCustomers(true)
-                      apiFetch('/api/customers?limit=20').then(data => {
-                        if (data.success) setCustomerSearchResults(data.items || [])
-                      }).catch(console.error).finally(() => setSearchingCustomers(false))
-                    }}
-                    className="workorder-input text-left text-slate-500 hover:bg-slate-50"
-                  >
-                    Klik om klant te zoeken...
-                  </button>
-                ) : customerId !== 'none' && !showCustomerSearch ? (
-                  <div className="flex gap-2">
-                    <div className="workorder-input flex-1 bg-slate-50">
-                      {selectedCustomer?.name || 'Klant geselecteerd'}
+                      {/* Change button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVehicleId('none')
+                          setSelectedVehicleData(null)
+                          setShowVehicleSearch(true)
+                          setVehicleSearchResults([])
+                          setSearchingVehicles(true)
+                          apiFetch('/api/vehicles?limit=20').then(data => {
+                            if (data.success) setVehicleSearchResults(data.items || [])
+                          }).catch(console.error).finally(() => setSearchingVehicles(false))
+                        }}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm text-slate-600 transition-colors"
+                      >
+                        Wijzig voertuig
+                      </button>
                     </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        placeholder="Zoek op kenteken, merk of model..."
+                        value={vehicleSearchTerm}
+                        onChange={(event) => setVehicleSearchTerm(event.target.value)}
+                        autoFocus
+                      />
+                      {showVehicleSearch && (vehicleSearchResults.length > 0 || searchingVehicles || vehicleSearchTerm) && (
+                        <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {searchingVehicles ? (
+                            <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                              Laden...
+                            </div>
+                          ) : filteredVehicles.length === 0 ? (
+                            <div className="p-3 text-sm text-slate-500">
+                              {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Typ om te zoeken...'}
+                            </div>
+                          ) : (
+                            filteredVehicles.map((vehicle) => (
+                              <button
+                                key={vehicle.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  console.log('Vehicle button clicked:', vehicle.id)
+                                  handleVehicleSelect(vehicle.id)
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
+                              >
+                                <div className="font-medium text-slate-900">
+                                  {vehicle.make || vehicle.brand} {vehicle.model}
+                                </div>
+                                <div className="text-sm text-slate-500">
+                                  {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate) : 'Geen kenteken'}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Customer Card */}
+                <div className="rounded-xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 hover:border-slate-300 transition-colors">
+                  <label className="block mb-3">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Klant</span>
+                  </label>
+                  {!showCustomerSearch && customerId === 'none' ? (
                     <button
                       type="button"
                       onClick={() => {
-                        setCustomerId('none')
-                        setSelectedCustomerData(null)
                         setShowCustomerSearch(true)
-                        setCustomerSearchResults([]) // Clear previous results when opening
-                        // Immediately trigger search
+                        setCustomerSearchResults([])
                         setSearchingCustomers(true)
                         apiFetch('/api/customers?limit=20').then(data => {
                           if (data.success) setCustomerSearchResults(data.items || [])
                         }).catch(console.error).finally(() => setSearchingCustomers(false))
                       }}
-                      className="px-3 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
                     >
-                      Wijzig
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Klik om klant te selecteren
+                    </button>
+                  ) : customerId !== 'none' && !showCustomerSearch ? (
+                    <div className="space-y-3">
+                      <div className="text-center">
+                        <p className="text-lg font-semibold text-slate-900">
+                          {selectedCustomer?.name}
+                        </p>
+                        {selectedCustomer?.email && (
+                          <p className="text-sm text-slate-600 mt-1">{selectedCustomer.email}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomerId('none')
+                          setSelectedCustomerData(null)
+                          setShowCustomerSearch(true)
+                          setCustomerSearchResults([])
+                          setSearchingCustomers(true)
+                          apiFetch('/api/customers?limit=20').then(data => {
+                            if (data.success) setCustomerSearchResults(data.items || [])
+                          }).catch(console.error).finally(() => setSearchingCustomers(false))
+                        }}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm text-slate-600 transition-colors"
+                      >
+                        Wijzig klant
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        placeholder="Zoek op naam of email..."
+                        value={customerSearchTerm}
+                        onChange={(event) => setCustomerSearchTerm(event.target.value)}
+                        autoFocus
+                      />
+                      {showCustomerSearch && (customerSearchResults.length > 0 || searchingCustomers || customerSearchTerm) && (
+                        <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          {searchingCustomers ? (
+                            <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
+                              <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+                              Laden...
+                            </div>
+                          ) : filteredCustomers.length === 0 ? (
+                            <div className="p-3 text-sm text-slate-500">
+                              {customerSearchTerm ? 'Geen klanten gevonden' : 'Typ om te zoeken...'}
+                            </div>
+                          ) : (
+                            filteredCustomers.map((customer) => (
+                              <button
+                                key={customer.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  console.log('Customer button clicked:', customer.id)
+                                  handleCustomerSelect(customer.id)
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
+                              >
+                                <div className="font-medium text-slate-900">{customer.name}</div>
+                                {customer.email && (
+                                  <div className="text-sm text-slate-500">{customer.email}</div>
+                                )}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Toggle switches section */}
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                {/* Action buttons for editing */}
+                {editingItem?.isRequest ? (
+                  <button
+                    className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60 transition-colors"
+                    type="button"
+                    onClick={handleApproveRequest}
+                    disabled={approving}
+                  >
+                    {approving ? 'Goedkeuren...' : 'Goedkeuren'}
+                  </button>
+                ) : null}
+                {editingItem?.partsRequired === true && editingItem?.workOrderId ? (
+                  <button
+                    className="w-full rounded-lg border-2 border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                    type="button"
+                    onClick={() => router.push(`/admin/magazijn/${editingItem.workOrderId}`)}
+                  >
+                    Onderdelen klaarleggen
+                  </button>
+                ) : null}
+                
+                {/* Werkorder toggle */}
+                {editingItem?.workOrderId ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50 border border-blue-200">
+                    <span className="text-sm font-medium text-blue-900">
+                      Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} aangemaakt
+                    </span>
+                    <button
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                      type="button"
+                      onClick={() => router.push(`/admin/workorders/${editingItem.workOrderId}`)}
+                    >
+                      Bekijk werkorder
                     </button>
                   </div>
                 ) : (
-                  <div className="relative">
-                    <input
-                      type="text"
-                      className="workorder-input"
-                      placeholder="Zoek op naam, email of telefoon..."
-                      value={customerSearchTerm}
-                      onChange={(e) => setCustomerSearchTerm(e.target.value)}
-                      autoFocus
-                    />
-                    {searchingCustomers && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                      </div>
-                    )}
-                    {showCustomerSearch && (customerSearchResults.length > 0 || searchingCustomers || customerSearchTerm) && (
-  <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {searchingCustomers ? (
-                        <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                          Laden...
-                        </div>
-                      ) : filteredCustomers.length === 0 ? (
-                        <div className="p-3 text-sm text-slate-500">
-                          {customerSearchTerm ? 'Geen klanten gevonden' : 'Typ om te zoeken...'}
-                        </div>
-                      ) : (
-                        filteredCustomers.map((customer) => (
-                          <button
-                            key={customer.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              console.log('Button clicked for customer:', customer.id)
-                              handleCustomerSelect(customer.id)
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                          >
-                            <div className="font-medium text-sm">{customer.name}</div>
-                            {customer.email && (
-                              <div className="text-xs text-slate-500">{customer.email}</div>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                     )}
+                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                    <span className="text-sm font-medium text-slate-700">Werkorder aanmaken</span>
+                    <label className="glass-toggle">
+                      <input
+                        type="checkbox"
+                        checked={createWorkOrder}
+                        onChange={(event) => {
+                          const nextValue = event.target.checked
+                          setCreateWorkOrder(nextValue)
+                          if (!nextValue) {
+                            setPartsRequired(false)
+                          }
+                        }}
+                      />
+                      <span className="glass-toggle-track" />
+                      <span className="glass-toggle-thumb" />
+                    </label>
                   </div>
                 )}
-              </label>
-              <label className="workorder-field">
-                <span className="workorder-label">Planningstype</span>
-                <select
-                  className="workorder-input"
-                  value={planningTypeId}
-                  onChange={(event) => setPlanningTypeId(event.target.value)}
-                >
-                  <option value="none">Geen type</option>
-                  {planningTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="workorder-field">
-                <span className="workorder-label">Duur (uu:mm)</span>
-                <input
-                  className="workorder-input"
-                  inputMode="numeric"
-                  value={durationMinutes}
-                  onChange={(event) => setDurationMinutes(event.target.value)}
-                  placeholder="bijv. 1:00"
-                />
-              </label>
-              <div className="sm:col-span-2">
-                <div className="flex flex-wrap gap-2 text-sm">
-                  <button
-                    type="button"
-                    className={`rounded-lg border px-3 py-1 ${
-                      activeTab === 'opdracht'
-                        ? 'border-slate-300 bg-slate-100 text-slate-800'
-                        : 'border-slate-200 bg-white text-slate-600'
-                    }`}
-                    onClick={() => setActiveTab('opdracht')}
-                  >
-                    Opdracht
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-lg border px-3 py-1 ${
-                      activeTab === 'artikelen'
-                        ? 'border-slate-300 bg-slate-100 text-slate-800'
-                        : 'border-slate-200 bg-white text-slate-600'
-                    }`}
-                    onClick={() => setActiveTab('artikelen')}
-                  >
-                    Artikelen
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-lg border px-3 py-1 ${
-                      activeTab === 'checklist'
-                        ? 'border-slate-300 bg-slate-100 text-slate-800'
-                        : 'border-slate-200 bg-white text-slate-600'
-                    }`}
-                    onClick={() => setActiveTab('checklist')}
-                  >
-                    Checklist
-                  </button>
+                
+                {/* Onderdelen nodig toggle */}
+                {createWorkOrder ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                    <span className="text-sm font-medium text-slate-700">Onderdelen nodig</span>
+                    <label className="glass-toggle">
+                      <input
+                        type="checkbox"
+                        checked={partsRequired}
+                        onChange={(event) => setPartsRequired(event.target.checked)}
+                      />
+                      <span className="glass-toggle-track" />
+                      <span className="glass-toggle-thumb" />
+                    </label>
+                  </div>
+                ) : null}
+                
+                {/* Bevestigingsmail toggle */}
+                {selectedCustomer?.email ? (
+                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                    <span className="text-sm font-medium text-slate-700">Bevestigingsmail sturen</span>
+                    <label className="glass-toggle">
+                      <input
+                        type="checkbox"
+                        checked={sendEmail}
+                        onChange={(event) => setSendEmail(event.target.checked)}
+                      />
+                      <span className="glass-toggle-track" />
+                      <span className="glass-toggle-thumb" />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Main Form */}
+              <form className="space-y-4" onSubmit={handleCreate}>
+                {/* Omschrijving */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Omschrijving</span>
+                    <input
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="Bijv. APK keuring, banden vervangen..."
+                      required
+                    />
+                  </label>
                 </div>
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                  {activeTab === 'opdracht' ? (
-                    <div className="workorder-field">
-                      <span className="workorder-label">Opdracht</span>
+
+                {/* Tijd en Duur */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <DateTimePicker
+                      label="Vanaf (datum/tijd)"
+                      value={scheduledAt}
+                      onChange={(value) => setScheduledAt(value)}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <label className="block">
+                      <span className="text-sm font-medium text-slate-700 mb-1.5 block">Duur (uu:mm)</span>
+                      <input
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                        placeholder="bijv. 1:00"
+                        value={durationMinutes ? `${Math.floor(Number(durationMinutes) / 60)}:${String(Number(durationMinutes) % 60).padStart(2, '0')}` : '1:00'}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          const [hours, minutes] = value.split(':').map(Number)
+                          if (!isNaN(hours) && !isNaN(minutes)) {
+                            setDurationMinutes(String(hours * 60 + minutes))
+                          } else if (!isNaN(hours) && value.includes(':')) {
+                            setDurationMinutes(String(hours * 60))
+                          }
+                        }}
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Formaat: 1:00 = 1 uur</p>
+                    </label>
+                  </div>
+                </div>
+
+                {dateWarning ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    {dateWarning}
+                  </div>
+                ) : null}
+                {overlapWarning ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    {overlapWarning}
+                  </div>
+                ) : null}
+
+                {/* Werknemer en beschikbaarheid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <label className="block">
+                      <span className="text-sm font-medium text-slate-700 mb-1.5 block">Werknemer</span>
+                      <select
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                        value={assigneeId}
+                        onChange={(event) => setAssigneeId(event.target.value)}
+                        required
+                      >
+                        <option value="none">Kies werknemer</option>
+                        {users.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Beschikbaarheid</span>
+                    <div className="text-sm text-slate-600">
+                      {selectedUser ? (
+                        <>
+                          {selectedUser.planningHoursPerDay
+                            ? `${selectedUser.planningHoursPerDay} uur/dag`
+                            : 'Uren onbekend'}
+                          {' · '}
+                          {selectedUser.workingDays?.length
+                            ? selectedUser.workingDays.map((day) => DAY_LABELS[day]).join(', ')
+                            : 'Geen werkdagen'}
+                        </>
+                      ) : (
+                        'Kies eerst een werknemer.'
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Planningstype */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Planningstype</span>
+                    <select
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                      value={planningTypeId}
+                      onChange={(event) => setPlanningTypeId(event.target.value)}
+                    >
+                      <option value="none">Geen type</option>
+                      {planningTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+            
+            {/* The old duplicate vehicle and customer fields need to be removed - continuing from line 3920 */}
+
+                {/* Tabs for Opdracht, Artikelen, Checklist */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex gap-2 border-b border-slate-200 pb-3">
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                        activeTab === 'opdracht'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                      onClick={() => setActiveTab('opdracht')}
+                    >
+                      Opdracht
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                        activeTab === 'artikelen'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                      onClick={() => setActiveTab('artikelen')}
+                    >
+                      Artikelen
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                        activeTab === 'checklist'
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                      onClick={() => setActiveTab('checklist')}
+                    >
+                      Checklist
+                    </button>
+                  </div>
+                  
+                  <div className="mt-4">
+                    {activeTab === 'opdracht' ? (
                       <div className="space-y-2">
                         {checklistItems.map((item, index) => (
                           <div key={item.id} className="flex items-start gap-2 group">
@@ -3982,7 +4048,7 @@ useEffect(() => {
                               onKeyDown={(e) => handleChecklistItemKeyDown(e, item.id, index)}
                               placeholder="Typ opdracht en druk op Enter voor nieuwe regel"
                               data-checklist-input
-                              className="flex-1 rounded border border-slate-200 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
                             />
                             {checklistItems.length > 1 && (
                               <button
@@ -3999,56 +4065,64 @@ useEffect(() => {
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">Binnenkort beschikbaar.</p>
-                  )}
+                    ) : (
+                      <p className="text-sm text-slate-500">Binnenkort beschikbaar.</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <label className="workorder-field">
-                <span className="workorder-label">Akkoordbedrag</span>
-                <input
-                  className="workorder-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={agreementAmount}
-                  onChange={(event) => setAgreementAmount(event.target.value)}
-                  placeholder="Optioneel"
-                />
-              </label>
-              <label className="workorder-field">
-                <span className="workorder-label">Afspraken</span>
-                <textarea
-                  className="workorder-input"
-                  rows={4}
-                  value={agreementNotes}
-                  onChange={(event) => setAgreementNotes(event.target.value)}
-                  placeholder="Optioneel"
-                />
-              </label>
-              <div className="flex flex-wrap items-center justify-between gap-3 sm:col-span-2">
-                {editingItem ? (
-                  <div className="flex flex-wrap items-center gap-2">
+
+                {/* Akkoordbedrag */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Akkoordbedrag</span>
+                    <input
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={agreementAmount}
+                      onChange={(event) => setAgreementAmount(event.target.value)}
+                      placeholder="Optioneel"
+                    />
+                  </label>
+                </div>
+
+                {/* Afspraken */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Afspraken</span>
+                    <textarea
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all resize-none"
+                      rows={4}
+                      value={agreementNotes}
+                      onChange={(event) => setAgreementNotes(event.target.value)}
+                      placeholder="Optioneel"
+                    />
+                  </label>
+                </div>
+
+                {/* Submit Button */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  {editingItem ? (
                     <button
-                      className="workorder-button secondary"
+                      className="px-6 py-2.5 rounded-lg border-2 border-red-200 bg-white text-red-600 font-medium hover:bg-red-50 transition-colors"
                       type="button"
                       onClick={() => handleDelete(editingItem)}
                     >
                       Verwijderen
                     </button>
-                  </div>
-                ) : (
-                  <span />
-                )}
-                <button
-                  className="workorder-button primary"
-                  type="submit"
-                >
-                  {editingItem ? 'Bijwerken' : 'Opslaan'}
-                </button>
-              </div>
-            </form>
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    className="px-8 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all"
+                    type="submit"
+                  >
+                    {editingItem ? 'Bijwerken' : 'Opslaan'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       ) : null}
