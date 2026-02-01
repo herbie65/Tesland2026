@@ -47,16 +47,7 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
   if (current === summary.status) return
 
   const nowIso = new Date().toISOString()
-  const history = Array.isArray(workOrder.partsSummaryHistory)
-    ? [...(workOrder.partsSummaryHistory as any[])]
-    : []
-  history.push({
-    from: current || null,
-    to: summary.status,
-    userId,
-    timestamp: nowIso,
-    reason: 'auto'
-  })
+  // Note: partsSummaryHistory removed - we now use sync via syncWorkOrderStatus()
 
   const planningRiskHistory = Array.isArray(workOrder.planningRiskHistory)
     ? [...(workOrder.planningRiskHistory as any[])]
@@ -120,7 +111,7 @@ const recalcPartsSummary = async (workOrderId: string, userId: string) => {
     where: { id: workOrderId },
     data: {
       partsSummaryStatus: summary.status,
-      partsSummaryHistory: history,
+      // partsSummaryHistory removed
       planningRiskActive: isPlanned ? !isComplete || hasEtaDelay : false,
       planningRiskHistory,
       executionStatus: executionStatus || undefined

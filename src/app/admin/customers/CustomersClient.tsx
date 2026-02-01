@@ -635,7 +635,20 @@ export default function CustomersClient() {
     const term = searchTerm.trim().toLowerCase()
     if (term) {
       result = result.filter((item) => {
-        const fields = [item.externalId, item.name, item.company, item.email, item.phone, formatAddress(item.address)]
+        const fields = [
+          item.externalId,
+          item.name,
+          item.company,
+          item.email,
+          item.phone,
+          item.mobile,        // ← TOEGEVOEGD
+          item.street,        // ← TOEGEVOEGD
+          item.city,          // ← TOEGEVOEGD
+          item.zipCode,       // ← TOEGEVOEGD
+          item.customerNumber,// ← TOEGEVOEGD
+          item.contact,       // ← TOEGEVOEGD
+          formatAddress(item.address)
+        ]
         return fields.some((value) => String(value || '').toLowerCase().includes(term))
       })
     }

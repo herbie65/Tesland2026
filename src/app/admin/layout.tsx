@@ -12,6 +12,7 @@ import {
   CalendarDaysIcon,
   ChartBarIcon,
   ChevronDownIcon,
+  ClockIcon,
   Cog6ToothIcon,
   CubeIcon,
   DocumentTextIcon,
@@ -67,7 +68,15 @@ const NAV_ITEMS: NavItem[] = [
       { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
     ]
   },
-  { type: 'link', name: 'Magazijn', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
+  {
+    type: 'group',
+    name: 'Magazijn',
+    icon: WrenchScrewdriverIcon,
+    children: [
+      { type: 'link', name: 'Overzicht', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
+      { type: 'link', name: 'Back-Orders', href: '/admin/magazijn/back-orders', icon: ClockIcon }
+    ]
+  },
   {
     type: 'group',
     name: 'Verkopen',
@@ -90,6 +99,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [salesOpen, setSalesOpen] = useState(false)
   const [productsOpen, setProductsOpen] = useState(false)
+  const [magazijnOpen, setMagazijnOpen] = useState(false)
   const [hrOpen, setHrOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -98,7 +108,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [pagePermissions, setPagePermissions] = useState<{ [path: string]: boolean }>({})
   const [isSystemAdmin, setIsSystemAdmin] = useState(false)
   const [pendingLeaveRequests, setPendingLeaveRequests] = useState(0)
-  const [notificationsPos, setNotificationsPos] = useState<{ top: number; right: number } | null>(
+  const [notificationsPos, setNotificationsPos] = useState<{ top: number; left: number } | null>(
     null
   )
   const [portalReady, setPortalReady] = useState(false)
@@ -324,6 +334,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
     }
     
+    const magazijnGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Magazijn')
+    if (magazijnGroup && magazijnGroup.type === 'group') {
+      const isActive = magazijnGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setMagazijnOpen(true)
+      }
+    }
+    
     const hrGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'HR')
     if (hrGroup && hrGroup.type === 'group') {
       const isActive = hrGroup.children.some((child) => child.href === pathname)
@@ -368,107 +386,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         }
         data-has-background={backgroundImage ? 'true' : 'false'}
       >
-      <header className="glass-card m-4 mb-0 sticky top-0 z-[80] overflow-visible">
-        <div className="flex items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold glass-text-primary">TLadmin</h1>
-            <p className="text-sm glass-text-secondary">
-              Beheer planning, klanten, voertuigen, producten en orders.
-            </p>
-          </div>
-          <div className="relative z-[100] flex items-center gap-3">
-            <button
-              type="button"
-              onClick={logout}
-              className="rounded-lg border border-white/40 bg-white/60 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
-            >
-              Uitloggen
-            </button>
-            <button
-              type="button"
-              data-notifications-button="true"
-              onClick={(event) => {
-                const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
-                const nextPos = {
-                  top: rect.bottom + 8,
-                  right: window.innerWidth - rect.right
-                }
-                setNotificationsPos(nextPos)
-                setNotificationsOpen((prev) => !prev)
-              }}
-              className="relative rounded-full bg-white/60 p-2 text-slate-700 hover:bg-white"
-            >
-              <span className="sr-only">Notificaties</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="h-5 w-5"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M12 2.25a6 6 0 00-6 6v2.878l-.707 2.121a.75.75 0 00.712 1.001h12a.75.75 0 00.712-1l-.707-2.122V8.25a6 6 0 00-6-6zM9.75 19.5a2.25 2.25 0 104.5 0h-4.5z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              {unreadCount > 0 ? (
-                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-xs text-white">
-                  {unreadCount}
-                </span>
-              ) : null}
-            </button>
-            {portalReady && notificationsOpen && notificationsPos
-              ? createPortal(
-                  <div
-                    className="fixed z-[200] w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
-                    style={{ top: notificationsPos.top, right: notificationsPos.right }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-slate-800">Meldingen</h3>
-                      <button
-                        type="button"
-                        onClick={markAllRead}
-                        className="text-xs text-slate-500 hover:text-slate-700"
-                      >
-                        Markeer alles gelezen
-                      </button>
-                    </div>
-                    <div className="mt-3 max-h-72 space-y-2 overflow-auto">
-                      {notifications.length === 0 ? (
-                        <p className="text-sm text-slate-500">Geen meldingen.</p>
-                      ) : (
-                        notifications.map((item) => (
-                          <div
-                            key={item.id}
-                            className="rounded-lg border border-slate-100 bg-slate-50 p-3"
-                          >
-                            <p className="text-sm font-medium text-slate-800">
-                              {item.title || 'Melding'}
-                            </p>
-                            <p className="text-xs text-slate-600">{item.message || '-'}</p>
-                            <p className="mt-1 text-[11px] text-slate-400">
-                              {item.created_at ? new Date(item.created_at).toLocaleString() : '-'}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => markRead(item.id)}
-                              className="mt-2 text-xs text-slate-500 hover:text-slate-700"
-                            >
-                              Markeer gelezen
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>,
-                  document.body
-                )
-              : null}
-          </div>
-        </div>
-      </header>
-
-      <div className="m-4 flex flex-col gap-4 lg:flex-row">
+      <div className="p-4 flex flex-col gap-4 lg:flex-row">
         <div className="relative hidden lg:block lg:sticky lg:top-4 lg:self-start">
           <aside 
             className="glass-sidebar rounded-2xl transition-all duration-300 ease-in-out"
@@ -480,20 +398,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={() => setIsHovering(false)}
           >
-            <div className="px-6 pt-6">
-              {profilePhoto ? (
-                <img
-                  src={profilePhoto}
-                  alt="Profielfoto"
-                  className="h-14 w-14 rounded-full object-cover"
-                />
-              ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-200 text-sm text-slate-600">
-                  TL
-                </div>
-              )}
+            <div className="px-4 pt-3 pb-2">
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  data-notifications-button="true"
+                  onClick={(event) => {
+                    const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                    const nextPos = {
+                      top: rect.bottom + 8,
+                      left: rect.left
+                    }
+                    setNotificationsPos(nextPos)
+                    setNotificationsOpen((prev) => !prev)
+                  }}
+                  className="focus:outline-none focus:ring-2 focus:ring-purple-500 rounded-full"
+                >
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt="Profielfoto"
+                      className="h-12 w-12 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-purple-300 transition-all"
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-sm text-slate-600 cursor-pointer hover:bg-slate-300 transition-all">
+                      TL
+                    </div>
+                  )}
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white shadow-lg ring-2 ring-white">
+                      {unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
             </div>
-            <nav className="px-4 py-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
+            <nav className="px-4 py-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
               <div className="space-y-1">
                 {NAV_ITEMS.map((item) => {
                   if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
@@ -510,17 +450,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     return null
                   }
                   
+                  // Define showText once for this item
+                  const showText = sidebarWidth >= 150 || isHovering
+                  
                   if (item.type === 'group') {
                     const isActive = item.children.some((child) => child.href === pathname)
                     const showText = sidebarWidth >= 150 || isHovering
                     const isOpen = 
                       item.name === 'Verkopen' ? salesOpen : 
                       item.name === 'Producten' ? productsOpen : 
+                      item.name === 'Magazijn' ? magazijnOpen :
                       item.name === 'HR' ? hrOpen : 
                       false
                     const setOpen = 
                       item.name === 'Verkopen' ? setSalesOpen : 
                       item.name === 'Producten' ? setProductsOpen : 
+                      item.name === 'Magazijn' ? setMagazijnOpen :
                       item.name === 'HR' ? setHrOpen :
                       () => {}
                     
@@ -591,8 +536,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       </div>
                     )
                   }
+                  
+                  // Single link item
                   const isActive = pathname === item.href
-                  const showText = sidebarWidth >= 150 || isHovering
                   return (
                     <Link
                       key={item.href}
@@ -613,8 +559,88 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </Link>
                   )
                 })}
+                
+                {/* Uitloggen */}
+                {(() => {
+                  const showText = sidebarWidth >= 150 || isHovering
+                  return (
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={logout}
+                        className={`flex items-center px-4 py-2.5 text-sm font-medium glass-nav-item w-full ${!showText ? 'justify-center' : ''}`}
+                        title={!showText ? 'Uitloggen' : undefined}
+                      >
+                        <div className={`${showText ? 'mr-3' : ''} flex h-8 w-8 items-center justify-center rounded-full bg-gray-200`}>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="h-5 w-5 text-gray-600"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M7.5 3.75A1.5 1.5 0 006 5.25v13.5a1.5 1.5 0 001.5 1.5h6a1.5 1.5 0 001.5-1.5V15a.75.75 0 011.5 0v3.75a3 3 0 01-3 3h-6a3 3 0 01-3-3V5.25a3 3 0 013-3h6a3 3 0 013 3V9A.75.75 0 0115 9V5.25a1.5 1.5 0 00-1.5-1.5h-6zm10.72 4.72a.75.75 0 011.06 0l3 3a.75.75 0 010 1.06l-3 3a.75.75 0 11-1.06-1.06l1.72-1.72H9a.75.75 0 010-1.5h10.94l-1.72-1.72a.75.75 0 010-1.06z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </div>
+                        {showText && <span className="whitespace-nowrap overflow-hidden">Uitloggen</span>}
+                      </button>
+                    </div>
+                  )
+                })()}
               </div>
             </nav>
+            
+            {/* Notificaties Dropdown Portal */}
+            {portalReady && notificationsOpen && notificationsPos
+              ? createPortal(
+                  <div
+                    className="fixed z-[200] w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
+                    style={{ top: notificationsPos.top, left: notificationsPos.left }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-800">Meldingen</h3>
+                      <button
+                        type="button"
+                        onClick={markAllRead}
+                        className="text-xs text-slate-500 hover:text-slate-700"
+                      >
+                        Markeer alles gelezen
+                      </button>
+                    </div>
+                    <div className="mt-3 max-h-72 space-y-2 overflow-auto">
+                      {notifications.length === 0 ? (
+                        <p className="text-sm text-slate-500">Geen meldingen.</p>
+                      ) : (
+                        notifications.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-lg border border-slate-100 bg-slate-50 p-3"
+                          >
+                            <p className="text-sm font-medium text-slate-800">
+                              {item.title || 'Melding'}
+                            </p>
+                            <p className="text-xs text-slate-600">{item.message || '-'}</p>
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              {item.created_at ? new Date(item.created_at).toLocaleString() : '-'}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => markRead(item.id)}
+                              className="mt-2 text-xs text-slate-500 hover:text-slate-700"
+                            >
+                              Markeer gelezen
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>,
+                  document.body
+                )
+              : null}
           </aside>
           
           {/* Resize handle */}
@@ -632,20 +658,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         
         {/* Mobile sidebar - full width */}
         <aside className="glass-sidebar w-full rounded-2xl lg:hidden">
-          <div className="px-6 pt-6">
-            {profilePhoto ? (
-              <img
-                src={profilePhoto}
-                alt="Profielfoto"
-                className="h-14 w-14 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-200 text-sm text-slate-600">
-                TL
-              </div>
-            )}
+          <div className="px-4 pt-3 pb-2">
+            <div className="relative inline-block">
+              <button
+                type="button"
+                data-notifications-button="true"
+                onClick={(event) => {
+                  const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                  const nextPos = {
+                    top: rect.bottom + 8,
+                    left: rect.left
+                  }
+                  setNotificationsPos(nextPos)
+                  setNotificationsOpen((prev) => !prev)
+                }}
+                className="focus:outline-none focus:ring-2 focus:ring-purple-500 rounded-full"
+              >
+                {profilePhoto ? (
+                  <img
+                    src={profilePhoto}
+                    alt="Profielfoto"
+                    className="h-12 w-12 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-purple-300 transition-all"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-sm text-slate-600 cursor-pointer hover:bg-slate-300 transition-all">
+                    TL
+                  </div>
+                )}
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white shadow-lg ring-2 ring-white">
+                    {unreadCount}
+                  </span>
+                ) : null}
+              </button>
+            </div>
           </div>
-          <nav className="px-4 py-4">
+          <nav className="px-4 py-3">
             <div className="space-y-1">
               {NAV_ITEMS.map((item) => {
                 if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
@@ -667,11 +715,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   const isOpen = 
                     item.name === 'Verkopen' ? salesOpen : 
                     item.name === 'Producten' ? productsOpen : 
+                    item.name === 'Magazijn' ? magazijnOpen :
                     item.name === 'HR' ? hrOpen : 
                     false
                   const setOpen = 
                     item.name === 'Verkopen' ? setSalesOpen : 
                     item.name === 'Producten' ? setProductsOpen : 
+                    item.name === 'Magazijn' ? setMagazijnOpen :
                     item.name === 'HR' ? setHrOpen :
                     () => {}
                   
@@ -757,6 +807,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   </Link>
                 )
               })}
+              
+              {/* Uitloggen - Mobile */}
+              <div className="mt-4 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex items-center px-4 py-2.5 text-sm font-medium glass-nav-item w-full"
+                >
+                  <div className="mr-3 flex h-8 w-8 items-center justify-center rounded-full bg-gray-200">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="h-5 w-5 text-gray-600"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M7.5 3.75A1.5 1.5 0 006 5.25v13.5a1.5 1.5 0 001.5 1.5h6a1.5 1.5 0 001.5-1.5V15a.75.75 0 011.5 0v3.75a3 3 0 01-3 3h-6a3 3 0 01-3-3V5.25a3 3 0 013-3h6a3 3 0 013 3V9A.75.75 0 0115 9V5.25a1.5 1.5 0 00-1.5-1.5h-6zm10.72 4.72a.75.75 0 011.06 0l3 3a.75.75 0 010 1.06l-3 3a.75.75 0 11-1.06-1.06l1.72-1.72H9a.75.75 0 010-1.5h10.94l-1.72-1.72a.75.75 0 010-1.06z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <span>Uitloggen</span>
+                </button>
+              </div>
             </div>
           </nav>
         </aside>

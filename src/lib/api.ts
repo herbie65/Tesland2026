@@ -48,6 +48,13 @@ export function getCurrentUser() {
 }
 
 /**
+ * Get JWT token from localStorage
+ */
+export function getToken() {
+  return localStorage.getItem('token')
+}
+
+/**
  * Logout - clear token and redirect
  */
 export function logout() {

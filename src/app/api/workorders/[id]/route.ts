@@ -67,6 +67,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
     })
     
+    // Note: activeWorkStartedAt, activeWorkStartedBy, activeWorkStartedByName 
+    // are automatically included in the response
+    
     if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }

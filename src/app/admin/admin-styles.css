@@ -658,7 +658,7 @@
 }
 
 .workorder-modal {
-  width: min(560px, 100%);
+  width: min(1152px, 100%);
   padding: 0.75rem;
 }
 
@@ -898,10 +898,11 @@
   width: 100%;
   height: 100%;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.25) 0%, rgba(203, 213, 225, 0.3) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   backdrop-filter: blur(8px);
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: all 0.3s ease;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .glass-toggle-thumb {
@@ -911,15 +912,20 @@
   border-radius: 999px;
   left: 3px;
   top: 3px;
-  background: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%);
   border: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
-  transition: transform 0.2s ease;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2), 0 2px 4px rgba(15, 23, 42, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-toggle input:checked ~ .glass-toggle-thumb {
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4), 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
 .glass-toggle input:checked ~ .glass-toggle-track {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(15, 23, 42, 0.6);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(147, 51, 234, 0.9) 100%);
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .glass-toggle input:checked ~ .glass-toggle-thumb {
@@ -995,9 +1001,9 @@
   box-shadow: none;
   outline: none;
   /* Fixed width for consistency */
-  min-width: 5.5rem;
-  width: 5.5rem;
-  max-width: 5.5rem;
+  min-width: 7rem;
+  width: auto;
+  max-width: 9rem;
 }
 
 .license-plate.nl::before {

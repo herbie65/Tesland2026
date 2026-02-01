@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import ClickToDialButton from '@/components/ClickToDialButton'
+import { 
+  getPartsStatusLabel, 
+  getPartsStatusBadgeColor
+} from '@/lib/parts-status'
 
 type WorkOrder = {
   id: string
@@ -19,7 +23,7 @@ type WorkOrder = {
   customerName?: string | null
   vehicleLabel?: string | null
   assigneeName?: string | null
-  partsSummaryStatus?: string | null
+  partsSummaryStatus?: string | null  // Cached status from database
   partsRequired?: boolean | null
   customerApproved?: boolean | null
   pricingMode?: string | null
@@ -184,6 +188,53 @@ export default function WorkOrdersClient() {
     loadStatuses()
     loadItems()
     loadLookups()
+    
+    // Connect to SSE stream for real-time updates
+    let eventSource: EventSource | null = null
+    
+    const connectSSE = () => {
+      try {
+        const token = getToken()
+        if (!token) {
+          console.warn('No token available for SSE connection')
+          return
+        }
+        
+        eventSource = new EventSource(`/api/workorders/stream?token=${encodeURIComponent(token)}`)
+        
+        eventSource.onopen = () => {
+          console.log('✅ SSE verbonden - live updates actief')
+        }
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === 'workorder-update') {
+              console.log('📡 Live update ontvangen:', data.changeType)
+              // Reload work orders when any change is detected
+              loadItems()
+            }
+          } catch (err) {
+            console.error('SSE parse error:', err)
+          }
+        }
+        
+        eventSource.onerror = (err) => {
+          console.error('❌ SSE verbinding verbroken, herverbinden...')
+          eventSource?.close()
+          // Reconnect after 5 seconds
+          setTimeout(connectSSE, 5000)
+        }
+      } catch (err) {
+        console.error('SSE connection error:', err)
+      }
+    }
+    
+    connectSSE()
+    
+    return () => {
+      eventSource?.close()
+    }
   }, [])
 
   const formatDateInput = (value: Date) => value.toISOString().slice(0, 16)
@@ -621,6 +672,11 @@ export default function WorkOrdersClient() {
                       <Link className="text-slate-900 hover:underline" href={`/admin/workorders/${item.id}`}>
                         {item.title}
                       </Link>
+                      {item.partsRequired && item.partsSummaryStatus && (
+                        <span className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${getPartsStatusBadgeColor(item.partsSummaryStatus)}`}>
+                          📦 {getPartsStatusLabel(item.partsSummaryStatus)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-slate-700">
                       <div className="flex items-center gap-2">

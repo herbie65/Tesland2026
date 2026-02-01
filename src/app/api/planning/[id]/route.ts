@@ -115,6 +115,44 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         }
       })
       workOrderId = workOrder.id
+
+      // Create labor lines from assignmentText checklist items
+      const assignmentText = body.assignmentText || item.assignmentText
+      if (assignmentText) {
+        try {
+          const checklist = JSON.parse(assignmentText)
+          if (Array.isArray(checklist)) {
+            const laborLines = checklist
+              .filter((task: any) => task.text && task.text.trim())
+              .map((task: any) => ({
+                workOrderId: workOrder.id,
+                description: task.text.trim(),
+                durationMinutes: workOrderDefaults.laborLineDurationMinutes,
+                userId: body.assigneeId || item.assigneeId || null,
+                userName: body.assigneeName || item.assigneeName || null,
+              }))
+
+            if (laborLines.length > 0) {
+              await prisma.laborLine.createMany({
+                data: laborLines
+              })
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse assignmentText:', e)
+          if (assignmentText.trim()) {
+            await prisma.laborLine.create({
+              data: {
+                workOrderId: workOrder.id,
+                description: assignmentText.trim(),
+                durationMinutes: workOrderDefaults.laborLineDurationMinutes,
+                userId: body.assigneeId || item.assigneeId || null,
+                userName: body.assigneeName || item.assigneeName || null,
+              }
+            })
+          }
+        }
+      }
     }
 
     // Only include valid PlanningItem fields (exclude control fields and non-schema fields)
@@ -135,6 +173,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       'planningTypeName',
       'planningTypeColor',
       'notes',
+      'assignmentText',
+      'agreementAmount',
+      'agreementNotes',
       'status',
       'priority'
     ]

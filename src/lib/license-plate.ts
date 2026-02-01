@@ -36,6 +36,9 @@ export const normalizeLicensePlate = (plate?: string | null) => {
   if (/^[0-9]{2}[A-Z]{3}[0-9]$/.test(normalized)) {
     return `${normalized.slice(0, 2)}-${normalized.slice(2, 5)}-${normalized.slice(5)}`
   }
+  if (/^[A-Z]{3}[0-9]{2}[A-Z]$/.test(normalized)) {
+    return `${normalized.slice(0, 3)}-${normalized.slice(3, 5)}-${normalized.slice(5)}`
+  }
 
   return plate.trim().toUpperCase()
 }

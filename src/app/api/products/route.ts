@@ -1,24 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Fetch all products from ProductCatalog with their variants and inventory
+    const searchParams = request.nextUrl.searchParams
+    const search = searchParams.get('search') || ''
+    const limit = parseInt(searchParams.get('limit') || '100')
+    
+    // Build where clause with search
+    const whereClause: any = {
+      OR: [
+        { typeId: { not: 'simple' } },
+        {
+          AND: [
+            { typeId: 'simple' },
+            { parentRelations: { none: {} } }
+          ]
+        }
+      ]
+    }
+    
+    // Add search filter if provided
+    if (search) {
+      whereClause.AND = [
+        {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { sku: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } }
+          ]
+        }
+      ]
+    }
+    
+    // Fetch products from ProductCatalog with their variants and inventory
     const items = await prisma.productCatalog.findMany({
-      where: {
-        // Only show products that are either:
-        // 1. NOT simple products (configurable, bundle, grouped, virtual)
-        // 2. Simple products that don't have a parent (standalone products)
-        OR: [
-          { typeId: { not: 'simple' } },
-          {
-            AND: [
-              { typeId: 'simple' },
-              { parentRelations: { none: {} } }
-            ]
-          }
-        ]
-      },
+      where: whereClause,
       include: {
         inventory: true,
         images: {
@@ -41,7 +58,8 @@ export async function GET() {
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: limit
     })
 
     // Flatten the data for the client
@@ -53,6 +71,9 @@ export async function GET() {
       price: item.price ? Number(item.price) : null,
       cost: item.costPrice ? Number(item.costPrice) : null,
       quantity: item.inventory?.qty ? Number(item.inventory.qty) : 0,
+      qtyReserved: item.inventory?.qtyReserved ? Number(item.inventory.qtyReserved) : 0,
+      qtyAvailable: item.inventory ? Math.max(0, Number(item.inventory.qty || 0) - Number(item.inventory.qtyReserved || 0)) : 0,
+      stock: item.inventory?.qty ? Number(item.inventory.qty) : 0, // Add stock alias for compatibility
       isInStock: item.inventory?.isInStock ?? true,
       minStock: item.inventory?.minQty ? Number(item.inventory.minQty) : 0,
       unit: item.weight ? `${item.weight}kg` : null,

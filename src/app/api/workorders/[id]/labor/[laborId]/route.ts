@@ -32,6 +32,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if ('durationMinutes' in body) updateData.durationMinutes = Number(body.durationMinutes)
     if ('hourlyRate' in body) updateData.hourlyRate = body.hourlyRate ? Number(body.hourlyRate) : null
     if ('notes' in body) updateData.notes = body.notes
+    if ('completed' in body) updateData.completed = Boolean(body.completed)
 
     // Recalculate total if duration or rate changed
     if ('durationMinutes' in updateData || 'hourlyRate' in updateData) {

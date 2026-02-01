@@ -6,6 +6,7 @@ import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
 import ClickToDialButton from '@/components/ClickToDialButton'
 import { DateTimePicker } from '@/components/ui/DateTimePicker'
+import { LicensePlateInput } from '@/components/ui/LicensePlateInput'
 import {
   addDays,
   addMinutes,
@@ -35,6 +36,17 @@ type PlanningItem = {
     name: string
     phone?: string | null
     mobile?: string | null
+  } | null
+  vehicle?: {
+    id: string
+    licensePlate?: string | null
+    make?: string | null
+    model?: string | null
+    brand?: string | null
+    year?: number | null
+    color?: string | null
+    vin?: string | null
+    customerId?: string | null
   } | null
   workOrderNumber?: string | null
   isRequest?: boolean
@@ -169,7 +181,6 @@ const DAY_LABELS: Record<string, string> = {
 const PRIORITY_OPTIONS = ['low', 'medium', 'high']
 const VIEW_OPTIONS = ['week', 'day', 'month'] as const
 type ViewMode = (typeof VIEW_OPTIONS)[number]
-type ModalTab = 'opdracht' | 'artikelen' | 'checklist'
 
 export default function PlanningClient() {
   const [items, setItems] = useState<PlanningItem[]>([])
@@ -323,12 +334,11 @@ export default function PlanningClient() {
   const [createWorkOrder, setCreateWorkOrder] = useState(true)
   const [partsRequired, setPartsRequired] = useState(false)
   const [assignmentText, setAssignmentText] = useState('')
-  const [agreementAmount, setAgreementAmount] = useState('')
-  const [agreementNotes, setAgreementNotes] = useState('')
-  const [activeTab, setActiveTab] = useState<ModalTab>('opdracht')
   const [checklistItems, setChecklistItems] = useState<Array<{ id: string; text: string; checked: boolean }>>([
     { id: crypto.randomUUID(), text: '', checked: false }
   ])
+  const [agreementAmount, setAgreementAmount] = useState('')
+  const [agreementNotes, setAgreementNotes] = useState('')
   const [approving, setApproving] = useState(false)
   const [sendEmail, setSendEmail] = useState(false)
   const [hoveredPopover, setHoveredPopover] = useState<{
@@ -717,7 +727,7 @@ export default function PlanningClient() {
     )
   }
 
-  // Checklist handlers
+  // Checklist handlers voor werkzaamheden
   const handleChecklistItemChange = (id: string, text: string) => {
     setChecklistItems((items) =>
       items.map((item) => (item.id === id ? { ...item, text } : item))
@@ -739,7 +749,6 @@ export default function PlanningClient() {
         newItems.splice(index + 1, 0, newItem)
         return newItems
       })
-      // Focus on the new input after a short delay
       setTimeout(() => {
         const inputs = document.querySelectorAll('[data-checklist-input]')
         const nextInput = inputs[index + 1] as HTMLInputElement
@@ -750,7 +759,6 @@ export default function PlanningClient() {
     } else if (event.key === 'Backspace' && !checklistItems[index].text && checklistItems.length > 1) {
       event.preventDefault()
       setChecklistItems((items) => items.filter((item) => item.id !== id))
-      // Focus on the previous input
       setTimeout(() => {
         const inputs = document.querySelectorAll('[data-checklist-input]')
         const prevInput = inputs[Math.max(0, index - 1)] as HTMLInputElement
@@ -1327,22 +1335,54 @@ useEffect(() => {
     day: Date,
     event: React.MouseEvent<HTMLDivElement>
   ) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    const rawY = event.clientY - rect.top
-    const clampedY = Math.min(Math.max(rawY, 0), rect.height)
-    const minutesFromStart =
-      Math.round((clampedY / rect.height) * viewTotalMinutes / slotMinutes) * slotMinutes
-    const total = viewStartMinutes + minutesFromStart
-    const hours = Math.floor(total / 60)
-    const minutes = total % 60
+    // The planning-day-axis uses a grid with columns for each hour slot
+    // We need to calculate which column (time slot) was clicked based on X position
+    const target = event.currentTarget
+    const rect = target.getBoundingClientRect()
+    const clickX = event.clientX - rect.left
+    
+    // Each column represents one hour (60 minutes)
+    // Calculate which hour column was clicked
+    const columnWidth = rect.width / Math.floor(viewTotalMinutes / 60)
+    const clickedHourIndex = Math.floor(clickX / columnWidth)
+    
+    // Calculate the exact time
+    const totalMinutes = viewStartMinutes + (clickedHourIndex * 60)
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    
+    // Create the date with the calculated time
     const date = new Date(day)
     date.setHours(hours, minutes, 0, 0)
-    return date
+    
+    // Get the user ID from the data attribute
+    const userId = target.getAttribute('data-user-id')
+    
+    console.log('Click position:', { clickX, columnWidth, clickedHourIndex, hours, minutes, totalMinutes, viewStartMinutes, userId })
+    return { date, userId }
   }
 
-  const startCreate = (date: Date) => {
+  const startCreate = (dateTime: Date | { date: Date; userId: string | null }) => {
+    // Handle both old format (just Date) and new format (object with date and userId)
+    let date: Date
+    let userId: string | null = null
+    
+    if (dateTime instanceof Date) {
+      date = dateTime
+    } else {
+      date = dateTime.date
+      userId = dateTime.userId
+    }
+    
+    const scheduledDateTime = format(date, "yyyy-MM-dd'T'HH:mm")
     resetForm()
-    setScheduledAt(format(date, "yyyy-MM-dd'T'HH:mm"))
+    setScheduledAt(scheduledDateTime)
+    
+    // Set the user if provided
+    if (userId) {
+      setAssigneeId(userId)
+    }
+    
     setShowModal(true)
   }
 
@@ -1354,6 +1394,33 @@ useEffect(() => {
     setLocation(item.location || '')
     setCustomerId(item.customerId || 'none')
     setVehicleId(item.vehicleId || 'none')
+    
+    // Restore vehicle data if available
+    if (item.vehicleId && item.vehicle) {
+      setSelectedVehicleData(item.vehicle)
+    } else if (item.vehicleId) {
+      // Try to find vehicle in loaded vehicles list
+      const vehicle = vehicles.find(v => v.id === item.vehicleId)
+      if (vehicle) {
+        setSelectedVehicleData(vehicle)
+      }
+    } else {
+      setSelectedVehicleData(null)
+    }
+    
+    // Restore customer data if available
+    if (item.customerId && item.customer) {
+      setSelectedCustomerData(item.customer)
+    } else if (item.customerId) {
+      // Try to find customer in loaded customers list
+      const customer = customers.find(c => c.id === item.customerId)
+      if (customer) {
+        setSelectedCustomerData(customer)
+      }
+    } else {
+      setSelectedCustomerData(null)
+    }
+    
     setPlanningTypeId(item.planningTypeId || 'none')
     setNotes(item.notes || '')
     setAssignmentText(item.assignmentText || '')
@@ -1387,7 +1454,7 @@ useEffect(() => {
     setStatusSelection(item.workOrderStatus || item.status || '')
     setCreateWorkOrder(Boolean(item.workOrderId))
     setPartsRequired(item.partsRequired === true)
-    setActiveTab('opdracht')
+    setSendEmail(false) // Standaard UIT voor bestaande planning
     setShowModal(true)
   }
 
@@ -1652,8 +1719,7 @@ useEffect(() => {
     setStatusSelection('')
     setCreateWorkOrder(true)
     setPartsRequired(false)
-    setSendEmail(false)
-    setActiveTab('opdracht')
+    setSendEmail(true) // Standaard AAN voor nieuwe planning
     setDateWarning(null)
     setOverlapWarning(null)
     setShowModal(false)
@@ -3142,15 +3208,10 @@ useEffect(() => {
   )
 
   return (
-    <div className="space-y-10">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold">Kalender</h2>
-            <p className="text-sm text-slate-600">
-              Bekijk planning per dag, week of maand.
-            </p>
-          </div>
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Kalender</h2>
           <div className="flex flex-wrap items-center gap-2">
             {VIEW_OPTIONS.map((option) => (
               <button
@@ -3169,7 +3230,7 @@ useEffect(() => {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             className="rounded-lg bg-slate-900 px-3 py-1 text-sm text-white hover:bg-slate-800"
             type="button"
@@ -3558,15 +3619,28 @@ useEffect(() => {
 
       {showModal ? (
         <div className="planning-modal-overlay" onClick={resetForm}>
-          <div className="planning-modal workorder-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="workorder-modal-header">
-              <div>
+          <div className="planning-modal workorder-modal max-w-6xl max-h-[90vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+            <div className="workorder-modal-header sticky top-0 bg-white z-10 border-b border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3">
                 <h2 className="text-lg font-semibold">
                   {editingItem ? 'Planning bewerken' : 'Nieuwe planning'}
                 </h2>
-                <p className="text-sm text-slate-500">
-                  Plan een werkorder of afspraak in de agenda.
-                </p>
+                {editingItem?.workOrderId && editingItem?.workOrderNumber && (
+                  <a
+                    href={`/admin/workorders/${editingItem.workOrderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 text-white text-sm font-medium hover:from-purple-600 hover:to-blue-600 transition-all shadow-md hover:shadow-lg"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    <span>Werkorder {editingItem.workOrderNumber}</span>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                )}
               </div>
               <button className="workorder-close" type="button" onClick={resetForm}>
                 ✕
@@ -3574,49 +3648,14 @@ useEffect(() => {
             </div>
 
             {/* Main Content Area - Vehicle & Customer at top */}
-            <div className="space-y-4">
+            <div className="space-y-2">
               {/* Vehicle & Customer Cards - Prominent at top */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {/* Vehicle Card */}
-                <div className="rounded-xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 hover:border-slate-300 transition-colors">
-                  <label className="block mb-3">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Voertuig</span>
-                  </label>
-                  {!showVehicleSearch && vehicleId === 'none' ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowVehicleSearch(true)
-                        setVehicleSearchResults([])
-                        setSearchingVehicles(true)
-                        apiFetch('/api/vehicles?limit=20').then(data => {
-                          if (data.success) setVehicleSearchResults(data.items || [])
-                        }).catch(console.error).finally(() => setSearchingVehicles(false))
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Klik om voertuig te selecteren
-                    </button>
-                  ) : vehicleId !== 'none' && !showVehicleSearch ? (
-                    <div className="space-y-3">
-                      {/* License Plate */}
-                      {selectedVehicle?.licensePlate && (
-                        <div className="flex justify-center">
-                          <div className="inline-flex items-center justify-center px-4 py-2 bg-yellow-400 border-2 border-black rounded font-bold text-black text-lg tracking-wider shadow-md" style={{ fontFamily: 'monospace' }}>
-                            {normalizeLicensePlate(selectedVehicle.licensePlate).toUpperCase()}
-                          </div>
-                        </div>
-                      )}
-                      {/* Make & Model */}
-                      <div className="text-center">
-                        <p className="text-lg font-semibold text-slate-900">
-                          {selectedVehicle?.make || selectedVehicle?.brand} {selectedVehicle?.model}
-                        </p>
-                      </div>
-                      {/* Change button */}
+                <div className="rounded-lg border border-purple-200 bg-gradient-to-br from-white to-purple-50/30 p-2 shadow-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Voertuig</span>
+                    {vehicleId !== 'none' && !showVehicleSearch && (
                       <button
                         type="button"
                         onClick={() => {
@@ -3629,52 +3668,98 @@ useEffect(() => {
                             if (data.success) setVehicleSearchResults(data.items || [])
                           }).catch(console.error).finally(() => setSearchingVehicles(false))
                         }}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm text-slate-600 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50 text-slate-400 hover:text-blue-600 transition-all hover:shadow-sm"
+                        title="Wijzig voertuig"
                       >
-                        Wijzig voertuig
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
                       </button>
+                    )}
+                  </div>
+                  {!showVehicleSearch && vehicleId === 'none' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVehicleSearch(true)
+                        setVehicleSearchResults([])
+                        setSearchingVehicles(true)
+                        apiFetch('/api/vehicles?limit=20').then(data => {
+                          if (data.success) setVehicleSearchResults(data.items || [])
+                        }).catch(console.error).finally(() => setSearchingVehicles(false))
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-purple-300 text-purple-600 hover:border-purple-400 hover:text-purple-700 hover:bg-purple-50 text-sm transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Selecteer voertuig
+                    </button>
+                  ) : vehicleId !== 'none' && !showVehicleSearch ? (
+                    <div>
+                      {/* License Plate met NL logo & Merk/Model ernaast */}
+                      <div className="flex items-center justify-center gap-3">
+                        {/* Nederlandse Kenteken met CSS class */}
+                        {selectedVehicle?.licensePlate && (
+                          <span className={`license-plate ${
+                            isDutchLicensePlate(selectedVehicle.licensePlate) ? 'nl' : ''
+                          }`}>
+                            {normalizeLicensePlate(selectedVehicle.licensePlate)}
+                          </span>
+                        )}
+                        {/* Make & Model naast kenteken */}
+                        <div className="text-left">
+                          <p className="text-xs font-medium text-slate-700">
+                            {selectedVehicle?.make || selectedVehicle?.brand} {selectedVehicle?.model}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="relative">
-                      <input
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                        placeholder="Zoek op kenteken, merk of model..."
+                      <LicensePlateInput
                         value={vehicleSearchTerm}
-                        onChange={(event) => setVehicleSearchTerm(event.target.value)}
+                        onChange={(val) => setVehicleSearchTerm(val)}
                         autoFocus
                       />
                       {showVehicleSearch && (vehicleSearchResults.length > 0 || searchingVehicles || vehicleSearchTerm) && (
-                        <div className="absolute z-[9999] mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <div className="absolute z-[9999] mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
                           {searchingVehicles ? (
-                            <div className="p-3 text-sm text-slate-500 flex items-center gap-2">
-                              <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
-                              Laden...
+                            <div className="p-4 text-sm text-slate-500 flex items-center justify-center">
+                              <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
                             </div>
                           ) : filteredVehicles.length === 0 ? (
-                            <div className="p-3 text-sm text-slate-500">
-                              {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Typ om te zoeken...'}
+                            <div className="p-4 text-sm text-slate-500 text-center">
+                              {vehicleSearchTerm ? 'Geen voertuigen gevonden' : 'Typ kenteken om te zoeken'}
                             </div>
                           ) : (
-                            filteredVehicles.map((vehicle) => (
-                              <button
-                                key={vehicle.id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  console.log('Vehicle button clicked:', vehicle.id)
-                                  handleVehicleSelect(vehicle.id)
-                                }}
-                                className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
-                              >
-                                <div className="font-medium text-slate-900">
-                                  {vehicle.make || vehicle.brand} {vehicle.model}
-                                </div>
-                                <div className="text-sm text-slate-500">
-                                  {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate) : 'Geen kenteken'}
-                                </div>
-                              </button>
-                            ))
+                            <div className="py-1">
+                              {filteredVehicles.map((vehicle) => (
+                                <button
+                                  key={vehicle.id}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    console.log('Vehicle button clicked:', vehicle.id)
+                                    handleVehicleSelect(vehicle.id)
+                                  }}
+                                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-blue-50 transition-colors"
+                                >
+                                  {/* Mini license plate */}
+                                  <span className="inline-flex items-stretch rounded-md overflow-hidden border border-amber-500 bg-amber-400 text-xs font-bold">
+                                    <span className="px-1 py-0.5 bg-blue-700 text-white text-[8px]">NL</span>
+                                    <span className="px-2 py-0.5 text-slate-900" style={{ fontFamily: "'Courier New', monospace" }}>
+                                      {vehicle.licensePlate ? normalizeLicensePlate(vehicle.licensePlate).toUpperCase() : '???'}
+                                    </span>
+                                  </span>
+                                  {/* Make & Model */}
+                                  <span className="text-sm text-slate-600">
+                                    {vehicle.brand || vehicle.make} {vehicle.model}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
                           )}
                         </div>
                       )}
@@ -3683,38 +3768,14 @@ useEffect(() => {
                 </div>
 
                 {/* Customer Card */}
-                <div className="rounded-xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 hover:border-slate-300 transition-colors">
-                  <label className="block mb-3">
-                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Klant</span>
-                  </label>
-                  {!showCustomerSearch && customerId === 'none' ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCustomerSearch(true)
-                        setCustomerSearchResults([])
-                        setSearchingCustomers(true)
-                        apiFetch('/api/customers?limit=20').then(data => {
-                          if (data.success) setCustomerSearchResults(data.items || [])
-                        }).catch(console.error).finally(() => setSearchingCustomers(false))
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Klik om klant te selecteren
-                    </button>
-                  ) : customerId !== 'none' && !showCustomerSearch ? (
-                    <div className="space-y-3">
-                      <div className="text-center">
-                        <p className="text-lg font-semibold text-slate-900">
-                          {selectedCustomer?.name}
-                        </p>
-                        {selectedCustomer?.email && (
-                          <p className="text-sm text-slate-600 mt-1">{selectedCustomer.email}</p>
-                        )}
-                      </div>
+                <div className={`rounded-lg border p-2 shadow-sm transition-all ${
+                  vehicleId !== 'none' && customerId === 'none'
+                    ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100/50 ring-2 ring-blue-400 ring-offset-2 shadow-lg shadow-blue-200'
+                    : 'border-blue-200 bg-gradient-to-br from-white to-blue-50/30'
+                }`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-blue-700 uppercase tracking-wide">Klant</span>
+                    {customerId !== 'none' && !showCustomerSearch && (
                       <button
                         type="button"
                         onClick={() => {
@@ -3727,15 +3788,46 @@ useEffect(() => {
                             if (data.success) setCustomerSearchResults(data.items || [])
                           }).catch(console.error).finally(() => setSearchingCustomers(false))
                         }}
-                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-sm text-slate-600 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50 text-slate-400 hover:text-blue-600 transition-all hover:shadow-sm"
+                        title="Wijzig klant"
                       >
-                        Wijzig klant
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
                       </button>
+                    )}
+                  </div>
+                  {!showCustomerSearch && customerId === 'none' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCustomerSearch(true)
+                        setCustomerSearchResults([])
+                        setSearchingCustomers(true)
+                        apiFetch('/api/customers?limit=20').then(data => {
+                          if (data.success) setCustomerSearchResults(data.items || [])
+                        }).catch(console.error).finally(() => setSearchingCustomers(false))
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-blue-300 text-blue-600 hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 text-sm transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Selecteer klant
+                    </button>
+                  ) : customerId !== 'none' && !showCustomerSearch ? (
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-slate-900">
+                        {selectedCustomer?.name}
+                      </p>
+                      {selectedCustomer?.email && (
+                        <p className="text-xs text-slate-600 mt-0.5">{selectedCustomer.email}</p>
+                      )}
                     </div>
                   ) : (
                     <div className="relative">
                       <input
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 text-sm"
                         placeholder="Zoek op naam of email..."
                         value={customerSearchTerm}
                         onChange={(event) => setCustomerSearchTerm(event.target.value)}
@@ -3765,9 +3857,9 @@ useEffect(() => {
                                 }}
                                 className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
                               >
-                                <div className="font-medium text-slate-900">{customer.name}</div>
+                                <div className="font-medium text-sm text-slate-900">{customer.name}</div>
                                 {customer.email && (
-                                  <div className="text-sm text-slate-500">{customer.email}</div>
+                                  <div className="text-xs text-slate-500">{customer.email}</div>
                                 )}
                               </button>
                             ))
@@ -3780,7 +3872,7 @@ useEffect(() => {
               </div>
 
               {/* Toggle switches section */}
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+              <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
                 {/* Action buttons for editing */}
                 {editingItem?.isRequest ? (
                   <button
@@ -3804,91 +3896,99 @@ useEffect(() => {
                 
                 {/* Werkorder toggle */}
                 {editingItem?.workOrderId ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-blue-50 border border-blue-200">
-                    <span className="text-sm font-medium text-blue-900">
-                      Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} aangemaakt
-                    </span>
-                    <button
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
-                      type="button"
-                      onClick={() => router.push(`/admin/workorders/${editingItem.workOrderId}`)}
-                    >
-                      Bekijk werkorder
-                    </button>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs font-medium text-green-900">
+                        Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} gekoppeld
+                      </span>
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span className="text-sm font-medium text-slate-700">Werkorder aanmaken</span>
-                    <label className="glass-toggle">
-                      <input
-                        type="checkbox"
-                        checked={createWorkOrder}
-                        onChange={(event) => {
-                          const nextValue = event.target.checked
-                          setCreateWorkOrder(nextValue)
-                          if (!nextValue) {
-                            setPartsRequired(false)
-                          }
-                        }}
-                      />
-                      <span className="glass-toggle-track" />
-                      <span className="glass-toggle-thumb" />
-                    </label>
-                  </div>
+                  <>
+                    {/* Werkorder aanmaken, Onderdelen nodig en Email sturen naast elkaar */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* Werkorder aanmaken toggle */}
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50 border border-purple-200 transition-all hover:shadow-sm">
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                          </svg>
+                          <span className="text-xs font-medium text-purple-900">Werkorder aanmaken</span>
+                        </div>
+                        <label className="glass-toggle">
+                          <input
+                            type="checkbox"
+                            checked={createWorkOrder}
+                            onChange={(event) => {
+                              const nextValue = event.target.checked
+                              setCreateWorkOrder(nextValue)
+                              if (!nextValue) {
+                                setPartsRequired(false)
+                              }
+                            }}
+                          />
+                          <span className="glass-toggle-track" />
+                          <span className="glass-toggle-thumb" />
+                        </label>
+                      </div>
+                      
+                      {/* Onderdelen nodig toggle */}
+                      {createWorkOrder ? (
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50 border border-amber-200 transition-all hover:shadow-sm">
+                          <div className="flex items-center gap-1.5">
+                            <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                            <span className="text-xs font-medium text-amber-900">Onderdelen nodig</span>
+                          </div>
+                          <label className="glass-toggle">
+                            <input
+                              type="checkbox"
+                              checked={partsRequired}
+                              onChange={(event) => setPartsRequired(event.target.checked)}
+                            />
+                            <span className="glass-toggle-track" />
+                            <span className="glass-toggle-thumb" />
+                          </label>
+                        </div>
+                      ) : <div />}
+                      
+                      {/* Email sturen toggle - altijd zichtbaar */}
+                      <div className={`flex items-center justify-between p-2 rounded-lg transition-all ${selectedCustomer?.email ? 'bg-blue-50 border border-blue-200 hover:shadow-sm' : 'bg-slate-50 opacity-60'}`}>
+                        <div className="flex items-center gap-1.5">
+                          <svg className={`w-3.5 h-3.5 ${selectedCustomer?.email ? 'text-blue-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          <span className={`text-xs font-medium ${selectedCustomer?.email ? 'text-blue-900' : 'text-slate-500'}`}>Email sturen</span>
+                        </div>
+                        <label className="glass-toggle">
+                          <input
+                            type="checkbox"
+                            checked={sendEmail && !!selectedCustomer?.email}
+                            onChange={(event) => setSendEmail(event.target.checked)}
+                            disabled={!selectedCustomer?.email}
+                          />
+                          <span className="glass-toggle-track" />
+                          <span className="glass-toggle-thumb" />
+                        </label>
+                      </div>
+                    </div>
+                  </>
                 )}
-                
-                {/* Onderdelen nodig toggle */}
-                {createWorkOrder ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span className="text-sm font-medium text-slate-700">Onderdelen nodig</span>
-                    <label className="glass-toggle">
-                      <input
-                        type="checkbox"
-                        checked={partsRequired}
-                        onChange={(event) => setPartsRequired(event.target.checked)}
-                      />
-                      <span className="glass-toggle-track" />
-                      <span className="glass-toggle-thumb" />
-                    </label>
-                  </div>
-                ) : null}
-                
-                {/* Bevestigingsmail toggle */}
-                {selectedCustomer?.email ? (
-                  <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-50 transition-colors">
-                    <span className="text-sm font-medium text-slate-700">Bevestigingsmail sturen</span>
-                    <label className="glass-toggle">
-                      <input
-                        type="checkbox"
-                        checked={sendEmail}
-                        onChange={(event) => setSendEmail(event.target.checked)}
-                      />
-                      <span className="glass-toggle-track" />
-                      <span className="glass-toggle-thumb" />
-                    </label>
-                  </div>
-                ) : null}
               </div>
 
               {/* Main Form */}
-              <form className="space-y-4" onSubmit={handleCreate}>
-                {/* Omschrijving */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Omschrijving</span>
-                    <input
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Bijv. APK keuring, banden vervangen..."
-                      required
-                    />
-                  </label>
-                </div>
-
+              <form id="planning-form" className="space-y-2" onSubmit={handleCreate}>
                 {/* Tijd en Duur */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+                  <div className={`rounded-lg border p-2 transition-all ${
+                    customerId !== 'none' && !scheduledAt
+                      ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100/50 ring-2 ring-emerald-400 ring-offset-2 shadow-lg shadow-emerald-200'
+                      : 'border-slate-200 bg-white'
+                  }`}>
                     <DateTimePicker
                       label="Vanaf (datum/tijd)"
                       value={scheduledAt}
@@ -3897,46 +3997,63 @@ useEffect(() => {
                     />
                   </div>
                   
-                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
                     <label className="block">
-                      <span className="text-sm font-medium text-slate-700 mb-1.5 block">Duur (uu:mm)</span>
+                      <span className="text-xs font-medium text-slate-700 mb-1 block">Duur (uu:mm)</span>
                       <input
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all text-sm"
                         placeholder="bijv. 1:00"
-                        value={durationMinutes ? `${Math.floor(Number(durationMinutes) / 60)}:${String(Number(durationMinutes) % 60).padStart(2, '0')}` : '1:00'}
+                        value={durationMinutes}
                         onChange={(event) => {
-                          const value = event.target.value
-                          const [hours, minutes] = value.split(':').map(Number)
-                          if (!isNaN(hours) && !isNaN(minutes)) {
-                            setDurationMinutes(String(hours * 60 + minutes))
-                          } else if (!isNaN(hours) && value.includes(':')) {
-                            setDurationMinutes(String(hours * 60))
-                          }
+                          // Store the formatted value directly
+                          setDurationMinutes(event.target.value)
                         }}
                       />
                       <p className="text-xs text-slate-500 mt-1">Formaat: 1:00 = 1 uur</p>
                     </label>
                   </div>
+                  
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-700 mb-1 block">Planningstype</span>
+                      <select
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all text-sm"
+                        value={planningTypeId}
+                        onChange={(event) => setPlanningTypeId(event.target.value)}
+                      >
+                        <option value="none">Geen type</option>
+                        {planningTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                 </div>
 
                 {dateWarning ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">
                     {dateWarning}
                   </div>
                 ) : null}
                 {overlapWarning ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">
                     {overlapWarning}
                   </div>
                 ) : null}
 
                 {/* Werknemer en beschikbaarheid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className={`rounded-lg border p-2 transition-all ${
+                    durationMinutes && assigneeId === 'none'
+                      ? 'border-indigo-400 bg-gradient-to-br from-indigo-50 to-indigo-100/50 ring-2 ring-indigo-400 ring-offset-2 shadow-lg shadow-indigo-200'
+                      : 'border-slate-200 bg-white'
+                  }`}>
                     <label className="block">
-                      <span className="text-sm font-medium text-slate-700 mb-1.5 block">Werknemer</span>
+                      <span className="text-xs font-medium text-slate-700 mb-1 block">Werknemer</span>
                       <select
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all text-sm"
                         value={assigneeId}
                         onChange={(event) => setAssigneeId(event.target.value)}
                         required
@@ -3951,8 +4068,8 @@ useEffect(() => {
                     </label>
                   </div>
 
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Beschikbaarheid</span>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    <span className="text-xs font-medium text-slate-700 mb-1 block">Beschikbaarheid</span>
                     <div className="text-sm text-slate-600">
                       {selectedUser ? (
                         <>
@@ -3971,157 +4088,113 @@ useEffect(() => {
                   </div>
                 </div>
 
-                {/* Planningstype */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                {/* Omschrijving */}
+                <div className={`rounded-lg border p-2 transition-all ${
+                  assigneeId !== 'none' && !title
+                    ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-pink-100/50 ring-2 ring-pink-400 ring-offset-2 shadow-lg shadow-pink-200'
+                    : 'border-slate-200 bg-white'
+                }`}>
                   <label className="block">
-                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Planningstype</span>
-                    <select
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                      value={planningTypeId}
-                      onChange={(event) => setPlanningTypeId(event.target.value)}
-                    >
-                      <option value="none">Geen type</option>
-                      {planningTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-            
-            {/* The old duplicate vehicle and customer fields need to be removed - continuing from line 3920 */}
-
-                {/* Tabs for Opdracht, Artikelen, Checklist */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="flex gap-2 border-b border-slate-200 pb-3">
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                        activeTab === 'opdracht'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                      onClick={() => setActiveTab('opdracht')}
-                    >
-                      Opdracht
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                        activeTab === 'artikelen'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                      onClick={() => setActiveTab('artikelen')}
-                    >
-                      Artikelen
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
-                        activeTab === 'checklist'
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
-                      onClick={() => setActiveTab('checklist')}
-                    >
-                      Checklist
-                    </button>
-                  </div>
-                  
-                  <div className="mt-4">
-                    {activeTab === 'opdracht' ? (
-                      <div className="space-y-2">
-                        {checklistItems.map((item, index) => (
-                          <div key={item.id} className="flex items-start gap-2 group">
-                            <input
-                              type="checkbox"
-                              checked={item.checked}
-                              onChange={() => handleChecklistItemToggle(item.id)}
-                              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-                            />
-                            <input
-                              type="text"
-                              value={item.text}
-                              onChange={(e) => handleChecklistItemChange(item.id, e.target.value)}
-                              onKeyDown={(e) => handleChecklistItemKeyDown(e, item.id, index)}
-                              placeholder="Typ opdracht en druk op Enter voor nieuwe regel"
-                              data-checklist-input
-                              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
-                            />
-                            {checklistItems.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleChecklistItemRemove(item.id)}
-                                className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
-                                title="Verwijder regel"
-                              >
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-500">Binnenkort beschikbaar.</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Akkoordbedrag */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
-                  <label className="block">
-                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Akkoordbedrag</span>
+                    <span className="text-xs font-medium text-slate-700 mb-1 block">Omschrijving</span>
                     <input
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={agreementAmount}
-                      onChange={(event) => setAgreementAmount(event.target.value)}
-                      placeholder="Optioneel"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all text-sm"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="Bijv. APK keuring, banden vervangen..."
+                      required
                     />
                   </label>
                 </div>
 
-                {/* Afspraken */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4">
+                {/* Werkzaamheden - checklist met tickboxen */}
+                <div className="rounded-lg border border-slate-200 bg-white p-2">
                   <label className="block">
-                    <span className="text-sm font-medium text-slate-700 mb-1.5 block">Afspraken</span>
-                    <textarea
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all resize-none"
-                      rows={4}
-                      value={agreementNotes}
-                      onChange={(event) => setAgreementNotes(event.target.value)}
-                      placeholder="Optioneel"
-                    />
+                    <span className="text-xs font-medium text-slate-700 mb-1 block">Werkzaamheden</span>
+                    <div className="space-y-2">
+                      {checklistItems.map((item, index) => (
+                        <div key={item.id} className="flex items-start gap-2 group">
+                          <input
+                            type="text"
+                            value={item.text}
+                            onChange={(e) => handleChecklistItemChange(item.id, e.target.value)}
+                            onKeyDown={(e) => handleChecklistItemKeyDown(e, item.id, index)}
+                            placeholder="Typ werkzaamheid en druk op Enter voor nieuwe regel"
+                            data-checklist-input
+                            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                          />
+                          {checklistItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleChecklistItemRemove(item.id)}
+                              className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+                              title="Verwijder regel"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </label>
                 </div>
 
-                {/* Submit Button */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                  {editingItem ? (
-                    <button
-                      className="px-6 py-2.5 rounded-lg border-2 border-red-200 bg-white text-red-600 font-medium hover:bg-red-50 transition-colors"
-                      type="button"
-                      onClick={() => handleDelete(editingItem)}
-                    >
-                      Verwijderen
-                    </button>
-                  ) : (
-                    <span />
-                  )}
-                  <button
-                    className="px-8 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all"
-                    type="submit"
-                  >
-                    {editingItem ? 'Bijwerken' : 'Opslaan'}
-                  </button>
+                {/* Akkoordbedrag en Afspraken naast elkaar */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-700 mb-1 block">Akkoordbedrag</span>
+                      <input
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all text-sm"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={agreementAmount}
+                        onChange={(event) => setAgreementAmount(event.target.value)}
+                        placeholder="Optioneel"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-2">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-700 mb-1 block">Afspraken</span>
+                      <textarea
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all resize-none text-sm"
+                        rows={2}
+                        value={agreementNotes}
+                        onChange={(event) => setAgreementNotes(event.target.value)}
+                        placeholder="Optioneel"
+                      />
+                    </label>
+                  </div>
                 </div>
               </form>
+            </div>
+
+            {/* Sticky Footer met Submit Button */}
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 p-3 shadow-lg z-10">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {editingItem ? (
+                  <button
+                    className="px-4 py-2 rounded-lg border border-red-200 bg-white text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
+                    type="button"
+                    onClick={() => handleDelete(editingItem)}
+                  >
+                    Verwijderen
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  className="px-6 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all"
+                  type="submit"
+                  form="planning-form"
+                >
+                  {editingItem ? 'Bijwerken' : 'Opslaan'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -4292,15 +4365,13 @@ useEffect(() => {
               <>
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
                       Kenteken <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="text"
+                    <LicensePlateInput
                       value={newVehicleLicensePlate}
-                      onChange={(e) => setNewVehicleLicensePlate(e.target.value.toUpperCase())}
-                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="XX-XX-XX"
+                      onChange={(val) => setNewVehicleLicensePlate(val)}
+                      autoFocus
                     />
                   </div>
                   <div>

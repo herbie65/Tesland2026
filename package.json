@@ -33,6 +33,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@heroicons/react": "^2.2.0",
+    "@mollie/api-client": "^4.4.0",
     "@prisma/client": "5.22.0",
     "@sendgrid/mail": "^8.1.6",
     "@tanstack/react-table": "^8.21.3",

@@ -284,7 +284,8 @@ export async function POST(request: NextRequest) {
 
     let workOrderId: string | null = null
     if (createWorkOrder) {
-      const nextStatus = workOrderDefaults.workOrderStatusDefault
+      // Work orders from planning should be "GEPLAND" status
+      const nextStatus = 'GEPLAND'
       assertStatusExists(nextStatus, statusSettings.workOrder, 'workOrder')
       assertStatusExists(defaults.partsSummaryStatus, statusSettings.partsSummary, 'partsSummary')
       const nextPricingMode = defaults.pricingMode
@@ -338,6 +339,45 @@ export async function POST(request: NextRequest) {
         }
       })
       workOrderId = workOrder.id
+
+      // Create labor lines from assignmentText checklist items
+      if (assignmentText) {
+        try {
+          const checklist = JSON.parse(assignmentText)
+          if (Array.isArray(checklist)) {
+            // Create a labor line for each checklist item with text
+            const laborLines = checklist
+              .filter((item: any) => item.text && item.text.trim())
+              .map((item: any) => ({
+                workOrderId: workOrder.id,
+                description: item.text.trim(),
+                durationMinutes: workOrderDefaults.laborLineDurationMinutes,
+                userId: assigneeId || null,
+                userName: assigneeName || null,
+              }))
+
+            if (laborLines.length > 0) {
+              await prisma.laborLine.createMany({
+                data: laborLines
+              })
+            }
+          }
+        } catch (e) {
+          console.error('Failed to parse assignmentText:', e)
+          // If parsing fails, create a single labor line with the raw text
+          if (assignmentText.trim()) {
+            await prisma.laborLine.create({
+              data: {
+                workOrderId: workOrder.id,
+                description: assignmentText.trim(),
+                durationMinutes: resolvedDuration,
+                userId: assigneeId || null,
+                userName: assigneeName || null,
+              }
+            })
+          }
+        }
+      }
     }
 
     const item = await prisma.planningItem.create({
@@ -358,6 +398,9 @@ export async function POST(request: NextRequest) {
         planningTypeName: planningTypeName || null,
         planningTypeColor: planningTypeColor || null,
         notes: notes || null,
+        assignmentText: assignmentText || null,
+        agreementAmount: agreementAmount ? Number(agreementAmount) : null,
+        agreementNotes: agreementNotes || null,
         priority: priority || null,
         durationMinutes: resolvedDuration,
         workOrderId,

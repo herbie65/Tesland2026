@@ -46,7 +46,14 @@ export async function GET(request: NextRequest) {
             planningType: true
           }
         },
-        partsLines: includeMissing,
+        partsLines: {
+          select: {
+            id: true,
+            status: true,
+            productName: true,
+            quantity: true
+          }
+        }
       }
     })
 

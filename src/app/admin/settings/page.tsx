@@ -28,6 +28,12 @@ export default function SettingsPage() {
           >
             E-mail templates
           </Link>
+          <Link
+            href="/admin/settings/mollie"
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm text-emerald-700 hover:bg-emerald-100"
+          >
+            💳 Mollie Betalingen
+          </Link>
         </div>
       </header>
       <SettingsClient />

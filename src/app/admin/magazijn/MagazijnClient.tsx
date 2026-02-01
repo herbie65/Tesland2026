@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
+import { 
+  calculatePartsStatus, 
+  getPartsStatusLabel, 
+  getPartsStatusColor,
+  type PartsLine 
+} from '@/lib/parts-status'
 
 type StatusEntry = {
   code: string
@@ -12,51 +18,35 @@ type StatusEntry = {
 
 type WorkOrder = {
   id: string
+  workOrderNumber?: string | null
   title?: string | null
   scheduledAt?: string | null
   vehiclePlate?: string | null
   vehicleLabel?: string | null
   workOrderStatus?: string | null
-  partsSummaryStatus?: string | null
-  missingItemsCount?: number | null
   partsRequired?: boolean | null
-  warehouseStatus?: string | null
-  warehouseEtaDate?: string | null
-  warehouseLocation?: string | null
-  warehouseUpdatedAt?: string | null
-  warehouseUpdatedByEmail?: string | null
+  partsLines?: PartsLine[]
 }
 
 export default function MagazijnClient() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [statuses, setStatuses] = useState<StatusEntry[]>([])
-  const [warehouseStatuses, setWarehouseStatuses] = useState<
-    Array<{ code: string; label: string; requiresEta?: boolean; requiresLocation?: boolean }>
-  >([])
-  const [warehouseDrafts, setWarehouseDrafts] = useState<
-    Record<string, { status: string; etaDate: string; location: string }>
-  >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [savingId, setSavingId] = useState<string | null>(null)
 
   const loadData = async () => {
     try {
       setLoading(true)
       setError(null)
-      const [workOrdersResponse, statusResponse, warehouseResponse] = await Promise.all([
-        apiFetch('/api/workorders?includeMissing=1'),
-        apiFetch('/api/settings/statuses'),
-        apiFetch('/api/settings/warehouseStatuses')
+      const [workOrdersData, statusData] = await Promise.all([
+        apiFetch('/api/workorders'),  // Removed includeMissing=1, partsLines now always included
+        apiFetch('/api/settings/statuses')
       ])
-      const workOrdersData = await workOrdersResponse.json()
-      const statusData = await statusResponse.json()
-      const warehouseData = await warehouseResponse.json()
 
-      if (!workOrdersResponse.ok || !workOrdersData.success) {
+      if (!workOrdersData.success) {
         throw new Error(workOrdersData.error || 'Failed to load workOrders')
       }
-      if (statusResponse.ok && statusData.success) {
+      if (statusData.success) {
         const list = statusData.item?.data?.workOrder || []
         setStatuses(
           Array.isArray(list)
@@ -68,22 +58,6 @@ export default function MagazijnClient() {
         )
       } else {
         setStatuses([])
-      }
-
-      if (warehouseResponse.ok && warehouseData.success) {
-        const source = warehouseData.item?.data?.items || warehouseData.item?.data?.statuses || warehouseData.item?.data || []
-        setWarehouseStatuses(
-          Array.isArray(source)
-            ? source.map((entry: any) => ({
-                code: String(entry.code || '').trim(),
-                label: String(entry.label || '').trim(),
-                requiresEta: entry.requiresEta === true,
-                requiresLocation: entry.requiresLocation === true
-              }))
-            : []
-        )
-      } else {
-        setWarehouseStatuses([])
       }
 
       setWorkOrders(workOrdersData.items || [])
@@ -115,47 +89,37 @@ export default function MagazijnClient() {
   }, [allowedStatuses, workOrders])
 
   const warehouseOrders = useMemo(() => {
-    return workOrders.filter((order) => order.partsRequired === true)
+    // Filter: ALLEEN werkorders met partsRequired = true
+    return workOrders
+      .filter(wo => wo.partsRequired === true)
+      .sort((a, b) => {
+        // Sort by scheduled date (soonest first)
+        if (!a.scheduledAt && !b.scheduledAt) return 0
+        if (!a.scheduledAt) return 1
+        if (!b.scheduledAt) return -1
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+      })
   }, [workOrders])
 
-  const getDraft = (order: WorkOrder) =>
-    warehouseDrafts[order.id] || {
-      status: order.warehouseStatus || '',
-      etaDate: order.warehouseEtaDate || '',
-      location: order.warehouseLocation || ''
-    }
-
-  const updateDraft = (id: string, patch: Partial<{ status: string; etaDate: string; location: string }>) => {
-    setWarehouseDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] || {}), ...patch }
-    }))
+  const getUrgency = (scheduledAt?: string | null) => {
+    if (!scheduledAt) return { level: 'none', label: 'Niet gepland', color: 'text-slate-400' }
+    const date = new Date(scheduledAt)
+    const now = new Date()
+    const daysUntil = Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (daysUntil < 0) return { level: 'overdue', label: 'Achterstallig', color: 'text-red-600 font-semibold' }
+    if (daysUntil === 0) return { level: 'today', label: 'Vandaag!', color: 'text-red-600 font-semibold' }
+    if (daysUntil === 1) return { level: 'tomorrow', label: 'Morgen', color: 'text-orange-600 font-semibold' }
+    if (daysUntil <= 3) return { level: 'urgent', label: `Over ${daysUntil} dagen`, color: 'text-orange-600' }
+    if (daysUntil <= 7) return { level: 'soon', label: `Over ${daysUntil} dagen`, color: 'text-amber-600' }
+    if (daysUntil <= 14) return { level: 'normal', label: `Over ${daysUntil} dagen`, color: 'text-blue-600' }
+    return { level: 'later', label: `Over ${daysUntil} dagen`, color: 'text-slate-600' }
   }
 
-  const saveWarehouse = async (order: WorkOrder) => {
-    const draft = getDraft(order)
-    if (!draft.status) return
-    try {
-      setSavingId(order.id)
-      const response = await apiFetch(`/api/workorders/${order.id}/warehouse`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: draft.status,
-          etaDate: draft.etaDate || null,
-          location: draft.location || null
-        })
-      })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Opslaan mislukt')
-      }
-      await loadData()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setSavingId(null)
-    }
+  const formatDate = (dateString?: string | null) => {
+    if (!dateString) return '-'
+    const date = new Date(dateString)
+    return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
   return (
@@ -175,27 +139,48 @@ export default function MagazijnClient() {
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Laden...</p>
         ) : warehouseOrders.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">Geen magazijn opdrachten.</p>
+          <p className="mt-4 text-sm text-slate-500">Geen werkorders met onderdelen nodig.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm text-slate-700">
               <thead className="text-xs uppercase text-slate-400">
                 <tr>
+                  <th className="py-2 pr-4">Onderdelen</th>
+                  <th className="py-2 pr-4">WO#</th>
                   <th className="py-2 pr-4">Voertuig</th>
                   <th className="py-2 pr-4">Klus</th>
-                  <th className="py-2 pr-4">Status</th>
-                  <th className="py-2 pr-4">Verwachte datum</th>
-                  <th className="py-2 pr-4">Locatie</th>
-                  <th className="py-2 pr-4">Laatste wijziging</th>
+                  <th className="py-2 pr-4">Gepland</th>
+                  <th className="py-2 pr-4">Onderdelen Status</th>
                   <th className="py-2 pr-4">Actie</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {warehouseOrders.map((order) => {
-                  const draft = getDraft(order)
-                  const selected = warehouseStatuses.find((entry) => entry.code === draft.status)
+                  const urgency = getUrgency(order.scheduledAt)
+                  
+                  // Calculate actual status from parts lines using shared helper
+                  const actualPartsStatus = calculatePartsStatus(order.partsLines)
+                  const partsStatusLabelText = getPartsStatusLabel(actualPartsStatus)
+                  const statusColorClass = getPartsStatusColor(actualPartsStatus)
+                  
                   return (
-                    <tr key={order.id}>
+                    <tr 
+                      key={order.id}
+                      className="bg-amber-50 border-l-4 border-l-amber-500"
+                    >
+                      <td className="py-3 pr-4">
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
+                          ⚠️ ACTIE
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <a 
+                          href={`/admin/workorders/${order.id}`}
+                          className="text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                          {order.workOrderNumber || order.id.slice(0, 8)}
+                        </a>
+                      </td>
                       <td className="py-3 pr-4">
                         {order.vehiclePlate ? (
                           <span
@@ -211,53 +196,23 @@ export default function MagazijnClient() {
                       </td>
                       <td className="py-3 pr-4">{order.title || '-'}</td>
                       <td className="py-3 pr-4">
-                        <select
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
-                          value={draft.status}
-                          onChange={(event) => updateDraft(order.id, { status: event.target.value })}
-                          disabled={!warehouseStatuses.length}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs text-slate-600">{formatDate(order.scheduledAt)}</span>
+                          <span className={`text-xs ${urgency.color}`}>{urgency.label}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className={`text-sm ${statusColorClass}`}>
+                          {partsStatusLabelText}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <a
+                          href={`/admin/workorders/${order.id}`}
+                          className="rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
                         >
-                <option value="">Kies status</option>
-                {warehouseStatuses.map((entry, index) => (
-                  <option key={`${entry.code}-${index}`} value={entry.code}>
-                    {entry.label}
-                  </option>
-                ))}
-                        </select>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <input
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                          type="date"
-                          value={draft.etaDate || ''}
-                          onChange={(event) => updateDraft(order.id, { etaDate: event.target.value })}
-                          disabled={!selected?.requiresEta}
-                        />
-                      </td>
-                      <td className="py-3 pr-4">
-                        <input
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
-                          value={draft.location || ''}
-                          onChange={(event) => updateDraft(order.id, { location: event.target.value })}
-                          disabled={!selected?.requiresLocation}
-                          placeholder={selected?.requiresLocation ? 'Locatie' : '-'}
-                        />
-                      </td>
-                      <td className="py-3 pr-4 text-xs text-slate-500">
-                        {order.warehouseUpdatedByEmail || '-'}
-                        {order.warehouseUpdatedAt
-                          ? ` · ${new Date(order.warehouseUpdatedAt).toLocaleString()}`
-                          : ''}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <button
-                          className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                          type="button"
-                          onClick={() => saveWarehouse(order)}
-                          disabled={!draft.status || savingId === order.id}
-                        >
-                          {savingId === order.id ? 'Opslaan...' : 'Opslaan'}
-                        </button>
+                          Open Werkorder
+                        </a>
                       </td>
                     </tr>
                   )

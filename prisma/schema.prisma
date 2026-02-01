@@ -99,6 +99,7 @@ model User {
   reviewedLeaveRequests LeaveRequest[]   @relation("reviewer")
   leaveBalances         LeaveBalance[]
   leaveLedger           LeaveLedger[]    @relation("ledger")
+  workSessions          WorkSession[]    @relation("work_sessions")
 
   @@map("users")
 }
@@ -260,6 +261,9 @@ model PlanningItem {
   status            String?  @default("GEPLAND")
   workOrderId       String?  @unique @map("work_order_id") // Link to work order
   priority          String?  @default("NORMAL")
+  assignmentText    String?  @map("assignment_text") @db.Text // JSON array of checklist items
+  agreementAmount   Decimal? @map("agreement_amount") @db.Decimal(10, 2) // Agreed amount
+  agreementNotes    String?  @map("agreement_notes") @db.Text // Agreement notes
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -322,8 +326,9 @@ model WorkOrder {
   approvalDate     DateTime? @map("approval_date")
 
   // Parts & Warehouse Management
+  // partsSummaryStatus is a CACHE calculated from partsLines for performance
+  // Updated via syncWorkOrderStatus() when parts change
   partsSummaryStatus  String?   @map("parts_summary_status")
-  partsSummaryHistory Json?     @map("parts_summary_history") // Array of status changes
   partsRequired       Boolean   @default(false) @map("parts_required")
   planningRiskActive  Boolean   @default(false) @map("planning_risk_active")
   planningRiskHistory Json?     @map("planning_risk_history") // Array of risk events
@@ -341,6 +346,19 @@ model WorkOrder {
   internalNotes String? @map("internal_notes") @db.Text
   customerNotes String? @map("customer_notes") @db.Text
 
+  // Customer signature (intake/approval)
+  customerSignature     String?   @map("customer_signature") @db.Text // Base64 encoded signature image
+  customerSignedAt      DateTime? @map("customer_signed_at")
+  customerSignedBy      String?   @map("customer_signed_by") // Customer name
+  signatureIpAddress    String?   @map("signature_ip_address")
+  vehiclePinCode        String?   @map("vehicle_pin_code") // Pincode van het voertuig
+  
+  // Work Overview tracking
+  workOverviewColumn    String?   @map("work_overview_column") // Kolom in werkoverzicht (bijv. "Auto Binnen", "In Behandeling")
+  activeWorkStartedAt   DateTime? @map("active_work_started_at") // Wanneer monteur begonnen is
+  activeWorkStartedBy   String?   @map("active_work_started_by") // Wie is ermee bezig
+  activeWorkStartedByName String? @map("active_work_started_by_name") // Naam van monteur
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
@@ -354,6 +372,8 @@ model WorkOrder {
   laborLines   LaborLine[]
   photos       WorkOrderPhoto[]
   stockMoves   StockMove[]
+  backOrders   BackOrder[]
+  workSessions WorkSession[]
 
   @@index([workOrderNumber])
   @@index([workOrderStatus])
@@ -387,6 +407,7 @@ model Product {
   // Relations
   partsLines PartsLine[]
   stockMoves StockMove[]
+  backOrders BackOrder[]
 
   @@map("products")
 }
@@ -405,6 +426,7 @@ model PartsLine {
   locationId    String?   @map("location_id")
   etaDate       DateTime? @map("eta_date")
   notes         String?   @db.Text
+  supplier      String?   @db.Text // Leverancier van het onderdeel
 
   // BTW fields
   vatRateId     String?  @map("vat_rate_id")
@@ -421,12 +443,63 @@ model PartsLine {
   product    Product?           @relation(fields: [productId], references: [id])
   location   InventoryLocation? @relation(fields: [locationId], references: [id])
   stockMoves StockMove[]
+  backOrders BackOrder[]
 
   @@index([workOrderId])
   @@index([productId])
   @@index([status])
   @@index([vatRateId])
   @@map("parts_lines")
+}
+
+model BackOrder {
+  id             String    @id @default(uuid())
+  partsLineId    String    @map("parts_line_id")
+  workOrderId    String    @map("work_order_id")
+  productId      String?   @map("product_id")
+  productName    String    @map("product_name")
+  sku            String?
+  quantityNeeded Int       @map("quantity_needed")
+  quantityOrdered Int?     @default(0) @map("quantity_ordered")
+  quantityReceived Int?    @default(0) @map("quantity_received")
+  
+  status         String    @default("PENDING") // PENDING, ORDERED, PARTIALLY_RECEIVED, RECEIVED, CANCELLED
+  priority       String    @default("NORMAL") // HIGH, NORMAL, LOW
+  
+  // Order details
+  supplier       String?   @db.Text
+  orderDate      DateTime? @map("order_date")
+  expectedDate   DateTime? @map("expected_date")
+  receivedDate   DateTime? @map("received_date")
+  orderReference String?   @map("order_reference") // PO number, invoice, etc.
+  unitCost       Decimal?  @map("unit_cost") @db.Decimal(10, 2)
+  totalCost      Decimal?  @map("total_cost") @db.Decimal(10, 2)
+  
+  // Work order context
+  workOrderNumber   String?   @map("work_order_number")
+  customerName      String?   @map("customer_name")
+  vehiclePlate      String?   @map("vehicle_plate")
+  workOrderScheduled DateTime? @map("work_order_scheduled")
+  
+  notes          String?   @db.Text
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+  
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  partsLine PartsLine @relation(fields: [partsLineId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
+
+  @@index([status])
+  @@index([priority])
+  @@index([workOrderId])
+  @@index([productId])
+  @@index([partsLineId])
+  @@index([expectedDate])
+  @@map("back_orders")
 }
 
 model InventoryLocation {
@@ -489,6 +562,7 @@ model LaborLine {
   hourlyRate      Decimal? @map("hourly_rate") @db.Decimal(10, 2)
   totalAmount     Decimal? @map("total_amount") @db.Decimal(10, 2)
   notes           String?  @db.Text
+  completed       Boolean  @default(false) // Checkbox status voor monteurs
 
   // BTW fields
   vatRateId     String?  @map("vat_rate_id")
@@ -525,6 +599,28 @@ model WorkOrderPhoto {
 
   @@index([workOrderId])
   @@map("work_order_photos")
+}
+
+model WorkSession {
+  id              String    @id @default(uuid())
+  workOrderId     String    @map("work_order_id")
+  userId          String    @map("user_id")
+  userName        String    @map("user_name")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+  durationMinutes Int?      @map("duration_minutes")
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  user      User      @relation("work_sessions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([userId])
+  @@index([endedAt])
+  @@map("work_sessions")
 }
 
 // ========================================
@@ -623,6 +719,7 @@ model Invoice {
   // Relations
   customer Customer? @relation(fields: [customerId], references: [id])
   order    Order?    @relation(fields: [orderId], references: [id])
+  payments Payment[]
 
   @@index([invoiceNumber])
   @@index([customerId])
@@ -630,6 +727,39 @@ model Invoice {
   @@index([invoiceDate])
   @@index([vatReversed])
   @@map("invoices")
+}
+
+model Payment {
+  id                 String    @id @default(uuid())
+  invoiceId          String    @map("invoice_id")
+  provider           String    @default("MOLLIE") // MOLLIE, STRIPE, MANUAL, etc.
+  providerPaymentId  String?   @map("provider_payment_id") // External payment ID
+  amount             Decimal   @db.Decimal(10, 2)
+  currency           String    @default("EUR")
+  status             String    @default("open") // open, paid, canceled, expired, failed
+  description        String?
+  checkoutUrl        String?   @map("checkout_url") @db.Text
+  webhookUrl         String?   @map("webhook_url") @db.Text
+  metadata           Json?     // Extra payment metadata
+  
+  // Timestamps
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  paidAt     DateTime? @map("paid_at")
+  canceledAt DateTime? @map("canceled_at")
+  expiredAt  DateTime? @map("expired_at")
+  failedAt   DateTime? @map("failed_at")
+  
+  // Audit
+  createdBy String? @map("created_by")
+  
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  
+  @@index([invoiceId])
+  @@index([providerPaymentId])
+  @@index([status])
+  @@map("payments")
 }
 
 model CreditInvoice {
@@ -750,24 +880,41 @@ model Page {
 // ========================================
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?  @map("user_id")
-  action     String
-  resource   String
-  resourceId String?  @map("resource_id")
-  changes    Json? // Store before/after values
-  context    Json? // Additional context
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent")
-  timestamp  DateTime @default(now())
+  id String @id @default(uuid())
+
+  // What was changed?
+  entityType String  @map("entity_type") // WorkOrder, Invoice, Planning, Customer, etc.
+  entityId   String? @map("entity_id")
+  action     String // CREATE, UPDATE, DELETE, STATUS_CHANGE, PAYMENT_RECEIVED, etc.
+
+  // Who made the change?
+  userId    String? @map("user_id")
+  userName  String? @map("user_name") // Denormalized for history
+  userEmail String? @map("user_email") // Denormalized for history
+  userRole  String? @map("user_role") // Denormalized for history
+
+  // When?
+  timestamp DateTime @default(now())
+
+  // Details
+  changes     Json?   // Field-level changes: {"field": {"from": "old", "to": "new"}}
+  metadata    Json?   // Additional context (IP, browser, business context)
+  description String? @db.Text // Human-readable description
+
+  // System info
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  user User? @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([entityType, entityId])
   @@index([userId])
+  @@index([timestamp(sort: Desc)])
   @@index([action])
-  @@index([resource])
-  @@index([timestamp])
+  @@index([entityType, entityId, timestamp(sort: Desc)])
   @@map("audit_logs")
 }
 
@@ -1039,7 +1186,9 @@ model ProductInventory {
   id             String   @id @default(uuid())
   productId      String   @unique @map("product_id")
   sku            String   @unique
-  qty            Decimal  @default(0) @db.Decimal(10, 2)
+  qty            Decimal  @default(0) @db.Decimal(10, 2) // Totale fysieke voorraad
+  qtyReserved    Decimal  @default(0) @map("qty_reserved") @db.Decimal(10, 2) // Gereserveerd voor werkorders
+  // qtyAvailable = qty - qtyReserved (computed in queries)
   isInStock      Boolean  @default(true) @map("is_in_stock")
   minQty         Decimal  @default(0) @map("min_qty") @db.Decimal(10, 2)
   notifyStockQty Decimal? @map("notify_stock_qty") @db.Decimal(10, 2)

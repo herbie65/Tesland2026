@@ -27,7 +27,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       where: { id },
       include: {
         customer: true,
-        order: true
+        order: true,
+        payments: {
+          orderBy: { createdAt: 'desc' }
+        }
       }
     })
     

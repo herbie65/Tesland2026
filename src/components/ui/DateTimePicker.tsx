@@ -29,7 +29,6 @@ export function DateTimePicker({
   placeholder = 'Selecteer datum en tijd',
 }: DateTimePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'date' | 'time'>('date')
   const containerRef = useRef<HTMLDivElement>(null)
   
   // Parse the current value
@@ -42,7 +41,11 @@ export function DateTimePicker({
   const { date: selectedDate, time: selectedTime } = parseValue()
   
   const [viewDate, setViewDate] = useState(() => {
-    if (selectedDate) return new Date(selectedDate)
+    if (selectedDate) {
+      // Parse date string as local date to avoid timezone issues
+      const [year, month, day] = selectedDate.split('-').map(Number)
+      return new Date(year, month - 1, day)
+    }
     return new Date()
   })
 
@@ -60,7 +63,9 @@ export function DateTimePicker({
   // Update viewDate when value changes
   useEffect(() => {
     if (selectedDate) {
-      setViewDate(new Date(selectedDate))
+      // Parse date string as local date to avoid timezone issues
+      const [year, month, day] = selectedDate.split('-').map(Number)
+      setViewDate(new Date(year, month - 1, day))
     }
   }, [selectedDate])
 
@@ -68,8 +73,9 @@ export function DateTimePicker({
     if (!value) return ''
     const { date, time } = parseValue()
     if (!date) return ''
-    const dateObj = new Date(date)
-    const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${dateObj.getFullYear()}`
+    // Parse date string as local date to avoid timezone shift
+    const [year, month, day] = date.split('-').map(Number)
+    const formattedDate = `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`
     return `${formattedDate}, ${time}`
   }
 
@@ -91,14 +97,15 @@ export function DateTimePicker({
   }
 
   const handleDateClick = (day: number) => {
-    const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day)
-    const dateStr = newDate.toISOString().split('T')[0]
+    // Create date string directly to avoid timezone issues
+    const year = viewDate.getFullYear()
+    const month = viewDate.getMonth() + 1
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     
     if (minDate && dateStr < minDate) return
     if (maxDate && dateStr > maxDate) return
     
     onChange(`${dateStr}T${selectedTime || '09:00'}`)
-    setActiveTab('time')
   }
 
   const handleTimeChange = (newTime: string) => {
@@ -109,11 +116,12 @@ export function DateTimePicker({
 
   const isSelected = (day: number) => {
     if (!selectedDate) return false
-    const selected = new Date(selectedDate)
+    // Parse date string as local date to avoid timezone shift
+    const [year, month, dayStr] = selectedDate.split('-').map(Number)
     return (
-      selected.getDate() === day &&
-      selected.getMonth() === viewDate.getMonth() &&
-      selected.getFullYear() === viewDate.getFullYear()
+      dayStr === day &&
+      month - 1 === viewDate.getMonth() &&
+      year === viewDate.getFullYear()
     )
   }
 
@@ -187,171 +195,138 @@ export function DateTimePicker({
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute z-[9999] mt-2 w-full min-w-[340px] rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-          {/* Tab switcher */}
-          <div className="flex border-b border-slate-200">
-            <button
-              type="button"
-              onClick={() => setActiveTab('date')}
-              className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                activeTab === 'date'
-                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <CalendarIcon className="w-4 h-4" />
-              Datum
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('time')}
-              className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                activeTab === 'time'
-                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
-                  : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <ClockIcon className="w-4 h-4" />
-              Tijd
-            </button>
-          </div>
-
-          {activeTab === 'date' ? (
-            <div className="p-4">
-              {/* Month navigation */}
-              <div className="flex items-center justify-between mb-4">
-                <button
-                  type="button"
-                  onClick={handlePrevMonth}
-                  className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
-                >
-                  <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
-                </button>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  {MONTHS[month]} {year}
-                </h3>
-                <button
-                  type="button"
-                  onClick={handleNextMonth}
-                  className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
-                >
-                  <ChevronRightIcon className="w-5 h-5 text-slate-600" />
-                </button>
-              </div>
-
-              {/* Day headers */}
-              <div className="grid grid-cols-7 gap-1 mb-2">
-                {DAYS.map((day) => (
-                  <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              {/* Calendar grid */}
-              <div className="grid grid-cols-7 gap-1">
-                {calendarDays.map((item, index) => {
-                  if (!item.isCurrentMonth) {
-                    return (
-                      <div key={`empty-${index}`} className="aspect-square flex items-center justify-center text-sm text-slate-300">
-                        {item.day}
-                      </div>
-                    )
-                  }
-
-                  const disabled = isDisabled(item.day)
-                  const selected = isSelected(item.day)
-                  const today = isToday(item.day)
-
-                  return (
-                    <button
-                      key={item.day}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => handleDateClick(item.day)}
-                      className={`
-                        aspect-square flex items-center justify-center text-base font-medium rounded-xl transition-all
-                        ${disabled ? 'text-slate-300 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'}
-                        ${selected ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
-                        ${today && !selected ? 'ring-2 ring-blue-400 ring-inset' : ''}
-                        ${!selected && !disabled ? 'text-slate-700' : ''}
-                      `}
-                    >
-                      {item.day}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Quick actions */}
-              <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const today = new Date().toISOString().split('T')[0]
-                    onChange(`${today}T${selectedTime || '09:00'}`)
-                    setActiveTab('time')
-                  }}
-                  className="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
-                >
-                  Vandaag
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const tomorrow = new Date()
-                    tomorrow.setDate(tomorrow.getDate() + 1)
-                    onChange(`${tomorrow.toISOString().split('T')[0]}T${selectedTime || '09:00'}`)
-                    setActiveTab('time')
-                  }}
-                  className="flex-1 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
-                >
-                  Morgen
-                </button>
-              </div>
+          {/* Datum sectie (altijd zichtbaar) */}
+          <div className="p-4 border-b border-slate-200">
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarIcon className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-semibold text-slate-700">Datum</span>
             </div>
-          ) : (
-            <div className="p-4">
-              {/* Current time display */}
-              <div className="mb-4 text-center">
-                <input
-                  type="time"
-                  value={selectedTime || '09:00'}
-                  onChange={(e) => handleTimeChange(e.target.value)}
-                  className="text-3xl font-semibold text-slate-900 bg-transparent border-none focus:outline-none focus:ring-0 text-center w-32"
-                />
-              </div>
-              
-              {/* Quick time slots */}
-              <div className="grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto">
-                {timeSlots.map((time) => (
-                  <button
-                    key={time}
-                    type="button"
-                    onClick={() => {
-                      handleTimeChange(time)
-                      setIsOpen(false)
-                    }}
-                    className={`px-3 py-2.5 text-sm font-medium rounded-xl transition-colors ${
-                      selectedTime === time
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-
-              {/* Confirm button */}
+            
+            {/* Month navigation */}
+            <div className="flex items-center justify-between mb-4">
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
-                className="w-full mt-4 px-4 py-3 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors"
+                onClick={handlePrevMonth}
+                className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
               >
-                Bevestigen
+                <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
+              </button>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {MONTHS[month]} {year}
+              </h3>
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <ChevronRightIcon className="w-5 h-5 text-slate-600" />
               </button>
             </div>
-          )}
+
+            {/* Day headers */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {DAYS.map((day) => (
+                <div key={day} className="text-center text-sm font-medium text-slate-500 py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((item, index) => {
+                if (!item.isCurrentMonth) {
+                  return (
+                    <div key={`empty-${index}`} className="aspect-square flex items-center justify-center text-sm text-slate-300">
+                      {item.day}
+                    </div>
+                  )
+                }
+
+                const disabled = isDisabled(item.day)
+                const selected = isSelected(item.day)
+                const today = isToday(item.day)
+
+                return (
+                  <button
+                    key={item.day}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => handleDateClick(item.day)}
+                    className={`
+                      aspect-square flex items-center justify-center text-base font-medium rounded-xl transition-all
+                      ${disabled ? 'text-slate-300 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'}
+                      ${selected ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+                      ${today && !selected ? 'ring-2 ring-blue-400 ring-inset' : ''}
+                      ${!selected && !disabled ? 'text-slate-700' : ''}
+                    `}
+                  >
+                    {item.day}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Quick actions */}
+            <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date()
+                  const year = today.getFullYear()
+                  const month = today.getMonth() + 1
+                  const day = today.getDate()
+                  const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  onChange(`${dateStr}T${selectedTime || '09:00'}`)
+                }}
+                className="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
+              >
+                Vandaag
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const tomorrow = new Date()
+                  tomorrow.setDate(tomorrow.getDate() + 1)
+                  const year = tomorrow.getFullYear()
+                  const month = tomorrow.getMonth() + 1
+                  const day = tomorrow.getDate()
+                  const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  onChange(`${dateStr}T${selectedTime || '09:00'}`)
+                }}
+                className="flex-1 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"
+              >
+                Morgen
+              </button>
+            </div>
+          </div>
+
+          {/* Tijd sectie (altijd zichtbaar) */}
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ClockIcon className="w-4 h-4 text-purple-600" />
+              <span className="text-sm font-semibold text-slate-700">Tijd</span>
+            </div>
+            
+            {/* Direct input time field */}
+            <div className="flex items-center justify-center mb-3">
+              <input
+                type="time"
+                value={selectedTime || '09:00'}
+                onChange={(e) => handleTimeChange(e.target.value)}
+                className="text-2xl font-semibold text-slate-900 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-center"
+              />
+            </div>
+
+            {/* Confirm button */}
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="w-full px-4 py-3 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg shadow-blue-500/30"
+            >
+              Bevestigen
+            </button>
+          </div>
         </div>
       )}
     </div>

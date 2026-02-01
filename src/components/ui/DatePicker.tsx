@@ -30,7 +30,11 @@ export function DatePicker({
 }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [viewDate, setViewDate] = useState(() => {
-    if (value) return new Date(value)
+    if (value) {
+      // Parse date string as UTC to avoid timezone issues
+      const [year, month, day] = value.split('-').map(Number)
+      return new Date(year, month - 1, day)
+    }
     return new Date()
   })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -49,14 +53,17 @@ export function DatePicker({
   // Update viewDate when value changes
   useEffect(() => {
     if (value) {
-      setViewDate(new Date(value))
+      // Parse date string as UTC to avoid timezone issues
+      const [year, month, day] = value.split('-').map(Number)
+      setViewDate(new Date(year, month - 1, day))
     }
   }, [value])
 
   const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return ''
-    const date = new Date(dateStr)
-    return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`
+    // Parse date string as local date to avoid timezone shift
+    const [year, month, day] = dateStr.split('-').map(Number)
+    return `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`
   }
 
   const getDaysInMonth = (year: number, month: number) => {
@@ -78,8 +85,10 @@ export function DatePicker({
   }
 
   const handleDateClick = (day: number) => {
-    const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day)
-    const dateStr = newDate.toISOString().split('T')[0]
+    // Create date string directly to avoid timezone issues
+    const year = viewDate.getFullYear()
+    const month = viewDate.getMonth() + 1
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     
     // Check min/max constraints
     if (minDate && dateStr < minDate) return
@@ -91,11 +100,12 @@ export function DatePicker({
 
   const isSelected = (day: number) => {
     if (!value) return false
-    const selectedDate = new Date(value)
+    // Parse date string as local date to avoid timezone shift
+    const [year, month, dayStr] = value.split('-').map(Number)
     return (
-      selectedDate.getDate() === day &&
-      selectedDate.getMonth() === viewDate.getMonth() &&
-      selectedDate.getFullYear() === viewDate.getFullYear()
+      dayStr === day &&
+      month - 1 === viewDate.getMonth() &&
+      year === viewDate.getFullYear()
     )
   }
 
@@ -240,8 +250,12 @@ export function DatePicker({
             <button
               type="button"
               onClick={() => {
-                const today = new Date().toISOString().split('T')[0]
-                onChange(today)
+                const today = new Date()
+                const year = today.getFullYear()
+                const month = today.getMonth() + 1
+                const day = today.getDate()
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                onChange(dateStr)
                 setIsOpen(false)
               }}
               className="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors"
@@ -253,7 +267,11 @@ export function DatePicker({
               onClick={() => {
                 const tomorrow = new Date()
                 tomorrow.setDate(tomorrow.getDate() + 1)
-                onChange(tomorrow.toISOString().split('T')[0])
+                const year = tomorrow.getFullYear()
+                const month = tomorrow.getMonth() + 1
+                const day = tomorrow.getDate()
+                const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                onChange(dateStr)
                 setIsOpen(false)
               }}
               className="flex-1 px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"

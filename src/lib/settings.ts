@@ -99,6 +99,13 @@ export type VoipSettings = {
   apiToken: string
 }
 
+export type MollieSettings = {
+  enabled: boolean
+  apiKey: string
+  testMode: boolean
+  webhookUrl?: string
+}
+
 export type AbsenceType = {
   code: string
   label: string
@@ -109,6 +116,7 @@ export type AbsenceType = {
 export type WorkOrderDefaults = {
   workOrderStatusDefault: string
   defaultDurationMinutes: number
+  laborLineDurationMinutes: number
 }
 
 export type ExecutionStatusRule = {
@@ -361,15 +369,20 @@ export const getWorkOrderDefaults = async (): Promise<WorkOrderDefaults> => {
   const planning = await readSettingsDoc('planning')
   const workOrderStatusDefault = String(defaults.workOrderStatusDefault || '').trim()
   const duration = Number(planning.defaultDurationMinutes)
+  const laborDuration = Number(planning.laborLineDurationMinutes)
   if (!workOrderStatusDefault) {
     throw new Error('Missing defaults.workOrderStatusDefault')
   }
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error('Missing planning.defaultDurationMinutes')
   }
+  if (!Number.isFinite(laborDuration) || laborDuration <= 0) {
+    throw new Error('Missing planning.laborLineDurationMinutes')
+  }
   return {
     workOrderStatusDefault,
-    defaultDurationMinutes: duration
+    defaultDurationMinutes: duration,
+    laborLineDurationMinutes: laborDuration
   }
 }
 
@@ -421,4 +434,22 @@ export const getStatusSortOrder = (code: string, list: StatusEntry[], label: str
     throw new Error(`Missing sortOrder for status "${code}" in ${label}`)
   }
   return Number(entry.sortOrder)
+}
+
+export const getMollieSettings = async (): Promise<MollieSettings | null> => {
+  try {
+    const data = await readSettingsDocOptional('mollie')
+    if (!data) {
+      return null
+    }
+    return {
+      enabled: data.enabled === true,
+      apiKey: String(data.apiKey || ''),
+      testMode: data.testMode === true,
+      webhookUrl: data.webhookUrl ? String(data.webhookUrl) : undefined
+    }
+  } catch (error) {
+    console.error('[getMollieSettings] Error:', error)
+    return null
+  }
 }
