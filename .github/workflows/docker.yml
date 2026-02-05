@@ -48,7 +48,7 @@ jobs:
             docker compose up -d
             
             echo "🗄️  Running database migrations..."
-            docker compose exec -T tladmin npx prisma migrate deploy
+            docker compose exec -T tladmin npx prisma@5.22.0 migrate deploy
             
             echo "✅ Deployment complete!"
             docker compose ps
