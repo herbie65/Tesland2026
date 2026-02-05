@@ -5,12 +5,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
-    ports:
-      - "127.0.0.1:3000:3000"
-    networks:
-      - tladmin-network
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
+    # Use host network so app can reach host PostgreSQL at 127.0.0.1:5432
+    # (ports/networks ignored when network_mode: host)
 
 networks:
   tladmin-network:
