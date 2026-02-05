@@ -13,26 +13,42 @@ jobs:
       - name: 🚀 Deploy to Hetzner via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 46.62.229.245
-          username: deploy
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
             
             echo "📂 Navigating to project directory..."
-            cd /opt/tladmin
+            cd /home/herbert/tesland2026 || { echo "❌ Directory not found!"; exit 1; }
             
             echo "📥 Pulling latest code from GitHub..."
             git pull origin main
             
+            echo "📝 Updating .env.production..."
+            cat > .env.production << EOF
+            DATABASE_URL=postgresql://tesland_user:${{ secrets.DB_PASSWORD }}@postgres:5432/tesland_production?schema=public
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            MAGENTO_BASE_URL=${{ secrets.MAGENTO_BASE_URL }}
+            MAGENTO_CONSUMER_KEY=${{ secrets.MAGENTO_CONSUMER_KEY }}
+            MAGENTO_CONSUMER_SECRET=${{ secrets.MAGENTO_CONSUMER_SECRET }}
+            MAGENTO_ACCESS_TOKEN=${{ secrets.MAGENTO_ACCESS_TOKEN }}
+            MAGENTO_ACCESS_TOKEN_SECRET=${{ secrets.MAGENTO_ACCESS_TOKEN_SECRET }}
+            NODE_ENV=production
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            EOF
+            
             echo "🛑 Stopping existing containers..."
-            docker compose --env-file .env.production down
+            docker compose down
             
             echo "🏗️  Building Docker image..."
-            docker compose --env-file .env.production build --no-cache
+            docker compose build --no-cache
             
             echo "🚀 Starting containers..."
-            docker compose --env-file .env.production up -d
+            docker compose up -d
+            
+            echo "🗄️  Running database migrations..."
+            docker compose exec -T tladmin npx prisma migrate deploy
             
             echo "✅ Deployment complete!"
-            docker compose --env-file .env.production ps
+            docker compose ps
