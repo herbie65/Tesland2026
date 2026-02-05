@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { MagnifyingGlassIcon, ShoppingCartIcon, UserCircleIcon } from '@heroicons/react/24/outline'
 import HeaderMenu from './HeaderMenu'
 import LanguagePicker from './LanguagePicker'
-import { fetchCart } from '@/lib/shop-cart'
+// import { fetchCart } from '@/lib/shop-cart' // module removed
 
 type HeaderItem = {
   label: string
@@ -62,25 +62,8 @@ export default function SiteHeader() {
       ? `/${settings.logoUrl}`
       : settings.logoUrl
 
-  useEffect(() => {
-    let alive = true
-    const load = async () => {
-      try {
-        const data = await fetchCart()
-        if (!alive) return
-        const count = Array.isArray(data.items)
-          ? data.items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0)
-          : 0
-        setCartCount(count)
-      } catch {
-        // ignore
-      }
-    }
-    load()
-    return () => {
-      alive = false
-    }
-  }, [])
+  // fetchCart module removed – cart count stays 0 or use /api/shop/cart if needed
+  // useEffect(() => { ... }, [])
 
   useEffect(() => {
     const onUpdate = (e: Event) => {

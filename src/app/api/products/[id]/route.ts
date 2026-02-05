@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { buildProductDescription, htmlToPlainText } from '@/lib/product-description'
+
+const buildProductDesc = (o: { description?: string | null; shortDescription?: string | null }) =>
+  (o.description || o.shortDescription || '').trim() || ''
+const htmlToPlain = (html: string | null | undefined) =>
+  (html || '').replace(/<[^>]*>/g, '').trim() || null
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -54,11 +58,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!item) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
     }
-    const description = buildProductDescription({
+    const description = buildProductDesc({
       description: item.description,
       shortDescription: item.shortDescription,
     })
-    const shortDescription = item.shortDescription ? htmlToPlainText(item.shortDescription) : null
+    const shortDescription = item.shortDescription ? htmlToPlain(item.shortDescription) : null
     return NextResponse.json({
       success: true,
       item: {

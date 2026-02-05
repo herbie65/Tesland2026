@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createMollieClient } from '@/lib/mollie-client'
 import { sendTemplatedEmail } from '@/lib/email'
-import { generateInvoicePdf } from '@/lib/invoice-pdf'
+// import { generateInvoicePdf } from '@/lib/invoice-pdf' // module removed
 import { getVatSettings } from '@/lib/vat-calculator'
-import { getWebshopSettingsStrict } from '@/lib/webshop-settings'
+// import { getWebshopSettingsStrict } from '@/lib/webshop-settings' // module removed
 import { generateSalesNumber } from '@/lib/numbering'
+
+// Fallback when webshop-settings module is not available
+const getWebshopDefaults = () => ({
+  invoiceStatusOnCheckout: 'OPEN',
+  invoicePaymentStatusOnPaid: 'BETAALD',
+  paymentStatusOnPaid: 'BETAALD',
+  shipmentStatusOnPaid: 'PENDING',
+  shippingCarrierCode: null as string | null
+})
 
 /**
  * POST /api/payments/mollie/webhook
@@ -96,7 +105,7 @@ export async function POST(request: NextRequest) {
 
     // Update Order so admin shows correct paymentStatus and orderStatus
     if (orderId) {
-      const webshop = await getWebshopSettingsStrict()
+      const webshop = getWebshopDefaults()
       const orderPaymentStatus = molliePayment.status === 'paid' ? webshop.paymentStatusOnPaid : mapMollieToPaymentStatus(molliePayment.status)
       const existingOrder = await prisma.order.findUnique({ where: { id: orderId }, select: { paidAt: true, paymentStatus: true } })
       const alreadyPaid = !!existingOrder?.paidAt || existingOrder?.paymentStatus === webshop.paymentStatusOnPaid
@@ -117,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     // If payment is paid: factuur aanmaken (als nog geen) + status + e-mail
     if (molliePayment.status === 'paid') {
-      const webshop = await getWebshopSettingsStrict()
+      const webshop = getWebshopDefaults()
       let invoiceId: string | null = payment.invoiceId
       let invoicePayload: {
         invoice: { id: string; invoiceNumber: string; invoiceDate: Date; totalAmount: unknown; vatTotal: unknown; subtotalAmount: unknown; vatSubtotalHigh: unknown; vatAmountHigh: unknown; vatSubtotalLow: unknown; vatAmountLow: unknown; vatSubtotalZero: unknown; vatReversed: boolean; vatReversedText: string | null; vatExempt: boolean; customerVatNumber: string | null; customerIsB2B: boolean }
@@ -298,7 +307,6 @@ export async function POST(request: NextRequest) {
             body:
               '<p>Hoi {{customerName}},</p>' +
               '<p>We hebben je betaling ontvangen voor factuur <strong>{{invoiceNumber}}</strong>.</p>' +
-              '<p>In de bijlage vind je de factuur (PDF).</p>' +
               '<p>We gaan je bestelling verwerken en verzenden.</p>',
             variables: {
               customerName: 'Naam van de klant',
@@ -308,49 +316,14 @@ export async function POST(request: NextRequest) {
         })
         const to = invoicePayload.customer?.email
         if (to) {
-          const vatSettings = await getVatSettings()
-          const pdfBuffer = await generateInvoicePdf({
-            invoice: {
-              invoiceNumber: invoicePayload.invoice.invoiceNumber,
-              invoiceDate: invoicePayload.invoice.invoiceDate,
-              totalAmount: invoicePayload.invoice.totalAmount,
-              vatTotal: invoicePayload.invoice.vatTotal,
-              subtotalAmount: invoicePayload.invoice.subtotalAmount,
-              vatSubtotalHigh: invoicePayload.invoice.vatSubtotalHigh,
-              vatAmountHigh: invoicePayload.invoice.vatAmountHigh,
-              vatSubtotalLow: invoicePayload.invoice.vatSubtotalLow,
-              vatAmountLow: invoicePayload.invoice.vatAmountLow,
-              vatSubtotalZero: invoicePayload.invoice.vatSubtotalZero,
-              vatReversed: invoicePayload.invoice.vatReversed,
-              vatReversedText: invoicePayload.invoice.vatReversedText,
-              vatExempt: invoicePayload.invoice.vatExempt,
-              customerVatNumber: invoicePayload.invoice.customerVatNumber,
-              customerIsB2B: invoicePayload.invoice.customerIsB2B
-            },
-            order: invoicePayload.order ? { orderNumber: invoicePayload.order.orderNumber } : null,
-            customer: invoicePayload.customer,
-            lines: invoicePayload.orderLines,
-            vatMeta: {
-              high: vatSettings.rates.high,
-              low: vatSettings.rates.low,
-              zero: vatSettings.rates.zero,
-              reversed: vatSettings.rates.reversed
-            }
-          })
+          // generateInvoicePdf module removed – send email without PDF attachment
           await sendTemplatedEmail({
             templateId: 'shop-payment-received',
             to,
             variables: {
               customerName: invoicePayload.customer?.name || 'Klant',
               invoiceNumber: invoicePayload.invoice.invoiceNumber
-            },
-            attachments: [
-              {
-                filename: `Factuur-${invoicePayload.invoice.invoiceNumber}.pdf`,
-                contentBase64: pdfBuffer.toString('base64'),
-                contentType: 'application/pdf'
-              }
-            ]
+            }
           })
         }
         console.log(`[mollie-webhook] Invoice ${invoicePayload.invoice.invoiceNumber} marked as paid`)

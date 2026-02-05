@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { buildProductDescription } from '@/lib/product-description'
 import { Prisma } from '@prisma/client'
+
+const buildProductDesc = (o: { description?: string | null; shortDescription?: string | null }) =>
+  (o.description || o.shortDescription || '').trim() || ''
 
 const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -95,7 +97,7 @@ export async function GET(request: NextRequest) {
       unit: item.weight ? `${item.weight}kg` : null,
       supplier: null, // Not in old Product model
       category: item.categories[0]?.category?.name || null,
-      description: buildProductDescription({
+      description: buildProductDesc({
         description: item.description,
         shortDescription: item.shortDescription,
       }),

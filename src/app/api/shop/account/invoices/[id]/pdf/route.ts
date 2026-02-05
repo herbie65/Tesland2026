@@ -1,0 +1,100 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { requireCustomer } from '@/lib/shop-auth'
+import { generateInvoicePdf } from '@/lib/invoice-pdf'
+import { getVatSettings } from '@/lib/vat-calculator'
+
+type RouteContext = {
+  params: { id?: string } | Promise<{ id?: string }>
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const { customer } = await requireCustomer(request)
+    const params = await context.params
+    const id = params?.id
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        order: { include: { lines: true } }
+      }
+    })
+
+    if (!invoice) {
+      return NextResponse.json({ success: false, error: 'Factuur niet gevonden' }, { status: 404 })
+    }
+
+    if (invoice.customerId !== customer.id) {
+      return NextResponse.json({ success: false, error: 'Geen toegang tot deze factuur' }, { status: 403 })
+    }
+
+    const vatSettings = await getVatSettings()
+    const orderLines = invoice.orderId && invoice.order?.lines
+      ? invoice.order.lines
+      : []
+
+    const pdfBuffer = await generateInvoicePdf({
+      invoice: {
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDate: invoice.invoiceDate,
+        totalAmount: invoice.totalAmount,
+        vatTotal: invoice.vatTotal,
+        subtotalAmount: invoice.subtotalAmount,
+        vatSubtotalHigh: invoice.vatSubtotalHigh,
+        vatAmountHigh: invoice.vatAmountHigh,
+        vatSubtotalLow: invoice.vatSubtotalLow,
+        vatAmountLow: invoice.vatAmountLow,
+        vatSubtotalZero: invoice.vatSubtotalZero,
+        vatReversed: invoice.vatReversed,
+        vatReversedText: invoice.vatReversedText,
+        vatExempt: invoice.vatExempt,
+        customerVatNumber: invoice.customerVatNumber,
+        customerIsB2B: invoice.customerIsB2B
+      },
+      order: invoice.order ? { orderNumber: invoice.order.orderNumber } : null,
+      customer: invoice.customer
+        ? {
+            name: invoice.customer.name,
+            email: invoice.customer.email,
+            street: invoice.customer.street,
+            zipCode: invoice.customer.zipCode,
+            city: invoice.customer.city,
+            address: invoice.customer.address
+          }
+        : null,
+      lines: orderLines.map((l) => ({
+        sku: l.sku,
+        name: l.name,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        totalPrice: l.totalPrice
+      })),
+      vatMeta: {
+        high: vatSettings.rates.high,
+        low: vatSettings.rates.low,
+        zero: vatSettings.rates.zero,
+        reversed: vatSettings.rates.reversed
+      }
+    })
+
+    const filename = `Factuur-${invoice.invoiceNumber}.pdf`
+    return new NextResponse(pdfBuffer as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'private, no-transform'
+      }
+    })
+  } catch (error: any) {
+    console.error('[shop account invoices pdf] Error:', error)
+    const status = error?.status ?? 500
+    const message = error?.message || 'PDF download mislukt'
+    return NextResponse.json({ success: false, error: message }, { status })
+  }
+}

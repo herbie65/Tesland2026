@@ -1,6 +1,18 @@
 import Link from 'next/link'
-import { SETTINGS_MENU_ITEMS } from '@/lib/settings-menu'
 import SettingsClient from './SettingsClient'
+
+// settings-menu module removed – local SETTINGS_MENU_ITEMS
+const SETTINGS_MENU_ITEMS = [
+  { id: 'workoverview', label: 'Werkoverzicht', href: '/admin/settings' },
+  { id: 'planning', label: 'Planning', href: '/admin/settings' },
+  { id: 'email', label: 'E-mail', href: '/admin/settings' },
+  { id: 'notifications', label: 'Notificaties', href: '/admin/settings' },
+  { id: 'mollie', label: 'Mollie', href: '/admin/settings/mollie' },
+  { id: 'vat', label: 'BTW', href: '/admin/settings/vat' },
+  { id: 'webshop', label: 'Webshop', href: '/admin/settings/webshop' },
+  { id: 'dhl', label: 'DHL', href: '/admin/settings/dhl' },
+  { id: 'postcodelookup', label: 'Postcode', href: '/admin/settings/postcodelookup' },
+]
 
 export default function SettingsPage() {
   return (

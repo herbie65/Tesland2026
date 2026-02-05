@@ -13,7 +13,7 @@
 import { prisma } from './prisma'
 import { Decimal } from '@prisma/client/runtime/library'
 import { reserveInventory } from './inventory-reservation'
-import { createBexClient, isBexEnabled, BexOrderRequest } from './bex-client'
+// import { createBexClient, isBexEnabled, BexOrderRequest } from './bex-client' // module removed
 
 export type BackOrderStatus = 'PENDING' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED'
 export type BackOrderPriority = 'HIGH' | 'NORMAL' | 'LOW'
@@ -380,27 +380,8 @@ export async function checkBexAvailability(sku: string, quantityNeeded: number =
   leadTime?: number
   error?: string
 }> {
-  const isEnabled = await isBexEnabled()
-  if (!isEnabled) {
-    return { available: false, stock: 0, error: 'BeX integration not enabled' }
-  }
-
-  try {
-    const bexClient = await createBexClient()
-    if (!bexClient) {
-      return { available: false, stock: 0, error: 'BeX client not configured' }
-    }
-    const availability = await bexClient.isAvailable(sku, quantityNeeded)
-    
-    return {
-      available: availability.available,
-      stock: availability.stock,
-      leadTime: availability.leadTime
-    }
-  } catch (error: any) {
-    console.error('Error checking BeX availability:', error)
-    return { available: false, stock: 0, error: error.message }
-  }
+  // BeX module removed – always return not enabled
+  return { available: false, stock: 0, error: 'BeX integration disabled' }
 }
 
 /**
@@ -410,101 +391,15 @@ export async function orderViaBeX(
   backOrderId: string,
   updatedBy?: string
 ): Promise<BackOrderResult> {
-  const isEnabled = await isBexEnabled()
-  if (!isEnabled) {
-    return { success: false, error: 'BeX integration not enabled' }
-  }
-
-  try {
-    const backOrder = await prisma.backOrder.findUnique({
-      where: { id: backOrderId },
-      include: {
-        workOrder: {
-          select: {
-            workOrderNumber: true,
-            customerName: true,
-            vehiclePlate: true
-          }
-        }
-      }
-    })
-
-    if (!backOrder) {
-      return { success: false, error: 'Back-order not found' }
-    }
-
-    if (!backOrder.sku) {
-      return { success: false, error: 'No SKU available for BeX ordering' }
-    }
-
-    // Check availability first
-    const bexClient = await createBexClient()
-    if (!bexClient) {
-      return { success: false, error: 'BeX client not configured' }
-    }
-    const availability = await bexClient.isAvailable(backOrder.sku, backOrder.quantityNeeded)
-    
-    if (!availability.available) {
-      return { 
-        success: false, 
-        error: `Product niet beschikbaar bij Bandenexpress (voorraad: ${availability.stock})` 
-      }
-    }
-
-    // Create BeX order
-    const orderRequest: BexOrderRequest = {
-      customerReference: backOrder.workOrderNumber || undefined,
-      orderLines: [
-        {
-          sku: backOrder.sku,
-          productName: backOrder.productName,
-          quantity: backOrder.quantityNeeded
-        }
-      ],
-      notes: `Werkorder: ${backOrder.workOrderNumber}\nKlant: ${backOrder.customerName || 'N/A'}\nVoertuig: ${backOrder.vehiclePlate || 'N/A'}`
-    }
-
-    const bexOrder = await bexClient.createOrder(orderRequest)
-
-    // Update back-order with BeX info
-    const updatedBackOrder = await prisma.backOrder.update({
-      where: { id: backOrderId },
-      data: {
-        status: 'ORDERED',
-        supplier: 'Bandenexpress (BeX)',
-        orderDate: new Date(),
-        expectedDate: bexOrder.expectedDeliveryDate ? new Date(bexOrder.expectedDeliveryDate) : null,
-        orderReference: bexOrder.orderNumber,
-        quantityOrdered: backOrder.quantityNeeded,
-        unitCost: bexOrder.orderLines[0]?.unitPrice ? new Decimal(bexOrder.orderLines[0].unitPrice) : null,
-        totalCost: new Decimal(bexOrder.totalAmount),
-        updatedBy: updatedBy || null
-      }
-    })
-
-    // TODO: Send notification
-
-    return { success: true, backOrder: updatedBackOrder }
-  } catch (error: any) {
-    console.error('Error ordering via BeX:', error)
-    return { success: false, error: error.message }
-  }
+  // BeX module removed
+  return { success: false, error: 'BeX integration disabled' }
 }
 
 /**
  * Sync back-order status with BeX API
  */
 export async function syncBexOrderStatus(backOrderId: string): Promise<BackOrderResult> {
-  const isEnabled = await isBexEnabled()
-  if (!isEnabled) {
-    return { success: false, error: 'BeX integration not enabled' }
-  }
-
-  return {
-    success: false,
-    error:
-      'BeX order sync is not available: BeX tracking fields are not configured in this database schema.'
-  }
+  return { success: false, error: 'BeX integration disabled' }
 }
 
 /**
@@ -516,20 +411,5 @@ export async function syncAllBexOrders(): Promise<{
   failed: number
   errors: string[]
 }> {
-  const isEnabled = await isBexEnabled()
-  if (!isEnabled) {
-    return { success: false, synced: 0, failed: 0, errors: ['BeX integration not enabled'] }
-  }
-
-  try {
-    return {
-      success: false,
-      synced: 0,
-      failed: 0,
-      errors: ['BeX tracking fields are not configured in this database schema.']
-    }
-  } catch (error: any) {
-    console.error('Error syncing all BeX orders:', error)
-    return { success: false, synced: 0, failed: 0, errors: [error.message] }
-  }
+  return { success: false, synced: 0, failed: 0, errors: ['BeX integration disabled'] }
 }

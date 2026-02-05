@@ -8,7 +8,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { buildProductDescription, htmlToPlainText } from '@/lib/product-description';
+
+// product-description module removed – inline fallbacks
+const buildProductDesc = (o: { description?: string | null; shortDescription?: string | null }) =>
+  (o.description || o.shortDescription || '').trim() || ''
+const htmlToPlain = (html: string | null | undefined) =>
+  (html || '').replace(/<[^>]*>/g, '').trim() || null
 
 export async function GET(
   request: NextRequest,
@@ -114,11 +119,11 @@ export async function GET(
       sku: product.sku,
       name: product.name,
       slug: product.slug,
-      description: buildProductDescription({
+      description: buildProductDesc({
         description: product.description,
         shortDescription: product.shortDescription,
       }),
-      shortDescription: product.shortDescription ? htmlToPlainText(product.shortDescription) : null,
+      shortDescription: product.shortDescription ? htmlToPlain(product.shortDescription) : null,
       price: product.price,
       specialPrice: product.specialPrice,
       hasActiveSpecialPrice: product.specialPrice && 
