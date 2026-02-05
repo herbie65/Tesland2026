@@ -1,24 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: tesland_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: tesland_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: tesland_production
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5432:5432"
-    networks:
-      - tladmin-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tesland_user -d tesland_production"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   tladmin:
     build: .
     container_name: tladmin
@@ -29,12 +9,8 @@ services:
       - "127.0.0.1:3000:3000"
     networks:
       - tladmin-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  postgres_data:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   tladmin-network:
