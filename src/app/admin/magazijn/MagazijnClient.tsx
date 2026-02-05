@@ -77,7 +77,7 @@ export default function MagazijnClient() {
 
   const allowedStatuses = useMemo(() => {
     if (!statuses.length) return null
-    const allowed = ['GOEDGEKEURD', 'GEPLAND'].filter((code) =>
+    const allowed = ['GOEDGEKEURD', 'GEPLAND', 'WACHTEND'].filter((code) =>
       statuses.some((item) => item.code === code)
     )
     return allowed
@@ -265,7 +265,10 @@ export default function MagazijnClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visibleOrders.map((order) => (
+              {visibleOrders.map((order) => {
+                const partsStatus = calculatePartsStatus(order.partsLines)
+                const missingCount = order.partsLines?.filter(pl => pl.status !== 'ONTVANGEN' && pl.status !== 'KLAAR').length ?? 0
+                return (
                 <tr key={order.id}>
                   <td className="py-3 pr-4">
                     {order.scheduledAt ? new Date(order.scheduledAt).toLocaleString() : '-'}
@@ -285,9 +288,9 @@ export default function MagazijnClient() {
                   </td>
                   <td className="py-3 pr-4">{order.title || '-'}</td>
                   <td className="py-3 pr-4">
-                    {statusLabel(order.partsSummaryStatus)} · {statusLabel(order.workOrderStatus)}
+                    {getPartsStatusLabel(partsStatus)} · {statusLabel(order.workOrderStatus)}
                   </td>
-                  <td className="py-3 pr-4">{order.missingItemsCount ?? 0}</td>
+                  <td className="py-3 pr-4">{missingCount}</td>
                   <td className="py-3 pr-4">
                     <Link
                       className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
@@ -297,7 +300,8 @@ export default function MagazijnClient() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+              )
+            })}
             </tbody>
           </table>
         </div>

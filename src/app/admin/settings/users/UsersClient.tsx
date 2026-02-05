@@ -291,6 +291,28 @@ export default function UsersClient() {
     }
   }
 
+  const testIcalUrl = async () => {
+    try {
+      const icalUrlValue = editIcalUrl?.trim()
+      if (!icalUrlValue) {
+        alert('Geen iCal URL ingevuld.')
+        return
+      }
+      const res = await apiFetch('/api/ical/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: icalUrlValue })
+      })
+      if (res.success) {
+        alert('✅ iCal feed is geldig en bereikbaar.')
+      } else {
+        alert(`❌ iCal feed ongeldig: ${res.error || 'Onbekende fout'}\n\n${res.details?.preview || ''}`)
+      }
+    } catch (e: any) {
+      alert(`❌ iCal test mislukt: ${e.message || String(e)}`)
+    }
+  }
+
   const planningRoleLabel = (item: User) => {
     if (!item.roleId) return "Geen rol"
     return roles.find((entry) => entry.id === item.roleId)?.name || item.roleId
@@ -668,6 +690,13 @@ export default function UsersClient() {
                             onChange={(event) => setEditIcalUrl(event.target.value)}
                             placeholder="https://calendar.google.com/calendar/ical/..."
                           />
+                          <button
+                            type="button"
+                            className="w-fit rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                            onClick={testIcalUrl}
+                          >
+                            Test iCal URL
+                          </button>
                           <p className="text-xs text-slate-500">
                             Plak hier de URL van een externe iCal kalender (Google Calendar, Outlook, etc.) om deze in de planning te tonen.
                           </p>

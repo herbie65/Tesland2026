@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { initiateCall, getCallStatus } from '@/lib/voip'
+import { getCallStatus, hangupCall, initiateCall } from '@/lib/voip'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
+import { requireAuth } from '@/lib/auth'
 
 /**
  * POST /api/voip/call
@@ -9,18 +9,11 @@ import { getServerSession } from 'next-auth'
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get current user session
-    const session = await getServerSession()
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    const authUser = await requireAuth(request)
 
     // Get user from database with VoIP extension
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { id: authUser.id },
       select: {
         id: true,
         voipExtension: true,
@@ -60,9 +53,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('VoIP call error:', error)
+    const status = typeof error?.status === 'number' ? error.status : 500
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to initiate call' },
-      { status: 500 }
+      { status }
     )
   }
 }
@@ -73,14 +67,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get current user session
-    const session = await getServerSession()
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    await requireAuth(request)
 
     const { searchParams } = new URL(request.url)
     const callId = searchParams.get('callId')
@@ -102,9 +89,40 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('VoIP status error:', error)
+    const status = typeof error?.status === 'number' ? error.status : 500
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to get call status' },
-      { status: 500 }
+      { status }
+    )
+  }
+}
+
+/**
+ * DELETE /api/voip/call?callId=xxx
+ * Attempt to hang up / cancel a call.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    await requireAuth(request)
+
+    const { searchParams } = new URL(request.url)
+    const callId = searchParams.get('callId')
+    if (!callId) {
+      return NextResponse.json(
+        { success: false, error: 'Call ID is required' },
+        { status: 400 }
+      )
+    }
+
+    await hangupCall(callId)
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error('VoIP hangup error:', error)
+    const status = typeof error?.status === 'number' ? error.status : 500
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to hang up call' },
+      { status }
     )
   }
 }

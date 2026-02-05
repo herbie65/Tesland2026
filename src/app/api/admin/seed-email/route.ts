@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     // Check if email settings already exist
     const existing = await prisma.setting.findUnique({
-      where: { key: 'email' }
+      where: { group: 'email' }
     })
 
     if (existing && !force) {
@@ -76,13 +76,18 @@ export async function POST(request: NextRequest) {
     // Create email templates
     for (const template of DEFAULT_EMAIL_TEMPLATES) {
       const existingTemplate = await prisma.emailTemplate.findUnique({
-        where: { key: template.key }
+        where: { id: template.key }
       })
 
       if (!existingTemplate || force) {
         await prisma.emailTemplate.upsert({
-          where: { key: template.key },
-          create: template,
+          where: { id: template.key },
+          create: {
+            id: template.key,
+            name: template.key,
+            subject: template.subject,
+            body: template.body
+          },
           update: {
             subject: template.subject,
             body: template.body

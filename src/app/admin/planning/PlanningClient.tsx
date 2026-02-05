@@ -149,6 +149,20 @@ type PlanningType = {
   color: string
 }
 
+/** Fallbackkleur als planningstype geen kleur heeft (uit instellingen); geen hardcoded type-specifieke kleuren. */
+const FALLBACK_PLANNING_TYPE_COLOR = '#f1f5f9'
+/** Fallback voor timeline-blok als geen type- of assigneekleur (slate-400). */
+const FALLBACK_BLOCK_COLOR = '#94a3b8'
+
+function getPlanningTypeColorForItem(
+  item: { planningTypeId?: string | null; planningTypeName?: string | null; planningTypeColor?: string | null },
+  planningTypes: PlanningType[]
+): string {
+  const byId = item.planningTypeId ? planningTypes.find((t) => t.id === item.planningTypeId) : null
+  const byName = item.planningTypeName ? planningTypes.find((t) => t.name === item.planningTypeName) : null
+  return (byId?.color ?? byName?.color ?? item.planningTypeColor) || FALLBACK_PLANNING_TYPE_COLOR
+}
+
 type StatusEntry = {
   code: string
   label: string
@@ -2209,7 +2223,7 @@ useEffect(() => {
     return (
       <div className="flex flex-col gap-2 p-2">
         {dayItems.map((item) => {
-          const background = item.planningTypeColor || '#f8fafc'
+          const background = getPlanningTypeColorForItem(item, planningTypes)
           
           // Build a better title with fallback
           const displayTitle = item.title || item.planningTypeName || 'Planning'
@@ -2508,7 +2522,7 @@ useEffect(() => {
                     const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
                     const hoverId = `${item.id}-${dayKey}-${segmentIndex}-assigned`
                     const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
-                    const backgroundColor = item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                    const backgroundColor = getPlanningTypeColorForItem(item, planningTypes) || item.assigneeColor || FALLBACK_BLOCK_COLOR
                     const textColor = getReadableTextColor(backgroundColor)
                     const showCustomer = widthPercent >= 18
                     const showPlate = widthPercent >= 10
@@ -2739,7 +2753,7 @@ useEffect(() => {
                     const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
                     const hoverId = `${item.id}-${dayKey}-${segmentIndex}-unassigned`
                     const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
-                    const backgroundColor = item.planningTypeColor || item.assigneeColor || '#94a3b8'
+                    const backgroundColor = getPlanningTypeColorForItem(item, planningTypes) || item.assigneeColor || FALLBACK_BLOCK_COLOR
                     const textColor = getReadableTextColor(backgroundColor)
                     const showCustomer = widthPercent >= 18
                     const showPlate = widthPercent >= 10
@@ -3532,7 +3546,7 @@ useEffect(() => {
                                         <div
                                           key={item.id}
                                           className="rounded px-1.5 py-1 text-[0.65rem] cursor-pointer hover:opacity-80"
-                                          style={{ backgroundColor: item.planningTypeColor || '#e2e8f0' }}
+                                          style={{ backgroundColor: getPlanningTypeColorForItem(item, planningTypes) }}
                                           onClick={() => handlePlanningClick(item)}
                                         >
                                           <p className="font-semibold truncate">{item.title || item.planningTypeName}</p>

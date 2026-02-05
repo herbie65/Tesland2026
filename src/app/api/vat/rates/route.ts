@@ -29,7 +29,15 @@ export async function GET() {
       defaultRate: settings.defaultRate,
       settings: {
         viesCheckEnabled: settings.viesCheckEnabled,
-        autoReverseB2B: settings.autoReverseB2B
+        autoReverseB2B: settings.autoReverseB2B,
+        sellerCountryCode: settings.sellerCountryCode || null,
+        euCountryCodes: Array.isArray(settings.euCountryCodes) ? settings.euCountryCodes : [],
+        rateCodes: {
+          high: settings.rates.high.code,
+          low: settings.rates.low.code,
+          zero: settings.rates.zero.code,
+          reversed: settings.rates.reversed.code
+        }
       }
     })
 

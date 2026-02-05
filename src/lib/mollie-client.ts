@@ -1,4 +1,4 @@
-import createMollieClient, { PaymentMethod as MolliePaymentMethod, Payment } from '@mollie/api-client'
+import createMollieClientSDK, { PaymentMethod as MolliePaymentMethod, Payment } from '@mollie/api-client'
 import { getMollieSettings } from './settings'
 
 export type MollieConfig = {
@@ -38,12 +38,10 @@ export type MolliePaymentResponse = {
 }
 
 export class MollieClient {
-  private client: ReturnType<typeof createMollieClient>
-  private testMode: boolean
+  private client: ReturnType<typeof createMollieClientSDK>
 
   constructor(config: MollieConfig) {
-    this.client = createMollieClient({ apiKey: config.apiKey })
-    this.testMode = config.testMode
+    this.client = createMollieClientSDK({ apiKey: config.apiKey })
   }
 
   /**
@@ -52,8 +50,7 @@ export class MollieClient {
   async createPayment(request: MolliePaymentRequest): Promise<MolliePaymentResponse> {
     try {
       const payment = await this.client.payments.create({
-        ...request,
-        testmode: this.testMode
+        ...request
       })
 
       return {
@@ -67,7 +64,9 @@ export class MollieClient {
         canceledAt: payment.canceledAt,
         expiredAt: payment.expiredAt,
         failedAt: payment.failedAt,
-        metadata: payment.metadata,
+        metadata: (payment.metadata && typeof payment.metadata === 'object'
+          ? (payment.metadata as Record<string, any>)
+          : undefined),
         checkoutUrl: payment.getCheckoutUrl() || undefined,
         webhookUrl: payment.webhookUrl || undefined
       }
@@ -95,7 +94,9 @@ export class MollieClient {
         canceledAt: payment.canceledAt,
         expiredAt: payment.expiredAt,
         failedAt: payment.failedAt,
-        metadata: payment.metadata,
+        metadata: (payment.metadata && typeof payment.metadata === 'object'
+          ? (payment.metadata as Record<string, any>)
+          : undefined),
         checkoutUrl: payment.getCheckoutUrl() || undefined,
         webhookUrl: payment.webhookUrl || undefined
       }

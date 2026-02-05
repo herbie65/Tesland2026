@@ -150,7 +150,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Failed to fetch calendar' }, { status: 502 })
     }
     
+    const contentType = response.headers.get('content-type') || ''
     const icalText = await response.text()
+
+    // Some providers return HTML (login pages / errors) with 200 OK.
+    // Detect and return a helpful error so the UI can surface it.
+    if (!icalText.includes('BEGIN:VCALENDAR')) {
+      const preview = icalText.slice(0, 200)
+      console.error('Invalid iCal feed content', {
+        userId,
+        contentType,
+        preview,
+      })
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid iCal feed (not a VCALENDAR). Check the iCal URL.',
+          details: { contentType, preview },
+        },
+        { status: 502 }
+      )
+    }
     let events = parseICalText(icalText)
     
     // Filter by date range if provided

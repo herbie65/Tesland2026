@@ -20,7 +20,7 @@ const SENSITIVE_FIELDS = new Set([
 ])
 
 // Field patterns to redact (regex)
-const REDACT_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+const REDACT_PATTERNS: Array<{ pattern: RegExp; replacement: string | ((m: string) => string) }> = [
   { pattern: /^06\d{8}$/, replacement: '06****' }, // Dutch mobile
   { pattern: /@.+\..+$/, replacement: (m: string) => m.charAt(0) + '***@' + m.split('@')[1] } // Email
 ]
@@ -96,8 +96,8 @@ export async function logAudit(options: AuditLogOptions): Promise<void> {
         userName: options.userName || null,
         userEmail: options.userEmail || null,
         userRole: options.userRole || null,
-        changes: safeChanges || null,
-        metadata: options.metadata || null,
+        changes: safeChanges || undefined,
+        metadata: options.metadata || undefined,
         description: options.description || null,
         ipAddress,
         userAgent

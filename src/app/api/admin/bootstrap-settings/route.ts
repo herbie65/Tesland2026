@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,10 +12,11 @@ export async function POST(request: NextRequest) {
 
     // Upsert each setting key from the payload
     for (const [key, value] of Object.entries(body)) {
+      const jsonValue = value as Prisma.InputJsonValue
       await prisma.setting.upsert({
         where: { group: key },
-        create: { group: key, data: value },
-        update: { data: value }
+        create: { group: key, data: jsonValue },
+        update: { data: jsonValue }
       })
       updated.push(key)
     }

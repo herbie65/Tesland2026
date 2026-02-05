@@ -5,9 +5,12 @@
  * Uses Magento customer ID as customerNumber
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv'
 import { PrismaClient } from '@prisma/client';
 import { createMagentoClient } from '../lib/magento-client.js';
+
+dotenv.config({ path: '.env.local' })
+dotenv.config()
 
 const prisma = new PrismaClient();
 const magentoClient = createMagentoClient();

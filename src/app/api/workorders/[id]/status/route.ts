@@ -11,6 +11,7 @@ import {
 import { resolveWorkOrderStatusTransition, resolveExecutionStatus } from '@/lib/workorders'
 import { createNotification } from '@/lib/notifications'
 import { logAudit } from '@/lib/audit'
+import { workOrderEvents } from '@/lib/workorder-events'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -40,7 +41,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'status is required' }, { status: 400 })
     }
 
-    if (user.role === 'MONTEUR' && !['IN_UITVOERING', 'GEREED'].includes(nextStatus)) {
+    if (user.role === 'MONTEUR' && !['IN_UITVOERING', 'GEREED', 'WACHTEND'].includes(nextStatus)) {
       return NextResponse.json({ success: false, error: 'Status not allowed for monteur' }, { status: 403 })
     }
 
@@ -143,38 +144,44 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     })
 
-    await logAudit(
-      {
-        action: 'WORKORDER_STATUS_CHANGED',
-        actorUid: user.id,
-        actorEmail: user.email,
-        targetUid: id,
-        beforeRole: currentStatus,
-        afterRole: transition.finalStatus,
-        reason: overrideReason || null,
-        context: {
-          requestedStatus: nextStatus,
-          redirected: transition.finalStatus !== nextStatus,
-          overrideUsed: Boolean(overrideReason)
+    await logAudit({
+      entityType: 'WorkOrder',
+      entityId: id,
+      action: 'WORKORDER_STATUS_CHANGED',
+      userId: user.id,
+      userEmail: user.email,
+      changes: {
+        workOrderStatus: {
+          from: currentStatus,
+          to: transition.finalStatus
         }
       },
+      metadata: {
+        requestedStatus: nextStatus,
+        redirected: transition.finalStatus !== nextStatus,
+        overrideUsed: Boolean(overrideReason),
+        overrideReason: overrideReason || null
+      },
       request
-    )
+    })
     if (overrideReason) {
-      await logAudit(
-        {
-          action: 'WORKORDER_STATUS_OVERRIDE',
-          actorUid: user.id,
-          actorEmail: user.email,
-          targetUid: id,
-          beforeRole: currentStatus,
-          afterRole: transition.finalStatus,
+      await logAudit({
+        entityType: 'WorkOrder',
+        entityId: id,
+        action: 'WORKORDER_STATUS_OVERRIDE',
+        userId: user.id,
+        userEmail: user.email,
+        metadata: {
+          beforeStatus: currentStatus,
+          afterStatus: transition.finalStatus,
           reason: overrideReason,
-          context: { requestedStatus: nextStatus }
+          requestedStatus: nextStatus
         },
         request
-      )
+      })
     }
+
+    workOrderEvents.notifyStatusChange(id, transition.finalStatus)
 
     return NextResponse.json({
       success: true,

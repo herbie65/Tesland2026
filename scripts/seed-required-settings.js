@@ -18,9 +18,10 @@ const run = async () => {
           { code: 'NIEUW', label: 'Nieuw', sortOrder: 1 },
           { code: 'GOEDGEKEURD', label: 'Goedgekeurd', sortOrder: 2 },
           { code: 'GEPLAND', label: 'Gepland', sortOrder: 3 },
-          { code: 'IN_UITVOERING', label: 'In uitvoering', sortOrder: 4 },
-          { code: 'GEREED', label: 'Gereed', sortOrder: 5 },
-          { code: 'GEANNULEERD', label: 'Geannuleerd', sortOrder: 6 }
+          { code: 'WACHTEND', label: 'Wachtend', sortOrder: 4 },
+          { code: 'IN_UITVOERING', label: 'In uitvoering', sortOrder: 5 },
+          { code: 'GEREED', label: 'Gereed', sortOrder: 6 },
+          { code: 'GEANNULEERD', label: 'Geannuleerd', sortOrder: 7 }
         ],
         partsLine: [
           { code: 'BESTELD', label: 'Besteld', sortOrder: 1 },

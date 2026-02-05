@@ -386,6 +386,39 @@ export const getWorkOrderDefaults = async (): Promise<WorkOrderDefaults> => {
   }
 }
 
+export type WorkshopHourlyRate = {
+  name: string
+  ratePerHour: number
+}
+
+/** Alle werkplaatstarieven (naam + €/uur) uit database (Instellingen → Planning). */
+export const getWorkshopHourlyRates = async (): Promise<WorkshopHourlyRate[]> => {
+  const planning = await readSettingsDocOptional('planning')
+  const list = Array.isArray(planning?.hourlyRates) ? planning.hourlyRates : []
+  return list
+    .filter((r: unknown) => r && typeof r === 'object' && 'name' in r && 'ratePerHour' in r)
+    .map((r: { name?: unknown; ratePerHour?: unknown }) => ({
+      name: String(r.name ?? ''),
+      ratePerHour: Number(r.ratePerHour) >= 0 ? Number(r.ratePerHour) : 0
+    }))
+}
+
+/** Eerste uurtarief werkplaats (€/uur) uit database; voor backward compatibility. */
+export const getDefaultHourlyRate = async (): Promise<number | null> => {
+  const planning = await readSettingsDocOptional('planning')
+  const list = Array.isArray(planning?.hourlyRates) ? planning.hourlyRates : []
+  if (list.length > 0 && list[0] && typeof list[0] === 'object' && 'ratePerHour' in list[0]) {
+    const n = Number((list[0] as { ratePerHour: unknown }).ratePerHour)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  const legacy = planning?.defaultHourlyRate
+  if (legacy != null) {
+    const n = Number(legacy)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return null
+}
+
 export const getVoipSettings = async (): Promise<VoipSettings | null> => {
   const data = await readSettingsDocOptional('voip')
   if (!data) return null

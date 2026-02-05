@@ -15,9 +15,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Find user by email
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const normalizedEmail = String(email).toLowerCase().trim()
+
+    // Find user by email (case-insensitive to support legacy mixed-case emails)
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       include: { roleRef: true },
     })
 
@@ -55,6 +57,13 @@ export async function POST(request: NextRequest) {
         where: { id: user.id },
         data: { password: hashedPassword },
       })
+    }
+
+    // Normalize stored email to lowercase (best-effort; ignore unique conflicts)
+    if (user.email !== normalizedEmail) {
+      await prisma.user
+        .update({ where: { id: user.id }, data: { email: normalizedEmail } })
+        .catch(() => null)
     }
 
     // Check if account is active

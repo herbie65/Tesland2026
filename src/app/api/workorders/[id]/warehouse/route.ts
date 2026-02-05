@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
+import { workOrderEvents } from '@/lib/workorder-events'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -70,18 +71,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     })
 
-    await logAudit(
-      {
-        action: 'WAREHOUSE_STATUS_CHANGED',
-        actorUid: user.id,
-        actorEmail: user.email,
-        targetUid: id,
-        beforeRole: current.warehouseStatus || null,
-        afterRole: nextStatus,
-        context: { etaDate: etaDate || null, location: location || null }
+    await logAudit({
+      entityType: 'WorkOrder',
+      entityId: id,
+      action: 'WAREHOUSE_STATUS_CHANGED',
+      userId: user.id,
+      userEmail: user.email,
+      changes: {
+        warehouseStatus: {
+          from: current.warehouseStatus || null,
+          to: nextStatus
+        }
       },
+      metadata: { etaDate: etaDate || null, location: location || null },
       request
-    )
+    })
+
+    workOrderEvents.notifyChange(id, 'warehouse')
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

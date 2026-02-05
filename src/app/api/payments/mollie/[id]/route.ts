@@ -112,12 +112,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     })
 
     // Update invoice if paid
-    if (molliePayment.status === 'paid' && payment.invoice) {
+    if (molliePayment.status === 'paid' && payment.invoiceId && payment.invoice) {
       await prisma.invoice.update({
         where: { id: payment.invoiceId },
         data: {
           paymentStatus: 'BETAALD',
-          paidAt: new Date()
+          paidDate: new Date()
         }
       })
     }

@@ -1,12 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { copyByLocale, type Locale } from './maintenanceCopy'
 
 export default function MaintenanceContent({ locale }: { locale: Locale }) {
   const copy = copyByLocale[locale]
   const localePrefix = `/${locale}`
   const [ppfOpen, setPpfOpen] = useState(false)
+
+  useEffect(() => {
+    const maybeOpenPpf = () => {
+      if (window.location.hash === '#ppf') {
+        setPpfOpen(true)
+      }
+    }
+    maybeOpenPpf()
+    window.addEventListener('hashchange', maybeOpenPpf)
+    return () => window.removeEventListener('hashchange', maybeOpenPpf)
+  }, [])
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-8 px-6 py-12">
@@ -28,7 +39,7 @@ export default function MaintenanceContent({ locale }: { locale: Locale }) {
         />
       </section>
 
-      <section className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
+      <section id="apk" className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
         <div className="flex flex-wrap items-start gap-8">
           <img
             src="/media/wysiwyg/apk-logo.jpg"
@@ -65,7 +76,7 @@ export default function MaintenanceContent({ locale }: { locale: Locale }) {
         </ul>
       </section>
 
-      <section className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
+      <section id="checks" className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
         <h2 className="mb-4 text-2xl font-semibold text-[#8bc342]">{copy.checksTitle}</h2>
         <div className="flex flex-wrap items-start gap-8">
           <img
@@ -85,7 +96,7 @@ export default function MaintenanceContent({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-[#232323] p-8 text-white">
+      <section id="ppf" className="rounded-2xl bg-[#232323] p-8 text-white">
         <h2 className="mb-4 text-2xl font-semibold text-[#8bc342]">{copy.xpelTitle}</h2>
         <div className="flex flex-wrap items-start gap-8">
           <img
@@ -112,7 +123,7 @@ export default function MaintenanceContent({ locale }: { locale: Locale }) {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
+      <section id="tire-hotel" className="rounded-2xl bg-[#2d2d2d] p-8 text-white">
         <h2 className="mb-4 text-2xl font-semibold text-[#8bc342]">{copy.tireHotelTitle}</h2>
         <div className="flex flex-wrap items-start gap-8">
           <img

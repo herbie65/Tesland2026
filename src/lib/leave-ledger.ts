@@ -34,11 +34,17 @@ const getLeaveSettings = async (): Promise<LeaveSettings> => {
 
 const getPlanningBreaks = async (): Promise<Array<{ start: string; end: string }>> => {
   const setting = await prisma.setting.findUnique({ where: { group: 'planning' } })
-  const breaks = Array.isArray(setting?.data?.breaks) ? setting!.data!.breaks : []
-  return breaks.map((entry: any) => ({
-    start: String(entry?.start || ''),
-    end: String(entry?.end || '')
-  }))
+  const data: unknown = setting?.data
+  const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+  const breaksRaw = record.breaks
+  const breaks = Array.isArray(breaksRaw) ? breaksRaw : []
+  return breaks.map((entry: unknown) => {
+    const e = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {}
+    return {
+      start: String(e.start || ''),
+      end: String(e.end || '')
+    }
+  })
 }
 
 const calculateBreakOverlapMinutes = (
@@ -112,6 +118,9 @@ export const calculateRequestedMinutes = async (input: {
   startTime?: string | null
   endTime?: string | null
   hoursPerDay: number
+  // Optional fields used by legacy callers (ignored here)
+  workingDays?: string[]
+  userId?: string
 }) => {
   const settings = await getLeaveSettings()
   const breaks = await getPlanningBreaks()

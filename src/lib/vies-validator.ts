@@ -169,7 +169,7 @@ export async function checkViesVatNumber(vatNumber: string): Promise<ViesCheckRe
       }
     }
 
-    const isValid = validMatch && validMatch[1] === 'true'
+    const isValid = validMatch?.[1] === 'true'
 
     return {
       valid: isValid,

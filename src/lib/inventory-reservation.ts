@@ -67,11 +67,12 @@ export async function reserveInventory(
     await prisma.stockMove.create({
       data: {
         productId,
-        sku: product.sku,
-        quantity: new Decimal(quantity),
-        type: 'RESERVED',
-        reference: `WO-${workOrderId}`,
-        notes: `Gereserveerd voor werkorder (PartsLine: ${partsLineId})`
+        quantity,
+        moveType: 'adjustment',
+        workOrderId,
+        partsLineId,
+        reason: 'RESERVED',
+        notes: `Gereserveerd voor werkorder WO-${workOrderId} (PartsLine: ${partsLineId})`
       }
     })
 
@@ -119,11 +120,12 @@ export async function releaseInventory(
     await prisma.stockMove.create({
       data: {
         productId,
-        sku: inventory.sku,
-        quantity: new Decimal(-quantity), // Negative = release
-        type: 'RELEASED',
-        reference: `WO-${workOrderId}`,
-        notes: `${reason} (PartsLine: ${partsLineId})`
+        quantity: -quantity, // Negative = release
+        moveType: 'adjustment',
+        workOrderId,
+        partsLineId,
+        reason: 'RELEASED',
+        notes: `${reason} WO-${workOrderId} (PartsLine: ${partsLineId})`
       }
     })
 
@@ -173,10 +175,11 @@ export async function consumeReservedInventory(
     await prisma.stockMove.create({
       data: {
         productId,
-        sku: inventory.sku,
-        quantity: new Decimal(-quantity), // Negative = out
-        type: 'OUT',
-        reference: `INV-${invoiceId}`,
+        quantity: -quantity, // Negative = out
+        moveType: 'out',
+        workOrderId,
+        partsLineId,
+        reason: `INV-${invoiceId}`,
         notes: `Gefactureerd via werkorder ${workOrderId} (PartsLine: ${partsLineId})`
       }
     })

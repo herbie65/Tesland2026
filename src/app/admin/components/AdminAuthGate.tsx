@@ -12,7 +12,7 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
     const token = localStorage.getItem('token')
     
     if (!token) {
-      router.push('/login')
+      router.replace('/login')
       return
     }
 
@@ -25,17 +25,31 @@ export default function AdminAuthGate({ children }: { children: React.ReactNode 
     .then(res => res.json())
     .then(data => {
       if (data.success) {
-        setIsAuthenticated(true)
+        // Allow all authenticated staff accounts; only block webshop customer accounts.
+        const isSystemAdmin = data?.user?.isSystemAdmin === true
+        const roleRaw = (data?.user?.roleName || data?.user?.role || '') as string
+        const role = String(roleRaw).toLowerCase().trim()
+        const isCustomer = role === 'customer' || role === 'klant' || Boolean(data?.user?.customerId)
+        const isAllowed = isSystemAdmin || !isCustomer
+
+        if (isAllowed) {
+          setIsAuthenticated(true)
+          return
+        }
+
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        router.replace('/login')
       } else {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        router.push('/login')
+        router.replace('/login')
       }
     })
     .catch(() => {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      router.push('/login')
+      router.replace('/login')
     })
     .finally(() => {
       setIsLoading(false)

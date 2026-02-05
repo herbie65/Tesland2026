@@ -7,11 +7,14 @@
  * Usage: node --loader ts-node/esm scripts/import-magento-full.ts
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv'
 import { PrismaClient } from '@prisma/client';
 import { createMagentoClient } from '../lib/magento-client.js';
 import fs from 'fs/promises';
 import path from 'path';
+
+dotenv.config({ path: '.env.local' })
+dotenv.config()
 
 const prisma = new PrismaClient();
 const magentoClient = createMagentoClient();
@@ -248,7 +251,8 @@ class MagentoFullImporter {
 
           // Get slug
           const urlKey = this.getCustomAttribute(fullProduct, 'url_key');
-          const slug = urlKey || this.generateSlug(fullProduct.name);
+          const slugBase = (urlKey || this.generateSlug(fullProduct.name) || this.generateSlug(fullProduct.sku)) as string
+          const uniqueSlugFallback = `${slugBase}-${fullProduct.id}`
 
           // Get visibility text
           const visibilityMap: Record<number, string> = {
@@ -259,15 +263,14 @@ class MagentoFullImporter {
           };
           const visibility = visibilityMap[fullProduct.visibility] || 'catalog_search';
 
-          // Insert/update product
-          const dbProduct = await prisma.productCatalog.upsert({
+          const makeUpsertArgs = (slugValue: string) => ({
             where: { sku: fullProduct.sku },
             create: {
               magentoId: fullProduct.id,
               sku: fullProduct.sku,
               typeId: fullProduct.type_id,
               name: fullProduct.name,
-              slug,
+              slug: slugValue,
               description: this.getCustomAttribute(fullProduct, 'description'),
               shortDescription: this.getCustomAttribute(fullProduct, 'short_description'),
               price: fullProduct.price ? parseFloat(fullProduct.price.toString()) : null,
@@ -281,32 +284,29 @@ class MagentoFullImporter {
               metaTitle: this.getCustomAttribute(fullProduct, 'meta_title'),
               metaDescription: this.getCustomAttribute(fullProduct, 'meta_description'),
               metaKeywords: this.getCustomAttribute(fullProduct, 'meta_keyword'),
-              // Warehouse location fields
-              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
-              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
-              // Supplier fields
-              supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
-              // Stock fields
-              stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
-              chooseYear: null, // Not available in Magento
             },
             update: {
               name: fullProduct.name,
-              slug,
+              slug: slugValue,
               price: fullProduct.price ? parseFloat(fullProduct.price.toString()) : null,
               costPrice: this.getCustomAttribute(fullProduct, 'cost'),
               specialPrice: this.getCustomAttribute(fullProduct, 'special_price'),
               status: fullProduct.status === 1 ? 'enabled' : 'disabled',
-              // Warehouse location fields
-              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
-              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
-              // Supplier fields
-              supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
-              // Stock fields
-              stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
-              chooseYear: null, // Not available in Magento
             },
-          });
+          })
+
+          // Insert/update product (retry once on slug conflict)
+          let dbProduct: any
+          try {
+            dbProduct = await prisma.productCatalog.upsert(makeUpsertArgs(slugBase))
+          } catch (e: any) {
+            const isSlugConflict =
+              e?.code === 'P2002' &&
+              Array.isArray(e?.meta?.target) &&
+              e.meta.target.includes('slug')
+            if (!isSlugConflict) throw e
+            dbProduct = await prisma.productCatalog.upsert(makeUpsertArgs(uniqueSlugFallback))
+          }
 
           // Link categories
           if (fullProduct.extension_attributes?.category_links) {
@@ -468,54 +468,61 @@ class MagentoFullImporter {
 
         if (fullProduct.options && fullProduct.options.length > 0) {
           for (const option of fullProduct.options) {
-            const dbOption = await prisma.productCustomOption.upsert({
-              where: {
-                productId_magentoOptionId: {
-                  productId: product.id,
-                  magentoOptionId: option.option_id,
-                },
-              },
-              create: {
-                productId: product.id,
-                magentoOptionId: option.option_id,
-                title: option.title,
-                type: option.type,
-                isRequire: option.is_require,
-                sortOrder: option.sort_order || 0,
-                price: option.price ? parseFloat(option.price.toString()) : null,
-                priceType: option.price_type || 'fixed',
-                sku: option.sku,
-              },
-              update: {
-                title: option.title,
-                price: option.price ? parseFloat(option.price.toString()) : null,
-              },
-            });
+            // NOTE: Prisma schema does not have a compound unique on (productId, magentoOptionId),
+            // so we can't use upsert with productId_magentoOptionId.
+            const existingOption = await prisma.productCustomOption.findFirst({
+              where: { productId: product.id, magentoOptionId: option.option_id }
+            })
+
+            const optionData = {
+              productId: product.id,
+              magentoOptionId: option.option_id,
+              title: option.title,
+              type: option.type,
+              isRequire: option.is_require,
+              sortOrder: option.sort_order || 0,
+              price: option.price ? parseFloat(option.price.toString()) : null,
+              priceType: option.price_type || 'fixed',
+              sku: option.sku,
+            }
+
+            const dbOption = existingOption
+              ? await prisma.productCustomOption.update({
+                  where: { id: existingOption.id },
+                  data: optionData,
+                })
+              : await prisma.productCustomOption.create({
+                  data: optionData,
+                })
 
             // Import option values
             if (option.values && option.values.length > 0) {
               for (const value of option.values) {
-                await prisma.productCustomOptionValue.upsert({
-                  where: {
-                    optionId_magentoValueId: {
-                      optionId: dbOption.id,
-                      magentoValueId: value.option_type_id,
-                    },
-                  },
-                  create: {
-                    optionId: dbOption.id,
-                    magentoValueId: value.option_type_id,
-                    title: value.title,
-                    price: value.price ? parseFloat(value.price.toString()) : null,
-                    priceType: value.price_type || 'fixed',
-                    sku: value.sku,
-                    sortOrder: value.sort_order || 0,
-                  },
-                  update: {
-                    title: value.title,
-                    price: value.price ? parseFloat(value.price.toString()) : null,
-                  },
-                });
+                // NOTE: Prisma schema does not have a compound unique on (optionId, magentoValueId)
+                const existingValue = await prisma.productCustomOptionValue.findFirst({
+                  where: { optionId: dbOption.id, magentoValueId: value.option_type_id }
+                })
+
+                const valueData = {
+                  optionId: dbOption.id,
+                  magentoValueId: value.option_type_id,
+                  title: value.title,
+                  price: value.price ? parseFloat(value.price.toString()) : null,
+                  priceType: value.price_type || 'fixed',
+                  sku: value.sku,
+                  sortOrder: value.sort_order || 0,
+                }
+
+                if (existingValue) {
+                  await prisma.productCustomOptionValue.update({
+                    where: { id: existingValue.id },
+                    data: valueData,
+                  })
+                } else {
+                  await prisma.productCustomOptionValue.create({
+                    data: valueData,
+                  })
+                }
               }
             }
 
@@ -557,13 +564,23 @@ class MagentoFullImporter {
             // Download image
             let localPath: string | null = null;
             try {
-              const imageBuffer = await magentoClient.downloadImage(imageUrl);
               const filename = path.basename(media.file);
               const productDir = path.join(IMAGES_DIR, product.sku.replace(/[^a-zA-Z0-9]/g, '_'));
               await fs.mkdir(productDir, { recursive: true });
 
               const localFilePath = path.join(productDir, filename);
-              await fs.writeFile(localFilePath, imageBuffer);
+              // Skip download if file already exists (speed up re-runs)
+              let exists = false
+              try {
+                await fs.stat(localFilePath)
+                exists = true
+              } catch {
+                exists = false
+              }
+              if (!exists) {
+                const imageBuffer = await magentoClient.downloadImage(imageUrl);
+                await fs.writeFile(localFilePath, imageBuffer);
+              }
 
               // Store relative path from public directory
               localPath = `/media/products/${product.sku.replace(/[^a-zA-Z0-9]/g, '_')}/${filename}`;
@@ -574,31 +591,33 @@ class MagentoFullImporter {
             }
 
             // Save to database
-            await prisma.productImage.upsert({
-              where: {
-                productId_magentoImageId: {
-                  productId: product.id,
-                  magentoImageId: media.id,
-                },
-              },
-              create: {
-                productId: product.id,
-                magentoImageId: media.id,
-                filePath: media.file,
-                url: imageUrl,
-                localPath,
-                label: media.label || null,
-                position: media.position || 0,
-                isMain,
-                isThumbnail,
-              },
-              update: {
-                localPath,
-                position: media.position || 0,
-                isMain,
-                isThumbnail,
-              },
-            });
+            // NOTE: Prisma schema does not have compound unique (productId, magentoImageId)
+            const existingImage = await prisma.productImage.findFirst({
+              where: { productId: product.id, magentoImageId: media.id }
+            })
+
+            const imageData = {
+              productId: product.id,
+              magentoImageId: media.id,
+              filePath: media.file,
+              url: imageUrl,
+              localPath,
+              label: media.label || null,
+              position: media.position || 0,
+              isMain,
+              isThumbnail,
+            }
+
+            if (existingImage) {
+              await prisma.productImage.update({
+                where: { id: existingImage.id },
+                data: imageData,
+              })
+            } else {
+              await prisma.productImage.create({
+                data: imageData,
+              })
+            }
           }
         }
 
@@ -616,13 +635,41 @@ class MagentoFullImporter {
    */
   private async importInventory() {
     const products = await prisma.productCatalog.findMany({
-      select: { id: true, sku: true, magentoId: true },
+      select: { id: true, sku: true, magentoId: true, typeId: true },
     });
 
     for (const product of products) {
       if (!product.magentoId) continue;
 
       try {
+        // Services / non-stock products are often "virtual" in Magento.
+        // Those should never be treated as "out of stock" in our shop.
+        if (product.typeId === 'virtual') {
+          await prisma.productInventory.upsert({
+            where: { productId: product.id },
+            create: {
+              productId: product.id,
+              sku: product.sku,
+              qty: 0,
+              isInStock: true,
+              minQty: 0,
+              notifyStockQty: null,
+              manageStock: false,
+              backorders: 'no',
+            },
+            update: {
+              qty: 0,
+              isInStock: true,
+              minQty: 0,
+              notifyStockQty: null,
+              manageStock: false,
+              backorders: 'no',
+            },
+          })
+          this.stats.inventory++
+          continue
+        }
+
         const stockItem = await magentoClient.getStockItem(product.magentoId);
 
         // Map backorders enum
@@ -635,24 +682,39 @@ class MagentoFullImporter {
           ? backordersMap[stockItem.backorders] || 'no'
           : 'no';
 
+        // Non-stock products can also be marked with manage_stock = false/0.
+        const manageStockRaw = (stockItem as any).manage_stock
+        const manageStock =
+          manageStockRaw === undefined || manageStockRaw === null
+            ? true
+            : typeof manageStockRaw === 'number'
+              ? manageStockRaw !== 0
+              : Boolean(manageStockRaw)
+        const qty = Number(stockItem.qty || 0)
+        const rawInStock =
+          (typeof stockItem.is_in_stock === 'number'
+            ? stockItem.is_in_stock === 1
+            : Boolean(stockItem.is_in_stock)) || qty > 0
+        const isInStock = manageStock ? rawInStock : true
+
         await prisma.productInventory.upsert({
           where: { productId: product.id },
           create: {
             productId: product.id,
             sku: product.sku,
-            qty: stockItem.qty || 0,
-            isInStock: stockItem.is_in_stock,
+            qty,
+            isInStock,
             minQty: stockItem.min_qty || 0,
             notifyStockQty: stockItem.notify_stock_qty || null,
-            manageStock: stockItem.manage_stock !== false,
+            manageStock,
             backorders,
           },
           update: {
-            qty: stockItem.qty || 0,
-            isInStock: stockItem.is_in_stock,
+            qty,
+            isInStock,
             minQty: stockItem.min_qty || 0,
             notifyStockQty: stockItem.notify_stock_qty || null,
-            manageStock: stockItem.manage_stock !== false,
+            manageStock,
             backorders,
           },
         });

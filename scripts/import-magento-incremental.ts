@@ -7,11 +7,14 @@
  * Usage: node --loader ts-node/esm scripts/import-magento-incremental.ts
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv'
 import { PrismaClient } from '@prisma/client';
 import { createMagentoClient } from '../lib/magento-client.js';
 import fs from 'fs/promises';
 import path from 'path';
+
+dotenv.config({ path: '.env.local' })
+dotenv.config()
 
 const prisma = new PrismaClient();
 const magentoClient = createMagentoClient();
@@ -128,7 +131,8 @@ class MagentoIncrementalSync {
    */
   private async updateProduct(productId: string, fullProduct: any) {
     const urlKey = this.getCustomAttribute(fullProduct, 'url_key');
-    const slug = urlKey || this.generateSlug(fullProduct.name);
+    const slugBase = (urlKey || this.generateSlug(fullProduct.name) || this.generateSlug(fullProduct.sku)) as string
+    const uniqueSlugFallback = `${slugBase}-${fullProduct.id}`
 
     const visibilityMap: Record<number, string> = {
       1: 'not_visible',
@@ -138,11 +142,11 @@ class MagentoIncrementalSync {
     };
     const visibility = visibilityMap[fullProduct.visibility] || 'catalog_search';
 
-    await prisma.productCatalog.update({
+    const makeUpdateArgs = (slugValue: string) => ({
       where: { id: productId },
       data: {
         name: fullProduct.name,
-        slug,
+        slug: slugValue,
         description: this.getCustomAttribute(fullProduct, 'description'),
         shortDescription: this.getCustomAttribute(fullProduct, 'short_description'),
         price: fullProduct.price ? parseFloat(fullProduct.price.toString()) : null,
@@ -152,16 +156,19 @@ class MagentoIncrementalSync {
         specialPriceTo: this.parseDate(this.getCustomAttribute(fullProduct, 'special_to_date')),
         status: fullProduct.status === 1 ? 'enabled' : 'disabled',
         visibility,
-        // Warehouse location fields
-              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
-              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
-        // Supplier fields
-        supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
-        // Stock fields
-        stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
-        chooseYear: null, // Not available in Magento
       },
-    });
+    })
+
+    try {
+      await prisma.productCatalog.update(makeUpdateArgs(slugBase))
+    } catch (e: any) {
+      const isSlugConflict =
+        e?.code === 'P2002' &&
+        Array.isArray(e?.meta?.target) &&
+        e.meta.target.includes('slug')
+      if (!isSlugConflict) throw e
+      await prisma.productCatalog.update(makeUpdateArgs(uniqueSlugFallback))
+    }
 
     // Update images if changed
     await this.syncProductImages(productId, fullProduct);
@@ -172,7 +179,8 @@ class MagentoIncrementalSync {
    */
   private async insertProduct(fullProduct: any) {
     const urlKey = this.getCustomAttribute(fullProduct, 'url_key');
-    const slug = urlKey || this.generateSlug(fullProduct.name);
+    const slugBase = (urlKey || this.generateSlug(fullProduct.name) || this.generateSlug(fullProduct.sku)) as string
+    const uniqueSlugFallback = `${slugBase}-${fullProduct.id}`
 
     const visibilityMap: Record<number, string> = {
       1: 'not_visible',
@@ -182,13 +190,13 @@ class MagentoIncrementalSync {
     };
     const visibility = visibilityMap[fullProduct.visibility] || 'catalog_search';
 
-    const dbProduct = await prisma.productCatalog.create({
+    const makeCreateArgs = (slugValue: string) => ({
       data: {
         magentoId: fullProduct.id,
         sku: fullProduct.sku,
         typeId: fullProduct.type_id,
         name: fullProduct.name,
-        slug,
+        slug: slugValue,
         description: this.getCustomAttribute(fullProduct, 'description'),
         shortDescription: this.getCustomAttribute(fullProduct, 'short_description'),
         price: fullProduct.price ? parseFloat(fullProduct.price.toString()) : null,
@@ -202,16 +210,20 @@ class MagentoIncrementalSync {
         metaTitle: this.getCustomAttribute(fullProduct, 'meta_title'),
         metaDescription: this.getCustomAttribute(fullProduct, 'meta_description'),
         metaKeywords: this.getCustomAttribute(fullProduct, 'meta_keyword'),
-        // Warehouse location fields
-              shelfLocation: this.getCustomAttribute(fullProduct, 'locatie'), // "locatie" in Magento = Kastlocatie
-              binLocation: this.getCustomAttribute(fullProduct, 'vaklocatie'),
-        // Supplier fields
-        supplierSkus: this.parseSupplierSkus(this.getCustomAttribute(fullProduct, 'supplier_article_number')),
-        // Stock fields
-        stockAgain: this.parseDate(this.getCustomAttribute(fullProduct, 'stock_again')),
-        chooseYear: null, // Not available in Magento
       },
-    });
+    })
+
+    let dbProduct: any
+    try {
+      dbProduct = await prisma.productCatalog.create(makeCreateArgs(slugBase))
+    } catch (e: any) {
+      const isSlugConflict =
+        e?.code === 'P2002' &&
+        Array.isArray(e?.meta?.target) &&
+        e.meta.target.includes('slug')
+      if (!isSlugConflict) throw e
+      dbProduct = await prisma.productCatalog.create(makeCreateArgs(uniqueSlugFallback))
+    }
 
     // Link categories
     if (fullProduct.extension_attributes?.category_links) {
@@ -327,7 +339,7 @@ class MagentoIncrementalSync {
   private async syncInventory() {
     const products = await prisma.productCatalog.findMany({
       where: { magentoId: { not: null } },
-      select: { id: true, sku: true, magentoId: true },
+      select: { id: true, sku: true, magentoId: true, typeId: true },
       take: 500, // Limit for faster sync
     });
 
@@ -335,6 +347,34 @@ class MagentoIncrementalSync {
       if (!product.magentoId) continue;
 
       try {
+        // Services / non-stock products are often "virtual" in Magento.
+        // Those should never be treated as "out of stock" in our shop.
+        if (product.typeId === 'virtual') {
+          await prisma.productInventory.upsert({
+            where: { productId: product.id },
+            create: {
+              productId: product.id,
+              sku: product.sku,
+              qty: 0,
+              isInStock: true,
+              minQty: 0,
+              notifyStockQty: null,
+              manageStock: false,
+              backorders: 'no',
+            },
+            update: {
+              qty: 0,
+              isInStock: true,
+              minQty: 0,
+              notifyStockQty: null,
+              manageStock: false,
+              backorders: 'no',
+            },
+          })
+          this.stats.inventoryUpdated++
+          continue
+        }
+
         const stockItem = await magentoClient.getStockItem(product.magentoId);
 
         const backordersMap: Record<number, string> = {
@@ -346,21 +386,40 @@ class MagentoIncrementalSync {
           ? backordersMap[stockItem.backorders] || 'no'
           : 'no';
 
+        // Non-stock products can also be marked with manage_stock = false/0.
+        const manageStockRaw = (stockItem as any).manage_stock
+        const manageStock =
+          manageStockRaw === undefined || manageStockRaw === null
+            ? true
+            : typeof manageStockRaw === 'number'
+              ? manageStockRaw !== 0
+              : Boolean(manageStockRaw)
+        const qty = Number(stockItem.qty || 0)
+        const rawInStock =
+          (typeof stockItem.is_in_stock === 'number'
+            ? stockItem.is_in_stock === 1
+            : Boolean(stockItem.is_in_stock)) || qty > 0
+        const isInStock = manageStock ? rawInStock : true
+
         await prisma.productInventory.upsert({
           where: { productId: product.id },
           create: {
             productId: product.id,
             sku: product.sku,
-            qty: stockItem.qty || 0,
-            isInStock: stockItem.is_in_stock,
+            qty,
+            isInStock,
             minQty: stockItem.min_qty || 0,
             notifyStockQty: stockItem.notify_stock_qty || null,
-            manageStock: stockItem.manage_stock !== false,
+            manageStock,
             backorders,
           },
           update: {
-            qty: stockItem.qty || 0,
-            isInStock: stockItem.is_in_stock,
+            qty,
+            isInStock,
+            minQty: stockItem.min_qty || 0,
+            notifyStockQty: stockItem.notify_stock_qty || null,
+            manageStock,
+            backorders,
           },
         });
 

@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildProductDescription, htmlToPlainText } from '@/lib/product-description';
 
 export async function GET(
   request: NextRequest,
@@ -71,8 +72,8 @@ export async function GET(
             option: true,
           },
         },
-        // Child products (for configurable)
-        childRelations: {
+        // Variants for configurable products (parent -> children)
+        parentRelations: {
           include: {
             child: {
               include: {
@@ -85,8 +86,8 @@ export async function GET(
             },
           },
         },
-        // Parent product (if this is a variant)
-        parentRelations: {
+        // Parent product (if this is a variant / simple child)
+        childRelations: {
           include: {
             parent: {
               select: {
@@ -114,8 +115,11 @@ export async function GET(
       sku: product.sku,
       name: product.name,
       slug: product.slug,
-      description: product.description,
-      shortDescription: product.shortDescription,
+      description: buildProductDescription({
+        description: product.description,
+        shortDescription: product.shortDescription,
+      }),
+      shortDescription: product.shortDescription ? htmlToPlainText(product.shortDescription) : null,
       
       // Pricing
       price: product.price,
@@ -166,8 +170,13 @@ export async function GET(
       // Inventory
       inventory: product.inventory ? {
         qty: product.inventory.qty,
-        isInStock: product.inventory.isInStock,
+        qtyReserved: product.inventory.qtyReserved,
+        qtyAvailable: Math.max(0, Number(product.inventory.qty || 0) - Number(product.inventory.qtyReserved || 0)),
+        isInStock: product.inventory.manageStock === false
+          ? true
+          : (Math.max(0, Number(product.inventory.qty || 0) - Number(product.inventory.qtyReserved || 0)) > 0 && product.inventory.isInStock),
         backorders: product.inventory.backorders,
+        manageStock: product.inventory.manageStock,
       } : null,
       
       // Categories
@@ -204,11 +213,11 @@ export async function GET(
           code: av.attribute.attributeCode,
         };
         return acc;
-      }, {} as Record<string, any>),
+      }, {} as Record<string, { label: string; value: string | null; code: string }>),
       
       // Variants (for configurable products)
       variants: product.typeId === 'configurable' 
-        ? product.childRelations.map(rel => ({
+        ? product.parentRelations.map(rel => ({
             id: rel.child.id,
             sku: rel.child.sku,
             name: rel.child.name,
@@ -218,14 +227,19 @@ export async function GET(
             displayPrice: rel.child.specialPrice || rel.child.price,
             inventory: rel.child.inventory ? {
               qty: rel.child.inventory.qty,
-              isInStock: rel.child.inventory.isInStock,
+              qtyReserved: rel.child.inventory.qtyReserved,
+              qtyAvailable: Math.max(0, Number(rel.child.inventory.qty || 0) - Number(rel.child.inventory.qtyReserved || 0)),
+              isInStock: rel.child.inventory.manageStock === false
+                ? true
+                : (Math.max(0, Number(rel.child.inventory.qty || 0) - Number(rel.child.inventory.qtyReserved || 0)) > 0 && rel.child.inventory.isInStock),
+              manageStock: rel.child.inventory.manageStock,
             } : null,
             image: rel.child.images[0]?.localPath || rel.child.images[0]?.url,
           }))
         : [],
       
       // Parent product (if variant)
-      parentProduct: product.parentRelations[0]?.parent || null,
+      parentProduct: product.childRelations[0]?.parent || null,
       
       // Timestamps
       createdAt: product.createdAt,

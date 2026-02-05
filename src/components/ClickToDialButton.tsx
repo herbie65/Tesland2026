@@ -143,18 +143,18 @@ export default function ClickToDialButton({
       setShowTooltip(true)
 
       // Initiate call
-      const response = await apiFetch('/api/voip/call', {
+      const data = await apiFetch('/api/voip/call', {
         method: 'POST',
         body: JSON.stringify({ phoneNumber })
       })
-
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Kon gesprek niet starten')
+      if (!data?.success) {
+        throw new Error(data?.error || 'Kon gesprek niet starten')
       }
 
-      const { callid } = data.data
+      const { callid } = data.data || {}
+      if (!callid) {
+        throw new Error('VoIP response missing callid')
+      }
       setCurrentCallId(callid)
 
       // Start polling for status updates

@@ -304,8 +304,9 @@ export default function SiteFooter() {
             href="https://www.facebook.com/tesland.nl/"
             title="Facebook"
             aria-label="Facebook"
+            style={{ width: 66, height: 66 }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 30, height: 30 }}>
               <path d="M22 12.06C22 6.54 17.52 2 12 2S2 6.54 2 12.06c0 4.99 3.66 9.12 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.23.2 2.23.2v2.46h-1.25c-1.23 0-1.61.77-1.61 1.56v1.88h2.74l-.44 2.91h-2.3V22c4.78-.82 8.44-4.95 8.44-9.94Z" />
             </svg>
           </a>
@@ -314,8 +315,9 @@ export default function SiteFooter() {
             href="https://www.instagram.com/tesland_official"
             title="Instagram"
             aria-label="Instagram"
+            style={{ width: 66, height: 66 }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 30, height: 30 }}>
               <path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5Zm10 2H7a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3Zm-5 3.5A5.5 5.5 0 1 1 6.5 13 5.5 5.5 0 0 1 12 7.5Zm0 2A3.5 3.5 0 1 0 15.5 13 3.5 3.5 0 0 0 12 9.5Zm6.25-2.75a1.25 1.25 0 1 1-1.25 1.25 1.25 1.25 0 0 1 1.25-1.25Z" />
             </svg>
           </a>
@@ -324,8 +326,9 @@ export default function SiteFooter() {
             href="https://www.tiktok.com/@tesland_official"
             title="TikTok"
             aria-label="TikTok"
+            style={{ width: 66, height: 66 }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 30, height: 30 }}>
               <path d="M16.5 3c.6 2.15 2.26 3.86 4.5 4.3v3.06c-1.64-.05-3.17-.59-4.5-1.5v5.52A6.38 6.38 0 1 1 10.12 8v3.25a2.82 2.82 0 1 0 2.88 2.8V3h3.5Z" />
             </svg>
           </a>
@@ -334,8 +337,9 @@ export default function SiteFooter() {
             href="https://www.linkedin.com/company/tesland"
             title="LinkedIn"
             aria-label="LinkedIn"
+            style={{ width: 66, height: 66 }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 30, height: 30 }}>
               <path d="M6.94 8.5H3.28V21h3.66V8.5Zm-1.83-1.6a2.1 2.1 0 1 1 2.1-2.1 2.1 2.1 0 0 1-2.1 2.1ZM21 14.01V21h-3.66v-6.26c0-1.57-.03-3.58-2.18-3.58-2.18 0-2.52 1.7-2.52 3.47V21H9V8.5h3.51v1.7h.05a3.85 3.85 0 0 1 3.46-1.9c3.7 0 4.38 2.44 4.38 5.61Z" />
             </svg>
           </a>
@@ -344,8 +348,9 @@ export default function SiteFooter() {
             href="https://twitter.com/tesland1"
             title="Twitter"
             aria-label="Twitter"
+            style={{ width: 66, height: 66 }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" style={{ width: 30, height: 30 }}>
               <path d="M18.9 2H22l-6.73 7.68L23 22h-6.62l-5.18-7.01L4.6 22H2l7.17-8.2L1 2h6.78l4.68 6.35L18.9 2Zm-1.16 18h1.9L7.77 4H5.73l12.01 16Z" />
             </svg>
           </a>

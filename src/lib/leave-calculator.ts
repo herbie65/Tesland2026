@@ -304,5 +304,5 @@ export async function getUsedLeaveThisYear(userId: string): Promise<number> {
     },
   })
   
-  return requests.reduce((sum, req) => sum + req.totalDays, 0)
+  return requests.reduce((sum, req) => sum + Number(req.totalDays || 0), 0)
 }

@@ -73,7 +73,10 @@ const SETTINGS_DEFAULTS: Record<string, any> = {
   }
 }
 
-export default function SettingsClient() {
+type SettingsClientProps = { activeSection?: string }
+
+export default function SettingsClient({ activeSection }: SettingsClientProps = {}) {
+  const show = (id: string) => activeSection == null || activeSection === id
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -218,14 +221,50 @@ export default function SettingsClient() {
     )
   }
 
+  const planningHourlyRates: { name: string; ratePerHour: number }[] = (() => {
+    const list = Array.isArray(settings.planning?.hourlyRates) ? settings.planning.hourlyRates : []
+    if (list.length > 0) return list
+    const legacy = settings.planning?.defaultHourlyRate
+    if (legacy != null && Number.isFinite(Number(legacy))) {
+      return [{ name: 'Standaard', ratePerHour: Number(legacy) }]
+    }
+    return []
+  })()
+
+  const updatePlanningHourlyRate = (index: number, field: 'name' | 'ratePerHour', value: string | number) => {
+    const next = planningHourlyRates.map((entry: { name: string; ratePerHour: number }, idx: number) =>
+      idx === index ? { ...entry, [field]: value } : entry
+    )
+    updateGroup("planning", "hourlyRates", next)
+  }
+
+  const addPlanningHourlyRate = () => {
+    updateGroup("planning", "hourlyRates", [...planningHourlyRates, { name: '', ratePerHour: 0 }])
+  }
+
+  const removePlanningHourlyRate = (index: number) => {
+    updateGroup(
+      "planning",
+      "hourlyRates",
+      planningHourlyRates.filter((_: unknown, idx: number) => idx !== index)
+    )
+  }
+
   const saveGroup = async (group: string) => {
     try {
       setError(null)
       setSuccess(null)
-        const data = await apiFetch(`/api/settings/${group}`, {
+      let payload = settings[group]
+      if (group === "planning" && payload) {
+        const rates = Array.isArray(payload.hourlyRates) ? payload.hourlyRates : []
+        if (rates.length === 0 && payload.defaultHourlyRate != null) {
+          payload = { ...payload, hourlyRates: [{ name: 'Standaard', ratePerHour: Number(payload.defaultHourlyRate) }] }
+        }
+      }
+      const data = await apiFetch(`/api/settings/${group}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: settings[group] })
+        body: JSON.stringify({ data: payload })
       })
         if (!data.success) {
         throw new Error(data.error || "Failed to save settings")
@@ -320,6 +359,7 @@ export default function SettingsClient() {
 
   return (
     <div className="space-y-6">
+      {show('personalisatie') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -514,7 +554,9 @@ export default function SettingsClient() {
           </div>
         </div>
       </section>
+      )}
 
+      {show('email') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -701,8 +743,9 @@ export default function SettingsClient() {
           </div>
         )}
       </section>
+      )}
 
-      {isSystemAdmin ? (
+      {show('rdw') && isSystemAdmin ? (
         <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -820,9 +863,7 @@ export default function SettingsClient() {
         </div>
       ) : null}
 
-      <PlanningTypes />
-
-      {/* Afwezigheidstypes sectie */}
+      {show('afwezigheidstypes') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -918,7 +959,9 @@ export default function SettingsClient() {
           </button>
         </div>
       </section>
+      )}
 
+      {show('algemeen') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -968,7 +1011,10 @@ export default function SettingsClient() {
           </label>
         </div>
       </section>
+      )}
 
+      {show('planning') && (
+      <>
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -1122,6 +1168,72 @@ export default function SettingsClient() {
         </div>
       </section>
 
+      <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl mt-6">
+        <h2 className="text-lg font-semibold text-slate-800">Werkplaatstarieven</h2>
+        <p className="text-xs text-slate-500 mt-0.5 mb-4">Meerdere uurtarieven voor de werkplaats (€/uur). Worden o.a. gebruikt bij urenregistratie op werkorders.</p>
+        <div className="flex items-center justify-between text-xs font-medium text-slate-600 mb-2">
+          <span>Tarief</span>
+          <button
+            className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md"
+            type="button"
+            onClick={addPlanningHourlyRate}
+          >
+            + Tarief toevoegen
+          </button>
+        </div>
+        <div className="space-y-3">
+          {planningHourlyRates.length === 0 ? (
+            <p className="text-xs text-slate-400 py-2">Nog geen tarieven. Klik op &quot;+ Tarief toevoegen&quot;.</p>
+          ) : (
+            planningHourlyRates.map((entry, index) => (
+              <div
+                key={`hourly-rate-${index}`}
+                className="grid gap-2 sm:grid-cols-[1fr_120px_auto] items-end"
+              >
+                <label className="grid gap-1 text-xs font-medium text-slate-700">
+                  Naam
+                  <input
+                    className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                    type="text"
+                    placeholder="bijv. Standaard, EV Reparaties"
+                    value={entry.name}
+                    onChange={(e) => updatePlanningHourlyRate(index, 'name', e.target.value)}
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-700">
+                  €/uur
+                  <input
+                    className="rounded-lg border border-slate-200/50 bg-white/70 px-3 py-1.5 text-sm backdrop-blur-sm transition-all duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-200/50"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={entry.ratePerHour === 0 && entry.name === '' ? '' : entry.ratePerHour}
+                    onChange={(e) =>
+                      updatePlanningHourlyRate(index, 'ratePerHour', e.target.value === '' ? 0 : Number(e.target.value))
+                    }
+                  />
+                </label>
+                <button
+                  className="mb-0.5 h-8 rounded-lg border border-red-300/50 bg-white/80 px-3 text-xs font-medium text-red-600 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-red-50 hover:shadow-md active:scale-95"
+                  type="button"
+                  onClick={() => removePlanningHourlyRate(index)}
+                >
+                  Verwijder
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-3">Sla de planning-instellingen op met de knop &quot;Opslaan&quot; hierboven om de tarieven te bewaren.</p>
+      </section>
+
+      <div className="mt-6">
+        <PlanningTypes />
+      </div>
+      </>
+      )}
+
+      {show('workoverzicht') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -1182,7 +1294,9 @@ export default function SettingsClient() {
           )}
         </div>
       </section>
+      )}
 
+      {show('notificaties') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -1242,7 +1356,9 @@ export default function SettingsClient() {
           </label>
         </div>
       </section>
+      )}
 
+      {show('integraties') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -1278,7 +1394,9 @@ export default function SettingsClient() {
           </label>
         </div>
       </section>
+      )}
 
+      {show('voip') && (
       <section className="relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-white/80 to-slate-50/80 p-5 shadow-lg backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <div>
@@ -1334,6 +1452,7 @@ export default function SettingsClient() {
           </div>
         </div>
       </section>
+      )}
 
       {loading ? (
         <p className="text-sm text-slate-500">Instellingen laden...</p>

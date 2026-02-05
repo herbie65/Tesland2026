@@ -3,9 +3,12 @@
  * Import Inventory from Magento to Tesland ProductInventory
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { createMagentoClient } from '../lib/magento-client';
+
+dotenv.config({ path: '.env.local' })
+dotenv.config()
 
 const prisma = new PrismaClient();
 const magentoClient = createMagentoClient();
@@ -34,6 +37,8 @@ async function importInventory() {
         id: true,
         sku: true,
         name: true,
+        magentoId: true,
+        typeId: true,
       },
     });
 
@@ -43,8 +48,43 @@ async function importInventory() {
       try {
         stats.processed++;
 
+        // Services / non-stock products are often "virtual" in Magento.
+        // Those should never be treated as "out of stock" in our shop.
+        if (product.typeId === 'virtual') {
+          const existing = await prisma.productInventory.findUnique({
+            where: { productId: product.id },
+          });
+          const inventoryData = {
+            sku: product.sku,
+            qty: 0,
+            isInStock: true,
+            minQty: 0,
+            notifyStockQty: null,
+            manageStock: false,
+            backorders: 'no',
+          };
+          if (existing) {
+            await prisma.productInventory.update({
+              where: { id: existing.id },
+              data: inventoryData,
+            });
+            stats.updated++;
+          } else {
+            await prisma.productInventory.create({
+              data: {
+                ...inventoryData,
+                productId: product.id,
+              },
+            });
+            stats.created++;
+          }
+          continue;
+        }
+
         // Get stock info from Magento
-        const stockItem = await magentoClient.getStockStatus(product.sku);
+        const stockItem = product.magentoId
+          ? await magentoClient.getStockItem(product.magentoId)
+          : await magentoClient.getStockStatus(product.sku);
 
         if (!stockItem) {
           // No stock data, skip silently
@@ -56,13 +96,33 @@ async function importInventory() {
           where: { productId: product.id },
         });
 
+        const qty = stockItem.qty ? parseFloat(stockItem.qty.toString()) : 0
+        const rawInStock =
+          typeof stockItem.is_in_stock === 'number'
+            ? stockItem.is_in_stock === 1
+            : Boolean(stockItem.is_in_stock)
+        const stockStatus =
+          typeof (stockItem as any).stock_status === 'number'
+            ? (stockItem as any).stock_status === 1
+            : undefined
+        const manageStockRaw = (stockItem as any).manage_stock
+        const manageStock =
+          manageStockRaw === undefined || manageStockRaw === null
+            ? true
+            : typeof manageStockRaw === 'number'
+              ? manageStockRaw !== 0
+              : Boolean(manageStockRaw)
+        const rawComputedInStock = rawInStock || stockStatus === true || qty > 0
+        // If Magento doesn't manage stock for this SKU, treat it as always available (services, etc.)
+        const isInStock = manageStock ? rawComputedInStock : true
+
         const inventoryData = {
           sku: product.sku,
-          qty: stockItem.qty ? parseFloat(stockItem.qty.toString()) : 0,
-          isInStock: stockItem.is_in_stock ?? false,
+          qty,
+          isInStock,
           minQty: stockItem.min_qty ? parseFloat(stockItem.min_qty.toString()) : 0,
           notifyStockQty: stockItem.notify_stock_qty ? parseFloat(stockItem.notify_stock_qty.toString()) : null,
-          manageStock: stockItem.manage_stock ?? true,
+          manageStock,
           backorders: stockItem.backorders ? (stockItem.backorders === 1 ? 'notify' : stockItem.backorders === 2 ? 'yes' : 'no') : 'no',
         };
 

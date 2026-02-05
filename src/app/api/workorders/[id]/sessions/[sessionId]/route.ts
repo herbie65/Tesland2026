@@ -128,14 +128,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       userId: user.id,
       userName: user.displayName || user.email,
       userEmail: user.email,
-      userRole: user.role,
-      changes: {
+      userRole: user.role ?? undefined,
+      metadata: {
+        workOrderNumber: session.workOrder.workOrderNumber,
         sessionId: session.id,
         endedAt: endedAt.toISOString(),
         durationMinutes
-      },
-      metadata: {
-        workOrderNumber: session.workOrder.workOrderNumber
       },
       description: `${user.displayName || user.email} is gestopt met werken aan werkorder ${session.workOrder.workOrderNumber} (${durationMinutes} min)`,
       request

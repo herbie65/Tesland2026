@@ -8,6 +8,7 @@ type HeaderItem = {
   label: string
   href: string
   hasDropdown: boolean
+  children?: HeaderItem[]
 }
 
 type HeaderSettings = {
@@ -112,7 +113,7 @@ export default function HeaderEditor() {
       setSaving(true)
       setError(null)
       setSuccess(null)
-      const response = await apiFetch('/api/settings/siteHeader', {
+      const data = await apiFetch('/api/settings/siteHeader', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -122,9 +123,8 @@ export default function HeaderEditor() {
           }
         })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Opslaan mislukt')
+      if (!data?.success) {
+        throw new Error(data?.error || 'Opslaan mislukt')
       }
       setSuccess('Header instellingen opgeslagen.')
       setTimeout(() => setSuccess(null), 2000)

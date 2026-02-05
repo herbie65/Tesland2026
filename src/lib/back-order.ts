@@ -172,7 +172,7 @@ export async function receiveBackOrder(
     const isFullyReceived = newTotalReceived >= backOrder.quantityNeeded
     const isPartiallyReceived = newTotalReceived > 0 && newTotalReceived < backOrder.quantityNeeded
 
-    let newStatus: BackOrderStatus = backOrder.status
+    let newStatus: BackOrderStatus = backOrder.status as BackOrderStatus
     if (isFullyReceived) {
       newStatus = 'RECEIVED'
     } else if (isPartiallyReceived) {
@@ -387,6 +387,9 @@ export async function checkBexAvailability(sku: string, quantityNeeded: number =
 
   try {
     const bexClient = await createBexClient()
+    if (!bexClient) {
+      return { available: false, stock: 0, error: 'BeX client not configured' }
+    }
     const availability = await bexClient.isAvailable(sku, quantityNeeded)
     
     return {
@@ -436,6 +439,9 @@ export async function orderViaBeX(
 
     // Check availability first
     const bexClient = await createBexClient()
+    if (!bexClient) {
+      return { success: false, error: 'BeX client not configured' }
+    }
     const availability = await bexClient.isAvailable(backOrder.sku, backOrder.quantityNeeded)
     
     if (!availability.available) {
@@ -472,12 +478,6 @@ export async function orderViaBeX(
         quantityOrdered: backOrder.quantityNeeded,
         unitCost: bexOrder.orderLines[0]?.unitPrice ? new Decimal(bexOrder.orderLines[0].unitPrice) : null,
         totalCost: new Decimal(bexOrder.totalAmount),
-        bexOrderId: bexOrder.id,
-        bexOrderNumber: bexOrder.orderNumber,
-        bexOrderStatus: bexOrder.status,
-        bexAvailableStock: availability.stock,
-        bexLeadTime: availability.leadTime,
-        bexLastSyncAt: new Date(),
         updatedBy: updatedBy || null
       }
     })
@@ -500,47 +500,10 @@ export async function syncBexOrderStatus(backOrderId: string): Promise<BackOrder
     return { success: false, error: 'BeX integration not enabled' }
   }
 
-  try {
-    const backOrder = await prisma.backOrder.findUnique({
-      where: { id: backOrderId }
-    })
-
-    if (!backOrder) {
-      return { success: false, error: 'Back-order not found' }
-    }
-
-    if (!backOrder.bexOrderId) {
-      return { success: false, error: 'No BeX order ID found' }
-    }
-
-    const bexClient = await createBexClient()
-    const tracking = await bexClient.getOrderTracking(backOrder.bexOrderId)
-
-    if (!tracking) {
-      return { success: false, error: 'Could not retrieve BeX order status' }
-    }
-
-    // Update tracking info
-    const updatedBackOrder = await prisma.backOrder.update({
-      where: { id: backOrderId },
-      data: {
-        bexOrderStatus: tracking.status,
-        bexTrackingCode: tracking.trackingCode || backOrder.bexTrackingCode,
-        bexTrackingUrl: tracking.trackingUrl || backOrder.bexTrackingUrl,
-        expectedDate: tracking.expectedDeliveryDate ? new Date(tracking.expectedDeliveryDate) : backOrder.expectedDate,
-        bexLastSyncAt: new Date()
-      }
-    })
-
-    // If delivered in BeX but not received here, notify
-    if (tracking.status === 'DELIVERED' && backOrder.status !== 'RECEIVED') {
-      // TODO: Send notification to warehouse to receive the order
-    }
-
-    return { success: true, backOrder: updatedBackOrder }
-  } catch (error: any) {
-    console.error('Error syncing BeX order status:', error)
-    return { success: false, error: error.message }
+  return {
+    success: false,
+    error:
+      'BeX order sync is not available: BeX tracking fields are not configured in this database schema.'
   }
 }
 
@@ -559,31 +522,12 @@ export async function syncAllBexOrders(): Promise<{
   }
 
   try {
-    const backOrders = await prisma.backOrder.findMany({
-      where: {
-        bexOrderId: { not: null },
-        status: { in: ['ORDERED', 'PARTIALLY_RECEIVED'] }
-      }
-    })
-
-    let synced = 0
-    let failed = 0
-    const errors: string[] = []
-
-    for (const backOrder of backOrders) {
-      const result = await syncBexOrderStatus(backOrder.id)
-      if (result.success) {
-        synced++
-      } else {
-        failed++
-        errors.push(`${backOrder.workOrderNumber}: ${result.error}`)
-      }
-      
-      // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500))
+    return {
+      success: false,
+      synced: 0,
+      failed: 0,
+      errors: ['BeX tracking fields are not configured in this database schema.']
     }
-
-    return { success: true, synced, failed, errors }
   } catch (error: any) {
     console.error('Error syncing all BeX orders:', error)
     return { success: false, synced: 0, failed: 0, errors: [error.message] }

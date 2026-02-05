@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
         email: user.email,
         displayName: user.displayName,
         isSystemAdmin: user.isSystemAdmin,
-        role: user.roleName,
+        role: user.role || null,
+        roleName: user.roleName || null,
+        customerId: user.customerId || null,
       },
     })
   } catch (error: any) {

@@ -32,15 +32,22 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // Generate a work order number
+        const now = new Date()
+        const year = now.getFullYear()
+        const count = await prisma.workOrder.count() + 1
+        const workOrderNumber = `WO-${year}-${String(count).padStart(4, '0')}`
+
         // Create work order
         const workOrder = await prisma.workOrder.create({
           data: {
+            workOrderNumber,
             customerId: item.customerId,
             vehicleId: item.vehicleId,
-            status: 'GEPLAND',
-            description: item.title || 'Migratie vanuit planning',
+            workOrderStatus: 'GEPLAND',
+            title: item.title || 'Migratie vanuit planning',
             notes: item.notes,
-            planningItems: {
+            planningItem: {
               connect: { id: item.id }
             }
           }

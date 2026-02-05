@@ -29,6 +29,7 @@ type WorkOrder = {
   pricingMode?: string | null
   priceAmount?: number | null
   estimatedAmount?: number | null
+  planningTypeId?: string | null
   planningTypeName?: string | null
   planningTypeColor?: string | null
   customer?: {
@@ -587,6 +588,14 @@ export default function WorkOrdersClient() {
   const sortedItems = useMemo(() => items, [items])
   const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleString() : '-')
 
+  /** Kleur voor planningstype altijd uit instellingen (API planning-types); fallback op denormalized item.planningTypeColor, anders null = neutrale badge. */
+  const getPlanningTypeColor = (item: WorkOrder) => {
+    const fromSettings =
+      planningTypes.find((t) => t.id === item.planningTypeId) ??
+      planningTypes.find((t) => t.name === item.planningTypeName)
+    return fromSettings?.color ?? item.planningTypeColor ?? null
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -690,17 +699,24 @@ export default function WorkOrdersClient() {
                     <td className="px-4 py-2 text-slate-700">{item.assigneeName || '-'}</td>
                     <td className="px-4 py-2 text-slate-700">
                       {item.planningTypeName ? (
-                        <span
-                          className="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
-                          style={{
-                            backgroundColor: item.planningTypeColor
-                              ? `${item.planningTypeColor}26`
-                              : 'rgba(148, 163, 184, 0.2)',
-                            color: item.planningTypeColor || '#475569'
-                          }}
-                        >
-                          {item.planningTypeName}
-                        </span>
+                        (() => {
+                          const color = getPlanningTypeColor(item)
+                          return color ? (
+                            <span
+                              className="inline-flex rounded-full px-2 py-1 text-xs font-semibold"
+                              style={{
+                                backgroundColor: `${color}26`,
+                                color
+                              }}
+                            >
+                              {item.planningTypeName}
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                              {item.planningTypeName}
+                            </span>
+                          )
+                        })()
                       ) : (
                         '-'
                       )}

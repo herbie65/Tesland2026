@@ -163,11 +163,11 @@ export default function MediaPickerModal({
                       <div className="text-xs text-slate-400">Kan niet laden</div>
                     </div>
                   ) : (
-                    <div className="relative w-full h-28 bg-slate-100 rounded overflow-hidden">
+                    <div className="relative w-full h-28 bg-white rounded overflow-hidden border border-slate-200">
                       <img
                         src={f.url}
                         alt={f.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                         loading="lazy"
                         onError={() => {
                           setFiltered(prev => prev.map(item => 

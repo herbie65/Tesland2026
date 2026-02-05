@@ -1,5 +1,6 @@
-import Link from "next/link"
-import SettingsClient from "./SettingsClient"
+import Link from 'next/link'
+import { SETTINGS_MENU_ITEMS } from '@/lib/settings-menu'
+import SettingsClient from './SettingsClient'
 
 export default function SettingsPage() {
   return (
@@ -10,30 +11,15 @@ export default function SettingsPage() {
           Beheer algemene gegevens, planning, notificaties en integraties.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/admin/settings/roles"
-            className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Rollen beheren
-          </Link>
-          <Link
-            href="/admin/settings/users"
-            className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Gebruikers beheren
-          </Link>
-          <Link
-            href="/admin/settings/email-templates"
-            className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            E-mail templates
-          </Link>
-          <Link
-            href="/admin/settings/mollie"
-            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm text-emerald-700 hover:bg-emerald-100"
-          >
-            💳 Mollie Betalingen
-          </Link>
+          {SETTINGS_MENU_ITEMS.map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
       </header>
       <SettingsClient />

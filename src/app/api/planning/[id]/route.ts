@@ -243,18 +243,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     if (item.status === 'REQUEST' && body.status !== 'REQUEST') {
-      await logAudit(
-        {
-          action: 'PLANNING_APPROVED',
-          actorUid: user.id,
-          actorEmail: user.email,
-          targetUid: id,
-          context: {
-            workOrderId: workOrderId || null
-          }
+      await logAudit({
+        entityType: 'PlanningItem',
+        entityId: id,
+        action: 'PLANNING_APPROVED',
+        userId: user.id,
+        userEmail: user.email,
+        metadata: {
+          workOrderId: workOrderId || null
         },
         request
-      )
+      })
     }
 
     if (body?.scheduledAt) {

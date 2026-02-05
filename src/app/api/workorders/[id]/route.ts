@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { getNotificationSettings, getPricingModes, getWorkOrderDefaults } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
+import { workOrderEvents } from '@/lib/workorder-events'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         customer: true,
         vehicle: true,
         assignee: true,
+        planningItem: { select: { id: true, durationMinutes: true } },
         partsLines: {
           include: {
             product: true,
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     
     if (user.role === 'MAGAZIJN') {
-      const allowed = new Set(['GOEDGEKEURD', 'GEPLAND'])
+      const allowed = new Set(['GOEDGEKEURD', 'GEPLAND', 'WACHTEND'])
       if (!allowed.has(String(item.workOrderStatus || ''))) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
       }
@@ -169,6 +171,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.customerApproved !== undefined) updateData.customerApproved = body.customerApproved
     if (body.description !== undefined) updateData.description = body.description
     if (body.internalNotes !== undefined) updateData.internalNotes = body.internalNotes
+    if (body.invoicePrepWorkPartsCheckedAt !== undefined) updateData.invoicePrepWorkPartsCheckedAt = body.invoicePrepWorkPartsCheckedAt ? new Date() : null
+    if (body.invoicePrepHoursConfirmedAt !== undefined) updateData.invoicePrepHoursConfirmedAt = body.invoicePrepHoursConfirmedAt ? new Date() : null
+    if (body.laborBillingMode !== undefined) updateData.laborBillingMode = body.laborBillingMode
+    if (body.laborFixedAmount !== undefined) updateData.laborFixedAmount = body.laborFixedAmount != null && Number.isFinite(Number(body.laborFixedAmount)) ? Number(body.laborFixedAmount) : null
+    if (body.laborHourlyRateName !== undefined) updateData.laborHourlyRateName = body.laborHourlyRateName
     
     // NOTE: Extended fields removed - they don't exist in WorkOrder schema
     // If these fields are needed, they should be stored in the 'notes' or 'internalNotes' text fields,
@@ -301,6 +308,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    workOrderEvents.notifyChange(id, 'updated')
+
     return NextResponse.json({ success: true, item })
   } catch (error: any) {
     const status = error.status || 500
@@ -340,6 +349,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     await prisma.workOrder.delete({
       where: { id }
     })
+
+    workOrderEvents.notifyChange(id, 'deleted')
     
     return NextResponse.json({ success: true })
   } catch (error: any) {

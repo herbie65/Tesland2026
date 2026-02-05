@@ -15,6 +15,7 @@ export type AuthUser = {
   isSystemAdmin: boolean
   displayName?: string | null
   isActive: boolean
+  customerId?: string | null
 }
 
 type AuthError = Error & { status?: number }
@@ -33,6 +34,17 @@ const getBearerToken = (request: NextRequest) => {
   return token.trim()
 }
 
+const normalizeRoleToken = (value: unknown) => {
+  if (typeof value !== 'string') return ''
+  return value.trim().toLowerCase()
+}
+
+const isCustomerAccount = (user: AuthUser) => {
+  if (user.customerId) return true
+  const role = normalizeRoleToken(user.roleName || user.role || '')
+  return role === 'customer' || role === 'klant'
+}
+
 export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
   const token = getBearerToken(request)
   if (!token) {
@@ -40,16 +52,25 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
   }
 
   // Verify JWT token
-  let decoded: any
+  let decodedUserId: string | null = null
   try {
-    decoded = jwt.verify(token, JWT_SECRET)
-  } catch (error) {
+    const decoded = jwt.verify(token, JWT_SECRET) as unknown
+    if (typeof decoded === 'object' && decoded !== null && 'userId' in decoded) {
+      const userId = (decoded as { userId?: unknown }).userId
+      if (typeof userId === 'string' && userId) {
+        decodedUserId = userId
+      }
+    }
+  } catch {
+    throw buildAuthError('Invalid or expired token')
+  }
+  if (!decodedUserId) {
     throw buildAuthError('Invalid or expired token')
   }
 
   // Get user from PostgreSQL
   const user = await prisma.user.findUnique({
-    where: { id: decoded.userId },
+    where: { id: decodedUserId },
     include: {
       roleRef: true, // Include role details
     },
@@ -76,14 +97,15 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
     roleName = user.roleRef.name
     isSystemAdmin = user.roleRef.isSystemAdmin
     // Extract permissions from JSONB field
-    const perms = user.roleRef.permissions as any
+    const perms: unknown = user.roleRef.permissions
     if (perms && typeof perms === 'object') {
       // Legacy format: flat object with true/false values
-      permissions = Object.keys(perms).filter(key => perms[key] === true)
+      const record = perms as Record<string, unknown>
+      permissions = Object.keys(record).filter((key) => record[key] === true)
       
       // New format: nested pages object
-      if (perms.pages && typeof perms.pages === 'object') {
-        pagePermissions = perms.pages
+      if (record.pages && typeof record.pages === 'object') {
+        pagePermissions = record.pages as { [path: string]: boolean }
       }
     }
     resolvedRole = user.roleRef.name // FIX: Use name instead of id
@@ -103,6 +125,7 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
     isSystemAdmin,
     displayName: user.displayName || null,
     isActive: user.isActive || true,
+    customerId: 'customerId' in user ? ((user as { customerId?: string | null }).customerId ?? null) : null,
   }
 }
 
@@ -111,21 +134,50 @@ export const requireRole = async (request: NextRequest, roles: string[]) => {
   if (user.isSystemAdmin) {
     return user
   }
-  const requiresAdminOnly = roles.length === 1 && roles[0] === 'SYSTEM_ADMIN'
-  if (requiresAdminOnly) {
+
+  // If no explicit roles are required, any authenticated user is allowed.
+  if (!Array.isArray(roles) || roles.length === 0) {
+    return user
+  }
+
+  const required = roles.map(normalizeRoleToken).filter(Boolean)
+
+  // Backward compatible: many routes used legacy tokens: user/admin/mechanic/manager
+  // Interpret "user" and "mechanic" as "any authenticated staff (non-customer) account".
+  const requiresStaff = required.includes('user') || required.includes('mechanic') || required.includes('monteur') || required.includes('magazijn')
+  if (requiresStaff) {
+    if (isCustomerAccount(user)) {
+      throw buildAuthError('Insufficient permissions', 403)
+    }
+    return user
+  }
+
+  // Role can be stored in different fields depending on legacy/new role system
+  const resolvedRole = user.roleName || user.role || null
+
+  // Some installs store role-like flags in permissions; support both.
+  const hasRole = resolvedRole ? roles.includes(resolvedRole) : false
+  const hasPermission = Array.isArray(user.permissions)
+    ? user.permissions.some((perm) => roles.includes(perm))
+    : false
+
+  // Backward-compatible: treat "manager/admin" legacy roles as MANAGEMENT
+  const hasLegacyManagement =
+    (required.includes('management') || required.includes('manager') || required.includes('admin')) && isManager(user)
+
+  if (!hasRole && !hasPermission && !hasLegacyManagement) {
     throw buildAuthError('Insufficient permissions', 403)
   }
+
   return user
 }
 
 // Helper to check if user is manager/admin
-export const isManager = (user: AuthUser): boolean => {
-  return user.isSystemAdmin || 
-         user.role === 'admin' || 
-         user.role === 'manager' ||
-         user.roleName === 'admin' ||
-         user.roleName === 'manager' ||
-         user.role === 'MANAGEMENT'
+export function isManager(user: AuthUser): boolean {
+  if (user.isSystemAdmin) return true
+  const role = normalizeRoleToken(user.roleName || user.role || '')
+  // Accept legacy and current spellings/case variants
+  return role === 'admin' || role === 'manager' || role === 'management'
 }
 
 // Helper to generate JWT token

@@ -15,11 +15,7 @@ export async function POST(request: NextRequest) {
       where: {
         AND: [
           { scheduledAt: { not: null } },
-          {
-            planningItems: {
-              none: {}
-            }
-          }
+          { planningItem: null }
         ]
       },
       include: {
@@ -39,15 +35,22 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // Generate a planning item ID
+        const now = new Date()
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '')
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '')
+        const rand = Math.floor(Math.random() * 1000).toString().padStart(3, '0')
+        const planningId = `PLN-${dateStr}-${timeStr}-${rand}`
+
         // Create planning item
         const planningItem = await prisma.planningItem.create({
           data: {
+            id: planningId,
             workOrderId: wo.id,
             customerId: wo.customerId,
             vehicleId: wo.vehicleId,
-            startDate: wo.scheduledAt,
-            endDate: wo.scheduledEndAt || new Date(wo.scheduledAt.getTime() + 2 * 60 * 60 * 1000), // +2 hours default
-            title: wo.description || wo.workOrderNumber || 'Werkorder',
+            scheduledAt: wo.scheduledAt!,
+            title: wo.title || wo.workOrderNumber || 'Werkorder',
             notes: wo.notes
           }
         })

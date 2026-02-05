@@ -5,8 +5,22 @@
 
 'use client'
 
-import { formatAmount, formatVatPercentage } from '@/lib/vat-calculator'
+import { formatAmount } from '@/lib/vat-calculator'
 import Decimal from 'decimal.js'
+import { useEffect, useMemo, useState } from 'react'
+
+type VatMetaRate = {
+  code?: string | null
+  name: string
+  percentage: number
+}
+
+type VatMeta = {
+  high: VatMetaRate
+  low: VatMetaRate
+  zero: VatMetaRate
+  reversed: VatMetaRate
+}
 
 interface InvoiceVatBreakdownProps {
   // Amounts
@@ -27,6 +41,9 @@ interface InvoiceVatBreakdownProps {
   // Customer info (snapshot)
   customerVatNumber?: string | null
   customerIsB2B?: boolean
+
+  // Optional: provide DB-driven labels/percentages directly
+  vatMeta?: VatMeta
 }
 
 export default function InvoiceVatBreakdown({
@@ -42,7 +59,8 @@ export default function InvoiceVatBreakdown({
   vatReversedText,
   vatExempt = false,
   customerVatNumber,
-  customerIsB2B = false
+  customerIsB2B = false,
+  vatMeta
 }: InvoiceVatBreakdownProps) {
   
   // Convert to Decimal for display
@@ -59,6 +77,77 @@ export default function InvoiceVatBreakdown({
   const hasHighRate = subHigh.greaterThan(0)
   const hasLowRate = subLow.greaterThan(0)
   const hasZeroRate = subZero.greaterThan(0)
+
+  const [vatMetaState, setVatMetaState] = useState<VatMeta | null>(vatMeta ?? null)
+
+  useEffect(() => {
+    if (vatMeta) {
+      setVatMetaState(vatMeta)
+      return
+    }
+
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('/api/vat/rates', { method: 'GET' })
+        const data = await res.json().catch(() => null)
+        if (!data?.success) return
+
+        const rates = Array.isArray(data.rates) ? data.rates : []
+        const rateCodes = data?.settings?.rateCodes || null
+        if (!rateCodes) return
+
+        const byCode = new Map<string, { code: string; name: string; percentage: number }>()
+        for (const r of rates) {
+          if (r && typeof r.code === 'string' && typeof r.name === 'string' && typeof r.percentage === 'number') {
+            byCode.set(r.code, { code: r.code, name: r.name, percentage: r.percentage })
+          }
+        }
+
+        const pick = (code: unknown): VatMetaRate => {
+          const c = typeof code === 'string' ? code : ''
+          const found = c ? byCode.get(c) : undefined
+          if (found) return { code: found.code, name: found.name, percentage: found.percentage }
+          // No numeric hardcoding; fall back to code as label
+          return { code: c || null, name: c || 'Tarief', percentage: 0 }
+        }
+
+        const meta: VatMeta = {
+          high: pick(rateCodes.high),
+          low: pick(rateCodes.low),
+          zero: pick(rateCodes.zero),
+          reversed: pick(rateCodes.reversed)
+        }
+
+        if (!cancelled) setVatMetaState(meta)
+      } catch {
+        // keep minimal UI; no hardcoded numbers
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [vatMeta])
+
+  const labelHigh = useMemo(() => {
+    const m = vatMetaState?.high
+    if (!m) return 'Hoog tarief'
+    return `${m.name} (${m.percentage.toFixed(0)}%)`
+  }, [vatMetaState])
+
+  const labelLow = useMemo(() => {
+    const m = vatMetaState?.low
+    if (!m) return 'Laag tarief'
+    return `${m.name} (${m.percentage.toFixed(0)}%)`
+  }, [vatMetaState])
+
+  const labelZero = useMemo(() => {
+    const m = vatReversed ? vatMetaState?.reversed : vatMetaState?.zero
+    if (!m) return vatReversed ? 'BTW verlegd' : 'Nultarief'
+    return `${m.name} (${m.percentage.toFixed(0)}%)`
+  }, [vatMetaState, vatReversed])
 
   return (
     <div className="space-y-4">
@@ -82,41 +171,39 @@ export default function InvoiceVatBreakdown({
               {/* High rate (21%) */}
               {hasHighRate && (
                 <tr className="border-b border-slate-50">
-                  <td className="py-2">Hoog tarief (21%)</td>
-                  <td className="py-2 text-right font-mono">€{formatAmount(subHigh)}</td>
-                  <td className="py-2 text-right font-mono">€{formatAmount(amtHigh)}</td>
-                  <td className="py-2 text-right font-mono font-medium">€{formatAmount(subHigh.plus(amtHigh))}</td>
+                  <td className="py-2">{labelHigh}</td>
+                  <td className="py-2 text-right font-mono">€ {formatAmount(subHigh)}</td>
+                  <td className="py-2 text-right font-mono">€ {formatAmount(amtHigh)}</td>
+                  <td className="py-2 text-right font-mono font-medium">€ {formatAmount(subHigh.plus(amtHigh))}</td>
                 </tr>
               )}
 
               {/* Low rate (9%) */}
               {hasLowRate && (
                 <tr className="border-b border-slate-50">
-                  <td className="py-2">Laag tarief (9%)</td>
-                  <td className="py-2 text-right font-mono">€{formatAmount(subLow)}</td>
-                  <td className="py-2 text-right font-mono">€{formatAmount(amtLow)}</td>
-                  <td className="py-2 text-right font-mono font-medium">€{formatAmount(subLow.plus(amtLow))}</td>
+                  <td className="py-2">{labelLow}</td>
+                  <td className="py-2 text-right font-mono">€ {formatAmount(subLow)}</td>
+                  <td className="py-2 text-right font-mono">€ {formatAmount(amtLow)}</td>
+                  <td className="py-2 text-right font-mono font-medium">€ {formatAmount(subLow.plus(amtLow))}</td>
                 </tr>
               )}
 
               {/* Zero rate (0% / Reversed) */}
               {hasZeroRate && (
                 <tr className="border-b border-slate-50">
-                  <td className="py-2">
-                    {vatReversed ? 'BTW verlegd (0%)' : 'Nultarief (0%)'}
-                  </td>
-                  <td className="py-2 text-right font-mono">€{formatAmount(subZero)}</td>
-                  <td className="py-2 text-right font-mono">€0.00</td>
-                  <td className="py-2 text-right font-mono font-medium">€{formatAmount(subZero)}</td>
+                  <td className="py-2">{labelZero}</td>
+                  <td className="py-2 text-right font-mono">€ {formatAmount(subZero)}</td>
+                  <td className="py-2 text-right font-mono">€ 0.00</td>
+                  <td className="py-2 text-right font-mono font-medium">€ {formatAmount(subZero)}</td>
                 </tr>
               )}
 
               {/* Totals */}
               <tr className="border-t-2 border-slate-200 font-semibold">
                 <td className="pt-3 pb-2">Totaal</td>
-                <td className="pt-3 pb-2 text-right font-mono">€{formatAmount(subtotal)}</td>
-                <td className="pt-3 pb-2 text-right font-mono">€{formatAmount(vat)}</td>
-                <td className="pt-3 pb-2 text-right font-mono text-lg">€{formatAmount(total)}</td>
+                <td className="pt-3 pb-2 text-right font-mono">€ {formatAmount(subtotal)}</td>
+                <td className="pt-3 pb-2 text-right font-mono">€ {formatAmount(vat)}</td>
+                <td className="pt-3 pb-2 text-right font-mono text-lg">€ {formatAmount(total)}</td>
               </tr>
             </tbody>
           </table>

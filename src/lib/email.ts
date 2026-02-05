@@ -15,6 +15,11 @@ type SendEmailInput = {
   templateId: string
   to: string | string[]
   variables?: Record<string, string>
+  attachments?: Array<{
+    filename: string
+    contentBase64: string
+    contentType?: string
+  }>
 }
 
 const renderTemplate = (value: string, variables: Record<string, string>) => {
@@ -54,6 +59,7 @@ const sendViaSmtp = async (payload: {
   subject: string
   text: string
   html?: string
+  attachments?: Array<{ filename: string; contentBase64: string; contentType?: string }>
 }) => {
   const settings = await getEmailSettings()
   
@@ -83,7 +89,14 @@ const sendViaSmtp = async (payload: {
     to: payload.to.join(','),
     subject: payload.subject,
     text: payload.text,
-    html: payload.html || payload.text.replace(/\n/g, '<br>')
+    html: payload.html || payload.text.replace(/\n/g, '<br>'),
+    attachments: Array.isArray(payload.attachments)
+      ? payload.attachments.map((a) => ({
+          filename: a.filename,
+          content: Buffer.from(a.contentBase64, 'base64'),
+          contentType: a.contentType || 'application/octet-stream'
+        }))
+      : undefined
   })
 }
 
@@ -94,6 +107,7 @@ const sendViaSendgrid = async (payload: {
   subject: string
   text: string
   html?: string
+  attachments?: Array<{ filename: string; contentBase64: string; contentType?: string }>
 }) => {
   const settings = await getEmailSettings()
   
@@ -113,11 +127,19 @@ const sendViaSendgrid = async (payload: {
     from: { email: payload.fromEmail, name: payload.fromName },
     subject: payload.subject,
     text: payload.text,
-    html: payload.html || payload.text.replace(/\n/g, '<br>')
+    html: payload.html || payload.text.replace(/\n/g, '<br>'),
+    attachments: Array.isArray(payload.attachments)
+      ? payload.attachments.map((a) => ({
+          content: a.contentBase64,
+          filename: a.filename,
+          type: a.contentType || 'application/octet-stream',
+          disposition: 'attachment'
+        }))
+      : undefined
   })
 }
 
-export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: SendEmailInput) => {
+export const sendTemplatedEmail = async ({ templateId, to, variables = {}, attachments }: SendEmailInput) => {
   const settings = await getEmailSettings()
   if (!settings) {
     return { success: false, error: 'Email settings missing' }
@@ -195,7 +217,8 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
         fromName: settings.fromName,
         subject,
         text,
-        html
+        html,
+        attachments
       })
     } else {
       await sendViaSmtp({
@@ -204,7 +227,8 @@ export const sendTemplatedEmail = async ({ templateId, to, variables = {} }: Sen
         fromName: settings.fromName,
         subject,
         text,
-        html
+        html,
+        attachments
       })
     }
 

@@ -153,6 +153,7 @@ function MechanicSessionBar({
 // Draggable Work Order Card Component
 function DraggableWorkOrderCard({
   item,
+  currentColumn,
   planningTypeMap,
   normalizePlanningKey,
   formatTimeRange,
@@ -163,6 +164,7 @@ function DraggableWorkOrderCard({
   userHasActiveSession
 }: {
   item: WorkOrder
+  currentColumn: string
   planningTypeMap: Map<string, { name?: string | null; color?: string | null }>
   normalizePlanningKey: (value?: string | null) => string
   formatTimeRange: (scheduledAt?: string | null, durationMinutes?: number | null) => string
@@ -225,14 +227,22 @@ function DraggableWorkOrderCard({
     }
   }
 
+  // Kleur altijd uit actuele planningtypes (Instellingen), zodat kleuren overal hetzelfde zijn
   const typeById = item.planningTypeId ? planningTypeMap.get(item.planningTypeId) : null
   const typeByName = item.planningTypeName ? planningTypeMap.get(normalizePlanningKey(item.planningTypeName)) : null
   const typeName = item.planningTypeName || typeById?.name || typeByName?.name || item.title || ''
-  const typeColor = item.planningTypeColor || typeById?.color || typeByName?.color || null
+  const typeColor = (typeById?.color ?? typeByName?.color) ?? item.planningTypeColor ?? null
 
   // Get active sessions
   const activeSessions = item.workSessions?.filter(s => !s.endedAt) || []
   const hasActiveSessions = activeSessions.length > 0
+
+  // Auto's in kolom "Afspraak" mogen niet direct gestart worden; alleen management/frontoffice mag naar "Auto binnen" zetten
+  // Auto's die gereed zijn krijgen nooit "Start werk"
+  const colNorm = currentColumn.trim().toLowerCase()
+  const isInAfspraakColumn = colNorm === 'afspraak'
+  const isInGereedColumn = colNorm.includes('gereed')
+  const showStartWorkButton = !userHasActiveSession && !isInAfspraakColumn && !isInGereedColumn
 
   return (
     <div
@@ -276,12 +286,14 @@ function DraggableWorkOrderCard({
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
             hasActiveSessions 
               ? 'bg-green-100 text-green-800 border border-green-300'
-              : 'bg-slate-100 text-slate-600 border border-slate-200'
+              : isInGereedColumn 
+                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                : 'bg-slate-100 text-slate-600 border border-slate-200'
           }`}>
             <span className={`h-1.5 w-1.5 rounded-full ${
-              hasActiveSessions ? 'bg-green-500 animate-pulse' : 'bg-slate-400'
+              hasActiveSessions ? 'bg-green-500 animate-pulse' : isInGereedColumn ? 'bg-emerald-500' : 'bg-slate-400'
             }`} />
-            {hasActiveSessions ? 'Bezig' : 'Wachtend'}
+            {hasActiveSessions ? 'Bezig' : isInGereedColumn ? 'Gereed' : 'Wachtend'}
           </span>
         )}
       </div>
@@ -307,8 +319,8 @@ function DraggableWorkOrderCard({
         <span className="text-xs font-semibold">{typeName}</span>
       </div>
 
-      {/* Start button - only if user has no active session anywhere */}
-      {!userHasActiveSession && (
+      {/* Start button - niet tonen in kolom Afspraak; alleen management/frontoffice mag naar Auto binnen zetten (via werkorderpagina) */}
+      {showStartWorkButton && (
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -414,7 +426,7 @@ export default function WorkOverviewClient() {
   const loadWorkOrders = useCallback(async () => {
     try {
       setWorkOrderError(null)
-      const data = await apiFetch('/api/workorders')
+      const data = await apiFetch('/api/workorders?excludeInvoiced=1')
       if (!data.success) {
         throw new Error(data.error || 'Werkorders laden mislukt.')
       }
@@ -450,39 +462,38 @@ export default function WorkOverviewClient() {
       try {
         const token = getToken()
         if (!token) {
-          console.warn('No token available for SSE connection')
+          // Token kan even later beschikbaar zijn (na login); herprobeer
+          setTimeout(connectSSE, 1500)
           return
         }
         
         eventSource = new EventSource(`/api/workorders/stream?token=${encodeURIComponent(token)}`)
         
         eventSource.onopen = () => {
-          console.log('🔌 SSE verbinding geopend')
+          console.log('🔌 SSE verbinding geopend - live updates actief')
+          // Bij (her)verbinden direct actuele data ophalen
+          loadWorkOrders()
         }
         
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            console.log('📡 SSE Event ontvangen:', data)
             if (data.type === 'workorder-update') {
-              console.log('🔄 Refreshing work orders...', data.changeType)
-              // Small delay to ensure database is updated
-              setTimeout(() => {
-                loadWorkOrders()
-              }, 100)
+              // Direct verversen zodat alle ingelogde gebruikers verplaatsingen en stoppen van werk zien
+              const delay = 80
+              setTimeout(() => loadWorkOrders(), delay)
             } else if (data.type === 'connected') {
-              console.log('✅ SSE verbonden - live updates actief in werkoverzicht')
+              console.log('✅ SSE verbonden - wijzigingen van anderen worden direct getoond')
             }
           } catch (err) {
             console.error('SSE parse error:', err)
           }
         }
         
-        eventSource.onerror = (err) => {
-          console.error('❌ SSE verbinding verbroken, herverbinden...')
+        eventSource.onerror = () => {
           eventSource?.close()
-          // Reconnect after 5 seconds
-          setTimeout(connectSSE, 5000)
+          eventSource = null
+          setTimeout(connectSSE, 3000)
         }
       } catch (err) {
         console.error('SSE connection error:', err)
@@ -529,23 +540,36 @@ export default function WorkOverviewClient() {
 
   const workOrdersByColumn = useMemo(() => {
     const grouped = new Map<string, WorkOrder[]>()
-    
-    columns.forEach(col => grouped.set(col, []))
-    
+    columns.forEach((col) => grouped.set(col, []))
+
     const firstColumn = columns[0]
-    if (firstColumn) {
-      grouped.set(firstColumn, plannedForDay.filter(wo => !wo.workOverviewColumn))
+    const colNorm = (s: string) => String(s || '').trim().toLowerCase()
+    const colNormToName = new Map<string, string>()
+    columns.forEach((c) => colNormToName.set(colNorm(c), c))
+
+    const resolveColumn = (value?: string | null): string | null => {
+      const v = String(value || '').trim()
+      if (!v) return null
+      if (columns.includes(v)) return v
+      const n = colNorm(v)
+      return colNormToName.get(n) ?? null
     }
-    
-    workOrders.forEach(wo => {
-      if (wo.workOverviewColumn && columns.includes(wo.workOverviewColumn)) {
-        const existing = grouped.get(wo.workOverviewColumn) || []
-        grouped.set(wo.workOverviewColumn, [...existing, wo])
+
+    workOrders.forEach((wo) => {
+      const col = resolveColumn(wo.workOverviewColumn)
+      if (col) {
+        const existing = grouped.get(col) || []
+        grouped.set(col, [...existing, wo])
+      } else {
+        if (firstColumn) {
+          const existing = grouped.get(firstColumn) || []
+          grouped.set(firstColumn, [...existing, wo])
+        }
       }
     })
-    
+
     return grouped
-  }, [workOrders, plannedForDay, columns])
+  }, [workOrders, columns])
 
   const normalizePlanningKey = (value?: string | null) =>
     String(value || '')
@@ -609,14 +633,14 @@ export default function WorkOverviewClient() {
       }
 
       // Refresh to get updated activeWork fields
-      const refreshData = await apiFetch('/api/workorders')
+      const refreshData = await apiFetch('/api/workorders?excludeInvoiced=1')
       if (refreshData.success) {
         setWorkOrders(refreshData.items || [])
       }
     } catch (error: any) {
       alert(`Fout bij verplaatsen: ${error.message}`)
       // Revert on error
-      const refreshData = await apiFetch('/api/workorders')
+      const refreshData = await apiFetch('/api/workorders?excludeInvoiced=1')
       if (refreshData.success) {
         setWorkOrders(refreshData.items || [])
       }
@@ -656,6 +680,8 @@ export default function WorkOverviewClient() {
   const [showWorkModal, setShowWorkModal] = useState(false)
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null)
   const [processingWork, setProcessingWork] = useState(false)
+  const [showGereedConfirm, setShowGereedConfirm] = useState(false)
+  const [partsMaterialsChecked, setPartsMaterialsChecked] = useState(false)
 
   const handleStartWork = useCallback(async () => {
     if (!selectedWorkOrder) return
@@ -682,7 +708,7 @@ export default function WorkOverviewClient() {
       }
 
       // Refresh work orders
-      const refreshData = await apiFetch('/api/workorders')
+      const refreshData = await apiFetch('/api/workorders?excludeInvoiced=1')
       if (refreshData.success) {
         const workOrdersWithSessions = await Promise.all(
           (refreshData.items || []).map(async (wo: WorkOrder) => {
@@ -709,7 +735,7 @@ export default function WorkOverviewClient() {
     }
   }, [selectedWorkOrder])
 
-  const handleStopWork = useCallback(async (targetColumnName: string) => {
+  const handleStopWork = useCallback(async (targetColumnName: string, options?: { partsAndMaterialsChecked?: boolean }) => {
     if (!selectedWorkOrder) return
 
     setProcessingWork(true)
@@ -746,10 +772,12 @@ export default function WorkOverviewClient() {
 
       // Only move work order if this was the LAST active mechanic
       if (remainingActiveSessions.length === 0) {
+        const body: { column: string; partsAndMaterialsChecked?: boolean } = { column: targetColumnName }
+        if (options?.partsAndMaterialsChecked === true) body.partsAndMaterialsChecked = true
         const response = await apiFetch(`/api/workorders/${selectedWorkOrder.id}/column`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ column: targetColumnName })
+          body: JSON.stringify(body)
         })
 
         if (!response.success) {
@@ -760,7 +788,7 @@ export default function WorkOverviewClient() {
       }
 
       // Refresh work orders
-      const refreshData = await apiFetch('/api/workorders')
+      const refreshData = await apiFetch('/api/workorders?excludeInvoiced=1')
       if (refreshData.success) {
         const workOrdersWithSessions = await Promise.all(
           (refreshData.items || []).map(async (wo: WorkOrder) => {
@@ -780,6 +808,8 @@ export default function WorkOverviewClient() {
 
       setShowWorkModal(false)
       setSelectedWorkOrder(null)
+      setShowGereedConfirm(false)
+      setPartsMaterialsChecked(false)
     } catch (error: any) {
       alert(`Fout bij stoppen werk: ${error.message}`)
     } finally {
@@ -854,6 +884,9 @@ export default function WorkOverviewClient() {
                 onChange={(date) => setSelectedDate(date)}
               />
             </div>
+            <span className="text-xs text-slate-500">
+              Zet dezelfde datum als je collega om wijzigingen direct te zien.
+            </span>
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
               {planningTypes
                 .filter((type) => Boolean(type.color) && Boolean(type.name))
@@ -900,6 +933,7 @@ export default function WorkOverviewClient() {
                       <DraggableWorkOrderCard
                         key={item.id}
                         item={item}
+                        currentColumn={column}
                         planningTypeMap={planningTypeMap}
                         normalizePlanningKey={normalizePlanningKey}
                         formatTimeRange={formatTimeRange}
@@ -930,6 +964,50 @@ export default function WorkOverviewClient() {
               return mySession ? (
               /* Stop Work Options */
               <>
+                {showGereedConfirm ? (
+                  <>
+                    <h3 className="mb-4 text-xl font-semibold text-slate-900">
+                      ✅ Auto gereed melden
+                    </h3>
+                    <p className="mb-4 text-sm text-slate-600">
+                      Controleer of alle onderdelen en materialen op de werkorder staan voordat je naar &quot;Gereed&quot; gaat.
+                    </p>
+                    <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <input
+                        type="checkbox"
+                        checked={partsMaterialsChecked}
+                        onChange={(e) => setPartsMaterialsChecked(e.target.checked)}
+                        className="mt-1 h-5 w-5 rounded border-slate-300 text-green-600 focus:ring-2 focus:ring-green-200"
+                      />
+                      <span className="text-sm font-medium text-slate-800">
+                        Controleer of alle onderdelen en materialen op de werkorder staan!
+                      </span>
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (partsMaterialsChecked) {
+                            handleStopWork('Gereed', { partsAndMaterialsChecked: true })
+                            setShowGereedConfirm(false)
+                            setPartsMaterialsChecked(false)
+                          }
+                        }}
+                        disabled={processingWork || !partsMaterialsChecked}
+                        className="flex-1 rounded-xl border-2 border-green-500 bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 text-center text-sm font-bold text-white shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                      >
+                        {processingWork ? 'Bezig...' : 'Bevestigen en naar Gereed'}
+                      </button>
+                      <button
+                        onClick={() => { setShowGereedConfirm(false); setPartsMaterialsChecked(false) }}
+                        disabled={processingWork}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Terug
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                <>
                 <h3 className="mb-4 text-xl font-semibold text-slate-900">
                   ⏸️ Werk onderbreken
                 </h3>
@@ -970,7 +1048,7 @@ export default function WorkOverviewClient() {
 
                   {/* Option 3: Gereed */}
                   <button
-                    onClick={() => handleStopWork('Gereed')}
+                    onClick={() => setShowGereedConfirm(true)}
                     disabled={processingWork}
                     className="w-full rounded-xl border border-green-200 bg-gradient-to-r from-green-50 to-green-100 px-4 py-3 text-left text-sm font-medium text-green-900 shadow-sm hover:shadow-md hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -983,6 +1061,8 @@ export default function WorkOverviewClient() {
                     </div>
                   </button>
                 </div>
+                </>
+                )}
               </>
             ) : (
               /* Start Work Option */
@@ -1027,6 +1107,8 @@ export default function WorkOverviewClient() {
               onClick={() => {
                 setShowWorkModal(false)
                 setSelectedWorkOrder(null)
+                setShowGereedConfirm(false)
+                setPartsMaterialsChecked(false)
               }}
               disabled={processingWork}
               className="mt-6 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

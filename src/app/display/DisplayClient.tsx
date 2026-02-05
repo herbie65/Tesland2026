@@ -200,9 +200,11 @@ export default function DisplayClient() {
       OFFERTE: 'Offerte',
       GOEDGEKEURD: 'Goedgekeurd',
       GEPLAND: 'Gepland',
+      WACHTEND: 'Wachtend',
       IN_UITVOERING: 'In uitvoering',
       GEREED: 'Gereed',
       GEFACTUREERD: 'Gefactureerd',
+      GEANNULEERD: 'Geannuleerd',
     }
     return statusMap[status] || status
   }

@@ -51,6 +51,12 @@ export default async function CategoryPage({ params }: Props) {
     .map(pc => pc.product)
     .filter(p => p.status === 'enabled')
 
+  const effectiveInStock = (product: any) => {
+    if (!product?.inventory) return true
+    if (product.inventory.manageStock === false) return true
+    return Boolean(product.inventory.isInStock)
+  }
+
   return (
     <div className="public-site min-h-screen bg-[#111]">
       <SiteHeader />
@@ -146,7 +152,7 @@ export default async function CategoryPage({ params }: Props) {
                           </svg>
                         </div>
                       )}
-                      {product.inventory && !product.inventory.isInStock && (
+                      {product.inventory && !effectiveInStock(product) && (
                         <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
                           Uitverkocht
                         </div>
@@ -179,11 +185,11 @@ export default async function CategoryPage({ params }: Props) {
                         
                         {product.inventory && (
                           <span className={`text-xs px-2 py-1 rounded ${
-                            product.inventory.isInStock
+                            effectiveInStock(product)
                               ? 'bg-green-100 text-green-700'
                               : 'bg-red-100 text-red-700'
                           }`}>
-                            {product.inventory.isInStock ? 'Op voorraad' : 'Uitverkocht'}
+                            {effectiveInStock(product) ? 'Op voorraad' : 'Uitverkocht'}
                           </span>
                         )}
                       </div>

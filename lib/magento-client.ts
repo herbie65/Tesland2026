@@ -78,11 +78,14 @@ interface StockItem {
   item_id: number;
   product_id: number;
   stock_id: number;
-  qty: number;
-  is_in_stock: boolean;
+  qty?: number;
+  // Magento APIs vary: stockItems uses `is_in_stock`, stockStatuses uses `stock_status`
+  is_in_stock?: boolean | number;
+  stock_status?: number;
   min_qty?: number;
   notify_stock_qty?: number;
-  manage_stock?: boolean;
+  // Magento sometimes returns 0/1 here (numeric) instead of boolean.
+  manage_stock?: boolean | number;
   backorders?: number;
 }
 

@@ -8,11 +8,14 @@
  * Usage: node scripts/magento-preflight-check.js
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import https from 'https';
 import { PrismaClient } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const prisma = new PrismaClient();
 

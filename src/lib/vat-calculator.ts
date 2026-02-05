@@ -28,6 +28,8 @@ export interface VatSettings {
   defaultRate: string
   viesCheckEnabled: boolean
   autoReverseB2B: boolean
+  sellerCountryCode?: string
+  euCountryCodes?: string[]
 }
 
 export interface VatCalculation {
@@ -77,6 +79,10 @@ export interface CustomerVatInfo {
   countryId: string | null
 }
 
+export interface VatContext {
+  destinationCountryCode?: string | null
+}
+
 // Cache voor VAT settings en rates (in-memory, vernieuwd bij restart)
 let cachedSettings: VatSettings | null = null
 let cachedRates: Map<string, VatRate> | null = null
@@ -98,8 +104,45 @@ export async function getVatSettings(): Promise<VatSettings> {
     throw new Error('VAT settings not found in database. Run seed-vat-data.ts first.')
   }
 
-  cachedSettings = settings.data as VatSettings
+  const data: unknown = settings.data
+  if (!isVatSettings(data)) {
+    throw new Error('VAT settings invalid in database (settings.group="vat").')
+  }
+  cachedSettings = data
   return cachedSettings
+}
+
+function isVatRateShape(value: unknown): value is { percentage: number; name: string; code: string } {
+  const r = value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+  if (!r) return false
+  return (
+    typeof r.percentage === 'number' &&
+    Number.isFinite(r.percentage) &&
+    typeof r.name === 'string' &&
+    typeof r.code === 'string'
+  )
+}
+
+function isVatSettings(value: unknown): value is VatSettings {
+  const r = value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+  if (!r) return false
+  const rates = r.rates && typeof r.rates === 'object' ? (r.rates as Record<string, unknown>) : null
+  if (!rates) return false
+  const eu = (r as any).euCountryCodes
+  const euOk = eu === undefined || (Array.isArray(eu) && eu.every((x: unknown) => typeof x === 'string'))
+  const seller = (r as any).sellerCountryCode
+  const sellerOk = seller === undefined || typeof seller === 'string'
+  return (
+    isVatRateShape(rates.high) &&
+    isVatRateShape(rates.low) &&
+    isVatRateShape(rates.zero) &&
+    isVatRateShape(rates.reversed) &&
+    typeof r.defaultRate === 'string' &&
+    typeof r.viesCheckEnabled === 'boolean' &&
+    typeof r.autoReverseB2B === 'boolean' &&
+    euOk &&
+    sellerOk
+  )
 }
 
 /**
@@ -174,7 +217,8 @@ export function clearVatCache() {
  */
 export async function getVatRateForCustomer(
   customer: CustomerVatInfo | null,
-  overrideRateCode?: string
+  overrideRateCode?: string,
+  context?: VatContext
 ): Promise<VatRate> {
   // If override specified, use that
   if (overrideRateCode) {
@@ -186,22 +230,43 @@ export async function getVatRateForCustomer(
     return getDefaultVatRate()
   }
 
+  const settings = await getVatSettings()
+  const reversedCode = settings.rates.reversed.code
+  const zeroCode = settings.rates.zero.code
+
   // Check if VAT exempt
   if (customer.vatExempt) {
-    return getVatRateByCode('ZERO')
+    return getVatRateByCode(zeroCode)
   }
 
   // Check if B2B with reversed VAT
-  const settings = await getVatSettings()
-  if (settings.autoReverseB2B && 
-      customer.isBusinessCustomer && 
-      customer.vatNumberValidated) {
-    return getVatRateByCode('REVERSED')
+  const destinationCountryCode = context?.destinationCountryCode
+    ? String(context.destinationCountryCode).toUpperCase()
+    : null
+  const sellerCountryCode = settings.sellerCountryCode ? String(settings.sellerCountryCode).toUpperCase() : null
+  const euCountryCodes = Array.isArray(settings.euCountryCodes)
+    ? settings.euCountryCodes.map((c) => String(c).toUpperCase())
+    : []
+
+  const isCrossBorderEu =
+    Boolean(destinationCountryCode) &&
+    Boolean(sellerCountryCode) &&
+    destinationCountryCode !== sellerCountryCode &&
+    euCountryCodes.includes(destinationCountryCode!)
+
+  if (
+    settings.autoReverseB2B &&
+    customer.isBusinessCustomer &&
+    customer.vatNumberValidated &&
+    // Cross-border EU only (sellerCountryCode + euCountryCodes are DB-driven)
+    isCrossBorderEu
+  ) {
+    return getVatRateByCode(reversedCode)
   }
 
   // Manual reversed VAT flag
   if (customer.vatReversed) {
-    return getVatRateByCode('REVERSED')
+    return getVatRateByCode(reversedCode)
   }
 
   // Default to high rate
@@ -245,7 +310,13 @@ export async function calculateInvoiceVat(
   lines: Array<{ amount: Decimal; vatRateCode: string }>,
   customer: CustomerVatInfo | null
 ): Promise<InvoiceVatBreakdown> {
-  const rates = await getVatRates()
+  const settings = await getVatSettings()
+  // Load rates once to validate they exist
+  await getVatRates()
+  const highCode = settings.rates.high.code
+  const lowCode = settings.rates.low.code
+  const zeroCode = settings.rates.zero.code
+  const reversedCode = settings.rates.reversed.code
   
   // Initialize breakdown
   let subtotalAmount = new Decimal(0)
@@ -265,16 +336,16 @@ export async function calculateInvoiceVat(
 
     // Group by rate code
     switch (line.vatRateCode) {
-      case 'HIGH':
+      case highCode:
         vatSubtotalHigh = vatSubtotalHigh.plus(lineCalc.subtotal)
         vatAmountHigh = vatAmountHigh.plus(lineCalc.vatAmount)
         break
-      case 'LOW':
+      case lowCode:
         vatSubtotalLow = vatSubtotalLow.plus(lineCalc.subtotal)
         vatAmountLow = vatAmountLow.plus(lineCalc.vatAmount)
         break
-      case 'ZERO':
-      case 'REVERSED':
+      case zeroCode:
+      case reversedCode:
         vatSubtotalZero = vatSubtotalZero.plus(lineCalc.subtotal)
         break
     }

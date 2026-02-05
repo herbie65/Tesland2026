@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Search for similar customers by name
-    let similarCustomers = []
+    let similarCustomers: { id: string; name: string; email: string | null; customerNumber: string | null; createdAt: Date }[] = []
     if (workOrder.customerName) {
       similarCustomers = await prisma.customer.findMany({
         where: {

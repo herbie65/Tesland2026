@@ -27,6 +27,7 @@ import {
 } from '@heroicons/react/24/outline'
 import './admin-styles.css'
 import AdminAuthGate from './components/AdminAuthGate'
+import { SETTINGS_MENU_ITEMS } from '@/lib/settings-menu'
 
 type NavLink = { type: 'link'; name: string; href: string; icon: any }
 type NavGroup = { type: 'group'; name: string; icon: any; children: NavLink[] }
@@ -40,10 +41,21 @@ const NAV_ITEMS: NavItem[] = [
     icon: DocumentTextIcon,
     children: [
       { type: 'link', name: 'Homepage', href: '/admin/website/pages/home', icon: DocumentTextIcon },
-      { type: 'link', name: 'Header', href: '/admin/website/header', icon: DocumentTextIcon }
+      { type: 'link', name: 'Header', href: '/admin/website/header', icon: DocumentTextIcon },
+      { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
     ]
   },
-  { type: 'link', name: 'Planning', href: '/admin/planning', icon: CalendarIcon },
+  {
+    type: 'group',
+    name: 'Werkplaats',
+    icon: WrenchScrewdriverIcon,
+    children: [
+      { type: 'link', name: 'Planning', href: '/admin/planning', icon: CalendarIcon },
+      { type: 'link', name: 'Werkoverzicht', href: '/admin/workoverzicht', icon: ChartBarIcon },
+      { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
+      { type: 'link', name: 'Voertuigen', href: '/admin/vehicles', icon: TruckIcon }
+    ]
+  },
   {
     type: 'group',
     name: 'HR',
@@ -55,26 +67,16 @@ const NAV_ITEMS: NavItem[] = [
       { type: 'link', name: 'HR Instellingen', href: '/admin/hr-settings', icon: Cog6ToothIcon }
     ]
   },
-  { type: 'link', name: 'Werkoverzicht', href: '/admin/workoverzicht', icon: ChartBarIcon },
-  { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },
-  { type: 'link', name: 'Voertuigen', href: '/admin/vehicles', icon: TruckIcon },
-  {
-    type: 'group',
-    name: 'Producten',
-    icon: CubeIcon,
-    children: [
-      { type: 'link', name: 'Alle Producten', href: '/admin/products', icon: CubeIcon },
-      { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
-    ]
-  },
   {
     type: 'group',
     name: 'Magazijn',
     icon: WrenchScrewdriverIcon,
     children: [
       { type: 'link', name: 'Overzicht', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
-      { type: 'link', name: 'Back-Orders', href: '/admin/magazijn/back-orders', icon: ClockIcon }
+      { type: 'link', name: 'Orders', href: '/admin/orders', icon: ShoppingCartIcon },
+      { type: 'link', name: "RMA's", href: '/admin/rmas', icon: ArrowUturnLeftIcon },
+      { type: 'link', name: 'Producten', href: '/admin/products', icon: CubeIcon }
     ]
   },
   {
@@ -83,14 +85,24 @@ const NAV_ITEMS: NavItem[] = [
     icon: ShoppingCartIcon,
     children: [
       { type: 'link', name: 'Orders', href: '/admin/orders', icon: ShoppingCartIcon },
+      { type: 'link', name: 'Offertes', href: '/admin/offertes', icon: DocumentTextIcon },
       { type: 'link', name: 'Facturen', href: '/admin/invoices', icon: DocumentTextIcon },
-      { type: 'link', name: 'Creditfacturen', href: '/admin/credit-invoices', icon: ReceiptRefundIcon },
-      { type: 'link', name: 'RMA', href: '/admin/rmas', icon: ArrowUturnLeftIcon }
+      { type: 'link', name: 'Creditfacturen', href: '/admin/credit-invoices', icon: ReceiptRefundIcon }
     ]
   },
   { type: 'link', name: 'Tools', href: '/admin/tools', icon: Cog6ToothIcon },
   { type: 'link', name: 'Import', href: '/admin/import', icon: ArrowDownTrayIcon },
-  { type: 'link', name: 'Instellingen', href: '/admin/settings', icon: Cog6ToothIcon }
+  {
+    type: 'group',
+    name: 'Instellingen',
+    icon: Cog6ToothIcon,
+    children: SETTINGS_MENU_ITEMS.map((item) => ({
+      type: 'link' as const,
+      name: item.label,
+      href: item.href,
+      icon: Cog6ToothIcon
+    }))
+  }
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -98,9 +110,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null)
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [salesOpen, setSalesOpen] = useState(false)
-  const [productsOpen, setProductsOpen] = useState(false)
   const [magazijnOpen, setMagazijnOpen] = useState(false)
   const [hrOpen, setHrOpen] = useState(false)
+  const [werkplaatsOpen, setWerkplaatsOpen] = useState(false)
+  const [websiteOpen, setWebsiteOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -318,19 +332,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   useEffect(() => {
+    const websiteGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Website')
+    if (websiteGroup && websiteGroup.type === 'group') {
+      const isActive = websiteGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setWebsiteOpen(true)
+      }
+    }
+
     const salesGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Verkopen')
     if (salesGroup && salesGroup.type === 'group') {
       const isActive = salesGroup.children.some((child) => child.href === pathname)
       if (isActive) {
         setSalesOpen(true)
-      }
-    }
-    
-    const productsGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Producten')
-    if (productsGroup && productsGroup.type === 'group') {
-      const isActive = productsGroup.children.some((child) => child.href === pathname)
-      if (isActive) {
-        setProductsOpen(true)
       }
     }
     
@@ -349,6 +363,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setHrOpen(true)
       }
     }
+
+    const werkplaatsGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Werkplaats')
+    if (werkplaatsGroup && werkplaatsGroup.type === 'group') {
+      const isActive = werkplaatsGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setWerkplaatsOpen(true)
+      }
+    }
+
+    const settingsGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Instellingen')
+    if (settingsGroup && settingsGroup.type === 'group') {
+      const isActive = settingsGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setSettingsOpen(true)
+      }
+    }
   }, [pathname])
 
   useEffect(() => {
@@ -363,7 +393,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const rect = button.getBoundingClientRect()
       setNotificationsPos({
         top: rect.bottom + 8,
-        right: window.innerWidth - rect.right
+        left: rect.left
       })
     }
     updatePos()
@@ -457,16 +487,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     const isActive = item.children.some((child) => child.href === pathname)
                     const showText = sidebarWidth >= 150 || isHovering
                     const isOpen = 
+                      item.name === 'Website' ? websiteOpen : 
                       item.name === 'Verkopen' ? salesOpen : 
-                      item.name === 'Producten' ? productsOpen : 
                       item.name === 'Magazijn' ? magazijnOpen :
                       item.name === 'HR' ? hrOpen : 
+                      item.name === 'Werkplaats' ? werkplaatsOpen :
+                      item.name === 'Instellingen' ? settingsOpen :
                       false
                     const setOpen = 
+                      item.name === 'Website' ? setWebsiteOpen : 
                       item.name === 'Verkopen' ? setSalesOpen : 
-                      item.name === 'Producten' ? setProductsOpen : 
                       item.name === 'Magazijn' ? setMagazijnOpen :
                       item.name === 'HR' ? setHrOpen :
+                      item.name === 'Werkplaats' ? setWerkplaatsOpen :
+                      item.name === 'Instellingen' ? setSettingsOpen :
                       () => {}
                     
                     return (
@@ -713,16 +747,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 if (item.type === 'group') {
                   const isActive = item.children.some((child) => child.href === pathname)
                   const isOpen = 
+                    item.name === 'Website' ? websiteOpen : 
                     item.name === 'Verkopen' ? salesOpen : 
-                    item.name === 'Producten' ? productsOpen : 
                     item.name === 'Magazijn' ? magazijnOpen :
                     item.name === 'HR' ? hrOpen : 
+                    item.name === 'Werkplaats' ? werkplaatsOpen :
+                    item.name === 'Instellingen' ? settingsOpen :
                     false
                   const setOpen = 
+                    item.name === 'Website' ? setWebsiteOpen : 
                     item.name === 'Verkopen' ? setSalesOpen : 
-                    item.name === 'Producten' ? setProductsOpen : 
                     item.name === 'Magazijn' ? setMagazijnOpen :
                     item.name === 'HR' ? setHrOpen :
+                    item.name === 'Werkplaats' ? setWerkplaatsOpen :
+                    item.name === 'Instellingen' ? setSettingsOpen :
                     () => {}
                   
                   return (

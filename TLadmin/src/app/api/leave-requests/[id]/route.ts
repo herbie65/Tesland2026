@@ -213,8 +213,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
     
     // Check if user can cancel
-    const isManager = user.roles?.some(r => ['admin', 'manager'].includes(r.role.name))
-    if (!isManager && leaveRequest.userId !== user.id) {
+    const userIsManager = isManager(user)
+    if (!userIsManager && leaveRequest.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
     

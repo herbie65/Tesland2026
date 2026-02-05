@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
@@ -27,6 +27,9 @@ type LaborLine = {
   totalAmount?: number | null
   notes?: string | null
   completed?: boolean
+  completedBy?: string | null
+  completedByName?: string | null
+  completedAt?: string | null
   user?: any
 }
 
@@ -63,6 +66,7 @@ type WorkOrder = {
   customer?: any
   vehicle?: any
   assignee?: any
+  planningItem?: { durationMinutes?: number } | null
   partsLines?: PartsLine[]
   laborLines?: LaborLine[]
   workSessions?: WorkSession[]
@@ -80,6 +84,8 @@ type WorkOrder = {
   activeWorkStartedByName?: string | null
 }
 
+type WorkshopRate = { name: string; ratePerHour: number }
+
 export default function WorkOrderDetailClient() {
   const params = useParams()
   const router = useRouter()
@@ -89,6 +95,11 @@ export default function WorkOrderDetailClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'parts' | 'labor' | 'photos' | 'notes'>('labor')
+  const [currentUser, setCurrentUser] = useState<{ id: string; role?: string; roleName?: string; isSystemAdmin?: boolean; displayName?: string; email?: string } | null>(null)
+  const [showBevindingenModal, setShowBevindingenModal] = useState(false)
+  const [bevindingenLabor, setBevindingenLabor] = useState<LaborLine | null>(null)
+  const [bevindingenText, setBevindingenText] = useState('')
+  const [savingBevindingen, setSavingBevindingen] = useState(false)
   
   // Stop work state
   const [showStopWorkModal, setShowStopWorkModal] = useState(false)
@@ -116,11 +127,13 @@ export default function WorkOrderDetailClient() {
   const [showLaborForm, setShowLaborForm] = useState(false)
   const [laborForm, setLaborForm] = useState({
     description: '',
-    durationMinutes: 0,
-    hourlyRate: '',
+    amount: '',
     notes: ''
   })
   const [editingLaborId, setEditingLaborId] = useState<string | null>(null)
+  const [laborProducts, setLaborProducts] = useState<any[]>([])
+  const [loadingLaborProducts, setLoadingLaborProducts] = useState(false)
+  const laborSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Photo state
   const [showPhotoForm, setShowPhotoForm] = useState(false)
@@ -132,6 +145,17 @@ export default function WorkOrderDetailClient() {
 
   // Display state
   const [sendingToDisplay, setSendingToDisplay] = useState(false)
+  const [defaultVatPct, setDefaultVatPct] = useState<number>(0)
+  const [creatingInvoice, setCreatingInvoice] = useState(false)
+
+  // Factureren modal (management: controle werkzaamheden/onderdelen, tariefkeuze)
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoicePrepWorkPartsChecked, setInvoicePrepWorkPartsChecked] = useState(false)
+  const [laborBillingMode, setLaborBillingMode] = useState<'PLANNED' | 'ACTUAL' | 'FIXED'>('ACTUAL')
+  const [laborFixedAmountInput, setLaborFixedAmountInput] = useState('')
+  const [laborHourlyRateName, setLaborHourlyRateName] = useState<string>('')
+  const [workshopRates, setWorkshopRates] = useState<WorkshopRate[]>([])
+  const [loadingWorkshopRates, setLoadingWorkshopRates] = useState(false)
 
   // Notes state
   const [notesEditing, setNotesEditing] = useState(false)
@@ -139,6 +163,11 @@ export default function WorkOrderDetailClient() {
     customerNotes: '',
     internalNotes: ''
   })
+
+  // Auto binnen zonder handtekening (management/frontoffice) – alleen op werkorderpagina
+  const [showAutoBinnenConfirm, setShowAutoBinnenConfirm] = useState(false)
+  const [processingAutoBinnen, setProcessingAutoBinnen] = useState(false)
+  const [workOverviewColumns, setWorkOverviewColumns] = useState<string[]>([])
 
   const loadData = async () => {
     if (!workOrderId) return
@@ -175,6 +204,111 @@ export default function WorkOrderDetailClient() {
   useEffect(() => {
     loadData()
   }, [workOrderId])
+
+  useEffect(() => {
+    let alive = true
+    const loadUser = async () => {
+      try {
+        const data = await apiFetch('/api/auth/me')
+        if (!alive) return
+        if (data?.user) setCurrentUser(data.user)
+      } catch {
+        if (!alive) return
+        setCurrentUser(null)
+      }
+    }
+    loadUser()
+    return () => { alive = false }
+  }, [])
+
+  const hasActiveSession = Boolean(
+    workOrder?.workSessions?.some(
+      (s) => !(s as { endedAt?: string | null }).endedAt && (s as { userId?: string }).userId === currentUser?.id
+    )
+  )
+  // Management/frontoffice: rol uit role of roleName (case-insensitive), of system admin
+  const roleRaw = (currentUser?.role || currentUser?.roleName || '').trim().toUpperCase()
+  const isManagement =
+    currentUser?.isSystemAdmin === true ||
+    roleRaw === 'MANAGEMENT' ||
+    roleRaw === 'SYSTEM_ADMIN'
+  const canToggleLabor = hasActiveSession || isManagement
+
+  useEffect(() => {
+    let alive = true
+    const loadWorkOverview = async () => {
+      try {
+        const data = await apiFetch('/api/settings/workoverview')
+        if (!alive) return
+        if (data?.success && data?.item) {
+          const settings = data.item?.data ?? data.item
+          const cols = Array.isArray(settings?.columns) ? settings.columns : []
+          setWorkOverviewColumns(cols)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadWorkOverview()
+    return () => { alive = false }
+  }, [])
+
+  const targetColumnAutoBinnen =
+    workOverviewColumns.length >= 2 &&
+    String(workOverviewColumns[0] ?? '').trim().toLowerCase() === 'afspraak'
+      ? workOverviewColumns[1]
+      : 'Auto binnen'
+
+  // Toon "Auto binnen" knop: kolom is Afspraak, OF nog geen kolom maar wel gepland (bv. geopend vanuit planning)
+  const workOverviewColNorm = String(workOrder?.workOverviewColumn ?? '').trim().toLowerCase()
+  const status = String(workOrder?.workOrderStatus ?? '')
+  const notYetStartedOrDone = !['IN_UITVOERING', 'GEREED', 'GEFACTUREERD'].includes(status)
+  const isPlannedOrScheduled = !!workOrder?.scheduledAt || status === 'GEPLAND'
+  const isInAfspraakColumn =
+    workOrder &&
+    (workOverviewColNorm === 'afspraak' ||
+      (!workOverviewColNorm && isPlannedOrScheduled && notYetStartedOrDone))
+
+  const handleConfirmAutoBinnen = async () => {
+    if (!workOrder) return
+    setProcessingAutoBinnen(true)
+    try {
+      const response = await apiFetch(`/api/workorders/${workOrder.id}/column`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ column: targetColumnAutoBinnen })
+      })
+      if (!response.success) throw new Error(response.error || 'Verplaatsing mislukt')
+      setShowAutoBinnenConfirm(false)
+      await loadData()
+    } catch (err: any) {
+      alert(`Fout: ${err.message}`)
+    } finally {
+      setProcessingAutoBinnen(false)
+    }
+  }
+
+  useEffect(() => {
+    let alive = true
+    const loadVat = async () => {
+      try {
+        const data = await apiFetch('/api/vat/rates')
+        if (!alive) return
+        if (!data?.success) return
+        const rates = Array.isArray(data.rates) ? data.rates : []
+        const defaultCode = String(data.defaultRate || '')
+        const match = rates.find((r: any) => String(r.code) === defaultCode) || rates.find((r: any) => r.isDefault)
+        const pct = match ? Number(match.percentage) : 0
+        setDefaultVatPct(Number.isFinite(pct) ? pct : 0)
+      } catch {
+        // ignore
+      }
+    }
+    loadVat()
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const searchProducts = async (query: string) => {
     if (!query || query.length < 2) {
@@ -248,30 +382,62 @@ export default function WorkOrderDetailClient() {
     }
   }
 
-  const handleSaveLabor = async () => {
+  const searchLaborProducts = async (query: string) => {
+    if (!query || query.length < 2) {
+      setLaborProducts([])
+      return
+    }
     try {
+      setLoadingLaborProducts(true)
+      const data = await apiFetch(`/api/products?search=${encodeURIComponent(query)}&limit=30`)
+      setLaborProducts(data.items || [])
+    } catch {
+      setLaborProducts([])
+    } finally {
+      setLoadingLaborProducts(false)
+    }
+  }
+
+  const handleSelectLaborProduct = (product: any) => {
+    setLaborForm((prev) => ({
+      ...prev,
+      description: product.name || prev.description,
+      amount: product.price != null ? String(product.price) : prev.amount
+    }))
+    setLaborProducts([])
+  }
+
+  const handleSaveLabor = async () => {
+    const description = (laborForm.description ?? '').trim()
+    if (!description) {
+      alert('Vul een omschrijving in (zoek een product of typ vrij in).')
+      return
+    }
+    try {
+      const amountNum = laborForm.amount !== '' ? Number(laborForm.amount) : null
+      const payload = {
+        description,
+        notes: laborForm.notes ?? '',
+        totalAmount: amountNum != null && Number.isFinite(amountNum) ? amountNum : null
+      }
       if (editingLaborId) {
         await apiFetch(`/api/workorders/${workOrderId}/labor/${editingLaborId}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            ...laborForm,
-            durationMinutes: Number(laborForm.durationMinutes),
-            hourlyRate: laborForm.hourlyRate ? Number(laborForm.hourlyRate) : null
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         })
       } else {
         await apiFetch(`/api/workorders/${workOrderId}/labor`, {
           method: 'POST',
-          body: JSON.stringify({
-            ...laborForm,
-            durationMinutes: Number(laborForm.durationMinutes),
-            hourlyRate: laborForm.hourlyRate ? Number(laborForm.hourlyRate) : null
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         })
       }
       setShowLaborForm(false)
       setEditingLaborId(null)
-      setLaborForm({ description: '', durationMinutes: 0, hourlyRate: '', notes: '' })
+      setLaborForm({ description: '', amount: '', notes: '' })
+      setLaborProducts([])
+      if (laborSearchTimeoutRef.current) clearTimeout(laborSearchTimeoutRef.current)
       loadData()
     } catch (err: any) {
       alert('Fout bij opslaan: ' + err.message)
@@ -289,6 +455,10 @@ export default function WorkOrderDetailClient() {
   }
 
   const handleToggleLaborCompleted = async (laborId: string, currentCompleted: boolean) => {
+    if (!canToggleLabor) {
+      alert('Alleen de monteur die ingeklokt is op deze auto mag werkzaamheden afvinken.')
+      return
+    }
     try {
       await apiFetch(`/api/workorders/${workOrderId}/labor/${laborId}`, {
         method: 'PATCH',
@@ -296,7 +466,32 @@ export default function WorkOrderDetailClient() {
       })
       loadData()
     } catch (err: any) {
-      alert('Fout bij updaten: ' + err.message)
+      alert(err.message || 'Fout bij updaten')
+    }
+  }
+
+  const openBevindingen = (labor: LaborLine) => {
+    setBevindingenLabor(labor)
+    setBevindingenText(labor.notes || '')
+    setShowBevindingenModal(true)
+  }
+
+  const handleSaveBevindingen = async () => {
+    if (!bevindingenLabor) return
+    setSavingBevindingen(true)
+    try {
+      await apiFetch(`/api/workorders/${workOrderId}/labor/${bevindingenLabor.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ notes: bevindingenText })
+      })
+      setShowBevindingenModal(false)
+      setBevindingenLabor(null)
+      setBevindingenText('')
+      loadData()
+    } catch (err: any) {
+      alert(err.message || 'Fout bij opslaan')
+    } finally {
+      setSavingBevindingen(false)
     }
   }
 
@@ -386,7 +581,7 @@ export default function WorkOrderDetailClient() {
       }
 
       // Refresh work order data
-      await loadWorkOrder()
+      await loadData()
       alert(`Werkorder verplaatst naar "${targetColumnName}"`)
     } catch (error: any) {
       alert(`Fout bij stoppen: ${error.message}`)
@@ -412,9 +607,94 @@ export default function WorkOrderDetailClient() {
     const partsTotal = (workOrder?.partsLines || []).reduce((sum, part) => sum + Number(part.totalPrice || 0), 0)
     const laborTotal = (workOrder?.laborLines || []).reduce((sum, labor) => sum + Number(labor.totalAmount || 0), 0)
     const subtotal = partsTotal + laborTotal
-    const vat = subtotal * 0.21
+    const vat = subtotal * (defaultVatPct / 100)
     const total = subtotal + vat
     return { partsTotal, laborTotal, subtotal, vat, total }
+  }
+
+  const handleOpenInvoiceModal = async () => {
+    setShowInvoiceModal(true)
+    setInvoicePrepWorkPartsChecked(false)
+    setLaborBillingMode('ACTUAL')
+    setLaborFixedAmountInput('')
+    setLaborHourlyRateName('')
+    setLoadingWorkshopRates(true)
+    try {
+      let rates: WorkshopRate[] = []
+      const data = await apiFetch('/api/admin/workshop-hourly-rates')
+      if (data?.success && Array.isArray(data.rates)) {
+        rates = data.rates
+      }
+      if (rates.length === 0) {
+        const planningRes = await apiFetch('/api/admin/settings/planning')
+        const planning = (planningRes as any)?.data ?? (planningRes as any)?.item
+        const list = Array.isArray(planning?.hourlyRates) ? planning.hourlyRates : []
+        rates = list
+          .filter((r: unknown) => r && typeof r === 'object' && 'name' in (r as object) && 'ratePerHour' in (r as object))
+          .map((r: { name?: unknown; ratePerHour?: unknown }) => ({
+            name: String((r as { name?: unknown }).name ?? ''),
+            ratePerHour: Number((r as { ratePerHour?: unknown }).ratePerHour) >= 0 ? Number((r as { ratePerHour?: unknown }).ratePerHour) : 0
+          }))
+      }
+      if (rates.length > 0) {
+        setWorkshopRates(rates)
+        setLaborHourlyRateName(rates[0]?.name ?? '')
+      }
+    } catch {
+      setWorkshopRates([])
+    } finally {
+      setLoadingWorkshopRates(false)
+    }
+  }
+
+  const handleCreateInvoice = async () => {
+    if (!workOrder) return
+    if (!invoicePrepWorkPartsChecked) {
+      alert('Vink eerst de controle van werkzaamheden en onderdelen aan.')
+      return
+    }
+    if (laborBillingMode === 'PLANNED' || laborBillingMode === 'ACTUAL') {
+      if (workshopRates.length === 0) {
+        alert('Er zijn geen werkplaatstarieven ingesteld. Ga naar Instellingen → Planning, types & tarieven.')
+        return
+      }
+      if (!laborHourlyRateName) {
+        alert('Kies een uurtarief.')
+        return
+      }
+    }
+    if (laborBillingMode === 'FIXED') {
+      const fixed = Number(laborFixedAmountInput)
+      if (!Number.isFinite(fixed) || fixed < 0) {
+        alert('Voer een geldig vast tarief in (€).')
+        return
+      }
+    }
+    try {
+      setCreatingInvoice(true)
+      const patchPayload: Record<string, unknown> = {
+        invoicePrepWorkPartsCheckedAt: true,
+        laborBillingMode,
+        laborHourlyRateName: laborBillingMode === 'FIXED' ? null : (laborHourlyRateName || null),
+        laborFixedAmount: laborBillingMode === 'FIXED' ? Number(laborFixedAmountInput) : null
+      }
+      await apiFetch(`/api/workorders/${workOrder.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patchPayload)
+      })
+      const res = await apiFetch(`/api/workorders/${workOrder.id}/invoice`, { method: 'POST' })
+      if (!res?.success) {
+        throw new Error(res?.error || 'Factuur maken mislukt')
+      }
+      setShowInvoiceModal(false)
+      alert(`Factuur gemaakt: ${res.invoice?.invoiceNumber || ''}`)
+      router.push('/admin/invoices')
+    } catch (e: any) {
+      alert(`Fout bij factuur maken: ${e.message}`)
+    } finally {
+      setCreatingInvoice(false)
+    }
   }
 
   if (loading) {
@@ -455,6 +735,16 @@ export default function WorkOrderDetailClient() {
             <p className="text-slate-600">{workOrder.title}</p>
           </div>
           <div className="flex items-center gap-3">
+            {workOrder.workOrderStatus === 'GEREED' && (
+            <button
+              onClick={handleOpenInvoiceModal}
+              disabled={creatingInvoice}
+              className="glass-button flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              title="Maak factuur van deze werkorder"
+            >
+              <span>{creatingInvoice ? 'Factuur maken...' : 'Maak factuur'}</span>
+            </button>
+            )}
             <button
               onClick={handleSendToDisplay}
               disabled={sendingToDisplay}
@@ -491,6 +781,18 @@ export default function WorkOrderDetailClient() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
                 </svg>
                 <span className="text-red-700 font-semibold">{stoppingWork ? 'Bezig...' : '⏸️ Stop Werk'}</span>
+              </button>
+            )}
+
+            {/* Auto binnen (zonder handtekening) – alleen in kolom Afspraak, alleen management/frontoffice */}
+            {isInAfspraakColumn && isManagement && (
+              <button
+                onClick={() => setShowAutoBinnenConfirm(true)}
+                disabled={processingAutoBinnen}
+                className="glass-button flex items-center gap-2 rounded-xl border-2 border-amber-500 bg-amber-50 px-4 py-2.5 text-sm font-medium text-amber-800 transition-all hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Zet auto binnen zonder handtekening klant"
+              >
+                <span>{processingAutoBinnen ? 'Bezig...' : '🚗 Auto binnen (zonder handtekening)'}</span>
               </button>
             )}
             
@@ -870,7 +1172,8 @@ export default function WorkOrderDetailClient() {
                     onClick={() => {
                       setShowLaborForm(true)
                       setEditingLaborId(null)
-                      setLaborForm({ description: '', durationMinutes: 0, hourlyRate: '', notes: '' })
+                      setLaborForm({ description: '', amount: '', notes: '' })
+                      setLaborProducts([])
                     }}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
@@ -886,39 +1189,57 @@ export default function WorkOrderDetailClient() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="md:col-span-2">
                         <label className="mb-1 block text-sm font-medium text-slate-700">
-                          Omschrijving *
+                          Omschrijving * (zoek product of vul vrij in)
                         </label>
                         <input
                           type="text"
                           value={laborForm.description}
-                          onChange={(e) => setLaborForm({ ...laborForm, description: e.target.value })}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setLaborForm({ ...laborForm, description: v })
+                            if (laborSearchTimeoutRef.current) clearTimeout(laborSearchTimeoutRef.current)
+                            laborSearchTimeoutRef.current = setTimeout(() => searchLaborProducts(v), 300)
+                          }}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                          placeholder="Bijv. APK controle, remblokken vervangen"
+                          placeholder="Typ omschrijving of zoek op productnaam/SKU..."
                         />
+                        {loadingLaborProducts && (
+                          <p className="mt-1 text-sm text-slate-500">Zoeken...</p>
+                        )}
+                        {!loadingLaborProducts && laborProducts.length > 0 && (
+                          <div className="mt-1 border border-slate-200 rounded-lg max-h-40 overflow-y-auto bg-white shadow-sm">
+                            {laborProducts.map((product) => (
+                              <button
+                                key={product.id}
+                                type="button"
+                                onClick={() => handleSelectLaborProduct(product)}
+                                className="w-full text-left px-3 py-2 border-b border-slate-100 hover:bg-slate-50 text-sm"
+                              >
+                                <span className="font-medium">{product.name}</span>
+                                {(product.sku || product.price != null) && (
+                                  <span className="ml-2 text-slate-500 text-xs">
+                                    {product.sku ? `SKU: ${product.sku}` : ''}
+                                    {product.sku && product.price != null ? ' · ' : ''}
+                                    {product.price != null ? `€${Number(product.price).toFixed(2)}` : ''}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium text-slate-700">
-                          Tijd (minuten) *
+                          Prijs (€)
                         </label>
                         <input
                           type="number"
                           min="0"
-                          step="15"
-                          value={laborForm.durationMinutes}
-                          onChange={(e) => setLaborForm({ ...laborForm, durationMinutes: Number(e.target.value) })}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">
-                          Uurtarief (€)
-                        </label>
-                        <input
-                          type="number"
                           step="0.01"
-                          value={laborForm.hourlyRate}
-                          onChange={(e) => setLaborForm({ ...laborForm, hourlyRate: e.target.value })}
+                          value={laborForm.amount}
+                          onChange={(e) => setLaborForm({ ...laborForm, amount: e.target.value })}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                          placeholder="0,00"
                         />
                       </div>
                       <div className="md:col-span-2">
@@ -944,6 +1265,8 @@ export default function WorkOrderDetailClient() {
                         onClick={() => {
                           setShowLaborForm(false)
                           setEditingLaborId(null)
+                          setLaborProducts([])
+                          if (laborSearchTimeoutRef.current) clearTimeout(laborSearchTimeoutRef.current)
                         }}
                         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                       >
@@ -957,12 +1280,10 @@ export default function WorkOrderDetailClient() {
                   <table className="w-full">
                     <thead className="border-b border-slate-200 bg-slate-50">
                       <tr>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700 w-12">✓</th>
+                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700 w-24">✓ / Initialen</th>
                         <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Omschrijving</th>
                         <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Monteur</th>
-                        <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Tijd</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Uurtarief</th>
-                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Totaal</th>
+                        <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Prijs</th>
                         <th className="px-4 py-3 text-right text-sm font-semibold text-slate-700">Acties</th>
                       </tr>
                     </thead>
@@ -970,34 +1291,43 @@ export default function WorkOrderDetailClient() {
                       {(workOrder.laborLines || []).map((labor) => (
                         <tr key={labor.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-4 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={labor.completed || false}
-                              onChange={() => handleToggleLaborCompleted(labor.id, labor.completed || false)}
-                              className="h-5 w-5 rounded border-slate-300 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-0 cursor-pointer"
-                            />
+                            <div className="flex flex-col items-center gap-0.5">
+                              <input
+                                type="checkbox"
+                                checked={labor.completed || false}
+                                disabled={!canToggleLabor}
+                                onChange={() => handleToggleLaborCompleted(labor.id, labor.completed || false)}
+                                title={!canToggleLabor ? 'Alleen de ingeklokte monteur mag afvinken' : undefined}
+                                className="h-5 w-5 rounded border-slate-300 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              />
+                              {labor.completed && labor.completedByName && (
+                                <span className="text-xs font-medium text-slate-600" title="Afgevinkt door">
+                                  {labor.completedByName}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className={`px-4 py-3 text-sm ${labor.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                             {labor.description}
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600">{labor.userName || '-'}</td>
-                          <td className="px-4 py-3 text-center text-sm text-slate-900">
-                            {formatDuration(labor.durationMinutes)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm text-slate-900">
-                            {labor.hourlyRate ? formatCurrency(labor.hourlyRate) : '-'}
-                          </td>
                           <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">
                             {formatCurrency(labor.totalAmount)}
                           </td>
                           <td className="px-4 py-3 text-right">
                             <button
+                              onClick={() => openBevindingen(labor)}
+                              className="mr-2 text-sm text-amber-700 hover:text-amber-900"
+                              title="Bevindingen, oplossingen, notities"
+                            >
+                              Bevindingen
+                            </button>
+                            <button
                               onClick={() => {
                                 setEditingLaborId(labor.id)
                                 setLaborForm({
                                   description: labor.description,
-                                  durationMinutes: labor.durationMinutes,
-                                  hourlyRate: labor.hourlyRate?.toString() || '',
+                                  amount: labor.totalAmount != null ? String(labor.totalAmount) : '',
                                   notes: labor.notes || ''
                                 })
                                 setShowLaborForm(true)
@@ -1017,7 +1347,7 @@ export default function WorkOrderDetailClient() {
                       ))}
                       {(workOrder.laborLines || []).length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                          <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">
                             Geen werkzaamheden toegevoegd
                           </td>
                         </tr>
@@ -1025,6 +1355,12 @@ export default function WorkOrderDetailClient() {
                     </tbody>
                   </table>
                 </div>
+
+                {!canToggleLabor && (workOrder.laborLines?.length ?? 0) > 0 && (
+                  <p className="mt-2 text-sm text-amber-700">
+                    Klok in op deze auto om werkzaamheden af te vinken en naar Gereed te kunnen gaan.
+                  </p>
+                )}
 
                 {/* Work Sessions - Actual Time Tracking */}
                 {(workOrder.workSessions && workOrder.workSessions.length > 0) && (
@@ -1349,14 +1685,51 @@ export default function WorkOrderDetailClient() {
             <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               📄 Offerte genereren
             </button>
-            <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              🧾 Factuur genereren
-            </button>
+            {workOrder.workOrderStatus === 'GEREED' && (
+              <button
+                onClick={handleOpenInvoiceModal}
+                disabled={creatingInvoice}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                title="Alleen voor werkorders met status Gereed"
+              >
+                🧾 Factuur genereren
+              </button>
+            )}
             <button className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               📧 Email naar klant
             </button>
           </div>
         </div>
+
+        {/* Auto binnen zonder handtekening – bevestiging */}
+        {showAutoBinnenConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="rounded-2xl bg-white p-6 shadow-xl max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold text-slate-900 mb-3">
+                Auto binnen (zonder handtekening)
+              </h3>
+              <p className="text-sm text-slate-600 mb-6">
+                Weet je zeker dat er aan deze auto gewerkt mag worden zonder handtekening klant?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirmAutoBinnen}
+                  disabled={processingAutoBinnen}
+                  className="flex-1 rounded-xl border-2 border-green-500 bg-green-500 px-4 py-3 text-center text-sm font-bold text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processingAutoBinnen ? 'Bezig...' : 'Ja'}
+                </button>
+                <button
+                  onClick={() => setShowAutoBinnenConfirm(false)}
+                  disabled={processingAutoBinnen}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Nee
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stop Work Modal */}
         {showStopWorkModal && (
@@ -1417,6 +1790,192 @@ export default function WorkOrderDetailClient() {
               >
                 Annuleren
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Bevindingen / oplossingen per werkzaamheid */}
+        {showBevindingenModal && bevindingenLabor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">Bevindingen &amp; oplossingen</h3>
+              <p className="text-sm text-slate-600 mb-4">{bevindingenLabor.description}</p>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Bevindingen, oplossingen, notities (monteur)
+              </label>
+              <textarea
+                value={bevindingenText}
+                onChange={(e) => setBevindingenText(e.target.value)}
+                rows={5}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                placeholder="Wat heb je gevonden, gedaan, opgelost?"
+              />
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={handleSaveBevindingen}
+                  disabled={savingBevindingen}
+                  className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingBevindingen ? 'Opslaan...' : 'Opslaan'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBevindingenModal(false)
+                    setBevindingenLabor(null)
+                    setBevindingenText('')
+                  }}
+                  disabled={savingBevindingen}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Annuleren
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Factureren modal: controle werkzaamheden/onderdelen, uren bevestigen, tariefkeuze */}
+        {showInvoiceModal && workOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Factureren</h3>
+              <p className="text-sm text-slate-600 mb-4">Controleer de gegevens en bevestig de uren voordat je de factuur aanmaakt.</p>
+
+              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={invoicePrepWorkPartsChecked}
+                  onChange={(e) => setInvoicePrepWorkPartsChecked(e.target.checked)}
+                  className="mt-1 h-5 w-5 rounded border-slate-300 text-green-600"
+                />
+                <span className="text-sm font-medium text-slate-800">Ik heb de werkzaamheden en onderdelen gecontroleerd.</span>
+              </label>
+
+              {(() => {
+                const plannedMinutes = Number(workOrder.planningItem?.durationMinutes ?? 0) || 0
+                const sessions = workOrder.workSessions ?? []
+                const actualMinutes = sessions.reduce((s, sess) => s + Number(sess.durationMinutes ?? 0), 0)
+                const fmt = (m: number) => `${Math.floor(m / 60)}u ${m % 60}min`
+                const getInitials = (name: string) => {
+                  const s = (name || '').trim()
+                  if (!s) return '–'
+                  const parts = s.split(/\s+/)
+                  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                  return s.slice(0, 2).toUpperCase()
+                }
+                const byMechanic = new Map<string, { name: string; minutes: number }>()
+                for (const sess of sessions) {
+                  const name = (sess as any).userName ?? (sess as any).user?.displayName ?? (sess as any).user?.email ?? '–'
+                  const userId = (sess as any).userId ?? (sess as any).user?.id ?? name
+                  const min = Number(sess.durationMinutes ?? 0)
+                  const existing = byMechanic.get(userId)
+                  if (existing) existing.minutes += min
+                  else byMechanic.set(userId, { name, minutes: min })
+                }
+                const mechanicLines = Array.from(byMechanic.entries())
+                return (
+                  <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-sm font-medium text-slate-700 mb-2">Tijd</div>
+                    <div className="space-y-1 text-sm text-slate-600">
+                      <div className="grid grid-cols-2 gap-2">
+                        <span>Gepland:</span>
+                        <span>{fmt(plannedMinutes)}</span>
+                      </div>
+                      <div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <span>Werkelijk (gelogd):</span>
+                          <span>{fmt(actualMinutes)}</span>
+                        </div>
+                        {mechanicLines.length > 0 && (
+                          <div className="mt-2 pl-2 border-l-2 border-slate-200 space-y-1">
+                            {mechanicLines.map(([userId, { name, minutes }]) => (
+                              <div key={userId} className="text-slate-600">
+                                {getInitials(name)}: {fmt(minutes)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              <div className="mb-4">
+                <div className="text-sm font-medium text-slate-700 mb-2">Wat komt op de factuur?</div>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="radio" name="laborBilling" checked={laborBillingMode === 'PLANNED'} onChange={() => setLaborBillingMode('PLANNED')} className="text-green-600" />
+                    <span className="text-sm">Geplande tijd</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="radio" name="laborBilling" checked={laborBillingMode === 'ACTUAL'} onChange={() => setLaborBillingMode('ACTUAL')} className="text-green-600" />
+                    <span className="text-sm">Werkelijke tijd</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="radio" name="laborBilling" checked={laborBillingMode === 'FIXED'} onChange={() => setLaborBillingMode('FIXED')} className="text-green-600" />
+                    <span className="text-sm">Vast tarief (€)</span>
+                  </label>
+                </div>
+              </div>
+
+              {laborBillingMode === 'FIXED' && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Vast tarief (€)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={laborFixedAmountInput}
+                    onChange={(e) => setLaborFixedAmountInput(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    placeholder="0.00"
+                  />
+                </div>
+              )}
+
+              {(laborBillingMode === 'PLANNED' || laborBillingMode === 'ACTUAL') && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Uurtarief (uit instellingen)</label>
+                  {loadingWorkshopRates ? (
+                    <p className="text-sm text-slate-500">Tarieven laden...</p>
+                  ) : workshopRates.length === 0 ? (
+                    <p className="text-sm text-amber-600">Geen werkplaatstarieven geladen. Sla tarieven op bij Instellingen → Planning, types & tarieven.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {workshopRates.map((r) => (
+                        <label key={r.name} className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="radio"
+                            name="laborRate"
+                            checked={laborHourlyRateName === r.name}
+                            onChange={() => setLaborHourlyRateName(r.name)}
+                            className="text-green-600"
+                          />
+                          <span className="text-sm">{r.name} — €{r.ratePerHour.toFixed(2)}/uur</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex gap-2 mt-6">
+                <button
+                  onClick={handleCreateInvoice}
+                  disabled={creatingInvoice || !invoicePrepWorkPartsChecked}
+                  className="flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creatingInvoice ? 'Bezig...' : 'Factuur aanmaken'}
+                </button>
+                <button
+                  onClick={() => setShowInvoiceModal(false)}
+                  disabled={creatingInvoice}
+                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Annuleren
+                </button>
+              </div>
             </div>
           </div>
         )}

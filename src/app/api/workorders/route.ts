@@ -16,6 +16,7 @@ import { resolveExecutionStatus } from '@/lib/workorders'
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
+import { workOrderEvents } from '@/lib/workorder-events'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +26,10 @@ export async function GET(request: NextRequest) {
     const where: any = {}
     if (user.role === 'MONTEUR') {
       where.assigneeId = user.id
+    }
+    const excludeInvoiced = request.nextUrl.searchParams.get('excludeInvoiced') === '1'
+    if (excludeInvoiced) {
+      where.workOrderStatus = { not: 'GEFACTUREERD' }
     }
 
     let items = await prisma.workOrder.findMany({
@@ -58,7 +63,7 @@ export async function GET(request: NextRequest) {
     })
 
     if (user.role === 'MAGAZIJN') {
-      const allowed = new Set(['GOEDGEKEURD', 'GEPLAND'])
+      const allowed = new Set(['GOEDGEKEURD', 'GEPLAND', 'WACHTEND'])
       items = items.filter((item) => allowed.has(String(item.workOrderStatus || '')))
     }
 
@@ -72,7 +77,8 @@ export async function GET(request: NextRequest) {
       const resolvedAssigneeName = item.assigneeName || item.assignee?.displayName || null
       const resolvedPlanningTypeName = item.planningItem?.planningTypeName || item.planningItem?.planningType?.name || null
       const resolvedPlanningTypeColor = item.planningItem?.planningTypeColor || item.planningItem?.planningType?.color || null
-      
+      const resolvedPlanningTypeId = item.planningItem?.planningTypeId || null
+
       return {
         ...item,
         licensePlate: resolvedLicensePlate,
@@ -81,6 +87,7 @@ export async function GET(request: NextRequest) {
         assigneeName: resolvedAssigneeName,
         planningTypeName: resolvedPlanningTypeName,
         planningTypeColor: resolvedPlanningTypeColor,
+        planningTypeId: resolvedPlanningTypeId,
       }
     })
 
@@ -231,18 +238,21 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    await logAudit(
-      {
-        action: 'WORKORDER_CREATED',
-        actorUid: user.id,
-        actorEmail: user.email,
-        targetUid: item.id,
-        beforeRole: null,
-        afterRole: nextStatus,
-        context: { source: 'workorders' }
+    await logAudit({
+      entityType: 'WorkOrder',
+      entityId: item.id,
+      action: 'WORKORDER_CREATED',
+      userId: user.id,
+      userEmail: user.email,
+      metadata: {
+        workOrderNumber: item.workOrderNumber,
+        initialStatus: nextStatus,
+        source: 'workorders'
       },
       request
-    )
+    })
+
+    workOrderEvents.notifyChange(item.id, 'created')
 
     if (customerName && customerId) {
       const customer = await prisma.customer.findUnique({

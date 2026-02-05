@@ -1,7 +1,16 @@
 #!/usr/bin/env tsx
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { createMagentoClient } from '../lib/magento-client';
+
+// Load env like Next.js (prefer .env.local)
+const envLocal = path.resolve(process.cwd(), '.env.local');
+if (fs.existsSync(envLocal)) {
+  dotenv.config({ path: envLocal });
+}
+dotenv.config();
 
 const prisma = new PrismaClient();
 const magentoClient = createMagentoClient();

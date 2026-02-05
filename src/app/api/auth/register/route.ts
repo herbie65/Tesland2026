@@ -15,9 +15,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user already exists
-    const existing = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const normalizedEmail = String(email).toLowerCase().trim()
+
+    // Check if user already exists (case-insensitive)
+    const existing = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     })
 
     if (existing) {
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Create user
     const user = await prisma.user.create({
       data: {
-        email: email.toLowerCase().trim(),
+        email: normalizedEmail,
         password: hashedPassword,
         displayName: displayName || null,
         isSystemAdmin: false,

@@ -46,8 +46,7 @@ export async function POST(request: NextRequest) {
           vatNumber: formatVatNumber(vatNumber),
           vatNumberValidated: true,
           vatNumberValidatedAt: viesResult.validatedAt,
-          isBusinessCustomer: true,
-          vatReversed: true // Auto-enable reversed VAT for valid B2B
+          isBusinessCustomer: true
         }
       })
       console.log(`✅ Customer ${customerId} updated with validated VAT number`)

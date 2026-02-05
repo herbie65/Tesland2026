@@ -131,7 +131,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           userId: item.id,
           leaveBalanceVacation: (item.leaveBalanceLegal || 0) + (item.leaveBalanceExtra || 0),
           leaveBalanceCarryover: item.leaveBalanceCarryover,
-          leaveUnit: userConfig.leaveUnit,
+          leaveUnit: userConfig.leaveUnit as 'DAYS' | 'HOURS',
           hoursPerDay: userConfig.hoursPerDay,
         })
 
@@ -155,18 +155,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     // Log role changes
     if (roleId !== undefined && roleId !== existing.roleId) {
-      await logAudit(
-        {
-          action: 'USER_ROLE_CHANGED',
-          actorUid: actor.id,
-          actorEmail: actor.email,
-          targetUid: userId,
-          targetEmail: existing.email || null,
-          beforeRole: existing.roleId || existing.role || null,
-          afterRole: roleId || null
+      await logAudit({
+        entityType: 'User',
+        entityId: userId,
+        action: 'USER_ROLE_CHANGED',
+        userId: actor.id,
+        userEmail: actor.email,
+        changes: {
+          roleId: {
+            from: existing.roleId || existing.role || null,
+            to: roleId || null
+          }
         },
         request
-      )
+      })
     }
 
     return NextResponse.json({ success: true, item })

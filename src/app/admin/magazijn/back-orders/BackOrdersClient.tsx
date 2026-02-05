@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { PageHeader } from '../components/PageHeader'
+import PageHeader from '../../components/PageHeader'
 
 type BackOrder = {
   id: string
@@ -298,10 +298,7 @@ export default function BackOrdersClient() {
   if (loading) {
     return (
       <div className="p-8">
-        <PageHeader
-          title="Back-Orders"
-          subtitle="Onderdelen die nog besteld moeten worden"
-        />
+        <PageHeader title="Back-Orders" />
         <p className="text-slate-600">Laden...</p>
       </div>
     )
@@ -309,10 +306,7 @@ export default function BackOrdersClient() {
 
   return (
     <div className="p-8">
-      <PageHeader
-        title="Back-Orders"
-        subtitle="Onderdelen die nog besteld moeten worden"
-      />
+      <PageHeader title="Back-Orders" />
 
       {/* Stats */}
       {stats && (

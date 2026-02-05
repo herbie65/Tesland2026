@@ -148,6 +148,14 @@ async function importInventory() {
         ? backordersMap[stockItem.backorders] || 'no'
         : 'no';
 
+      const manageStockRaw = (stockItem as any).manage_stock
+      const manageStock =
+        manageStockRaw === undefined || manageStockRaw === null
+          ? true
+          : typeof manageStockRaw === 'number'
+            ? manageStockRaw !== 0
+            : Boolean(manageStockRaw)
+
       await prisma.productInventory.upsert({
         where: { productId: product.id },
         create: {
@@ -157,7 +165,7 @@ async function importInventory() {
           isInStock: stockItem.is_in_stock,
           minQty: stockItem.min_qty || 0,
           notifyStockQty: stockItem.notify_stock_qty || null,
-          manageStock: stockItem.manage_stock !== false,
+          manageStock,
           backorders,
         },
         update: {
@@ -165,7 +173,7 @@ async function importInventory() {
           isInStock: stockItem.is_in_stock,
           minQty: stockItem.min_qty || 0,
           notifyStockQty: stockItem.notify_stock_qty || null,
-          manageStock: stockItem.manage_stock !== false,
+          manageStock,
           backorders,
         },
       });

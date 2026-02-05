@@ -39,8 +39,7 @@ async function checkConfigurableProducts() {
                   sku: true,
                   name: true,
                   price: true,
-                  shelfLocation: true,
-                  binLocation: true
+                  // Location fields are not part of ProductCatalog in this repo
                 }
               }
             },
@@ -58,7 +57,6 @@ async function checkConfigurableProducts() {
         parent.childRelations.forEach(rel => {
           console.log(`      - ${rel.child.sku}: ${rel.child.name}`);
           console.log(`        Price: €${rel.child.price}`);
-          console.log(`        Location: Kast ${rel.child.shelfLocation || '-'}, Vak ${rel.child.binLocation || '-'}`);
         });
       });
     } else {

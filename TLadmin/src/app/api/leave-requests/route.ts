@@ -252,7 +252,9 @@ export async function POST(request: NextRequest) {
           endDate: new Date(endDate).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
           totalDays: String(totalDays),
           reason: reason || 'Geen reden opgegeven',
-          warning: willBeNegative ? `⚠️ LET OP: Saldo wordt negatief met ${negativeAmountHours.toFixed(2)} uur. Goedkeuring door bedrijfsleiding is vereist.` : undefined,
+          warning: willBeNegative
+            ? `⚠️ LET OP: Saldo wordt negatief met ${negativeAmountHours.toFixed(2)} uur. Goedkeuring door bedrijfsleiding is vereist.`
+            : '',
         }
       }).catch(err => {
         console.error('Failed to send email to manager:', err)

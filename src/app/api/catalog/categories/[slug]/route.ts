@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buildProductDescription, htmlToPlainText } from '@/lib/product-description';
 
 export async function GET(
   request: NextRequest,
@@ -87,7 +88,9 @@ export async function GET(
         inventory: {
           select: {
             qty: true,
+            qtyReserved: true,
             isInStock: true,
+            manageStock: true,
           },
         },
       },
@@ -111,7 +114,11 @@ export async function GET(
       sku: product.sku,
       name: product.name,
       slug: product.slug,
-      shortDescription: product.shortDescription,
+      description: buildProductDescription({
+        description: product.description,
+        shortDescription: product.shortDescription,
+      }),
+      shortDescription: product.shortDescription ? htmlToPlainText(product.shortDescription) : null,
       price: product.price,
       specialPrice: product.specialPrice,
       hasActiveSpecialPrice: product.specialPrice && 
@@ -123,10 +130,18 @@ export async function GET(
           ? product.specialPrice
           : product.price,
       image: product.images[0]?.localPath || product.images[0]?.url || null,
-      inventory: product.inventory ? {
-        qty: product.inventory.qty,
-        isInStock: product.inventory.isInStock,
-      } : null,
+      inventory: product.inventory ? (() => {
+        const qty = Number(product.inventory.qty || 0)
+        const reserved = Number(product.inventory.qtyReserved || 0)
+        const available = Math.max(0, qty - reserved)
+        return {
+          qty: product.inventory.qty,
+          qtyReserved: product.inventory.qtyReserved,
+          qtyAvailable: available,
+          isInStock: product.inventory.manageStock === false ? true : (available > 0 && product.inventory.isInStock),
+          manageStock: product.inventory.manageStock,
+        }
+      })() : null,
     }));
 
     const response = {

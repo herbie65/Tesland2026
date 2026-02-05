@@ -19,7 +19,7 @@ model User {
   id            String    @id @default(uuid())
   uid           String?   @unique // Optional: For backward compatibility with Firebase
   email         String    @unique
-  password      String // Bcrypt hashed password
+  password      String? // Bcrypt hashed password (nullable for passwordless customer accounts)
   displayName   String?   @map("display_name")
   photoURL      String?   @map("photo_url")
   phoneNumber   String?   @map("phone_number")
@@ -28,6 +28,7 @@ model User {
   isSystemAdmin Boolean   @default(false) @map("is_system_admin")
   isActive      Boolean   @default(true) @map("is_active")
   lastLoginAt   DateTime? @map("last_login_at")
+  customerId    String?   @map("customer_id") // Optional link for webshop customer accounts
 
   // Planning fields
   color               String?  @default("#4f46e5")
@@ -88,6 +89,7 @@ model User {
 
   // Relations
   roleRef               Role?            @relation(fields: [roleId], references: [id])
+  customer              Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
   workOrders            WorkOrder[]      @relation("assignee")
   planningItems         PlanningItem[]   @relation("assignee")
   laborLines            LaborLine[]      @relation("labor_user")
@@ -101,7 +103,28 @@ model User {
   leaveLedger           LeaveLedger[]    @relation("ledger")
   workSessions          WorkSession[]    @relation("work_sessions")
 
+  @@index([customerId])
   @@map("users")
+}
+
+model CustomerLoginCode {
+  id         String    @id @default(uuid())
+  email      String
+  customerId String?   @map("customer_id")
+  codeHash   String    @map("code_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  ipAddress  String?   @map("ip_address")
+  userAgent  String?   @map("user_agent") @db.Text
+
+  // Relations
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([customerId])
+  @@index([expiresAt])
+  @@map("customer_login_codes")
 }
 
 model UserPreference {
@@ -181,6 +204,9 @@ model Customer {
   creditInvoices CreditInvoice[]
   orders         Order[]
   rmas           Rma[]
+  users          User[]
+  carts          Cart[]
+  loginCodes     CustomerLoginCode[]
 
   @@index([vatNumber])
   @@index([isBusinessCustomer])
@@ -358,6 +384,17 @@ model WorkOrder {
   activeWorkStartedAt   DateTime? @map("active_work_started_at") // Wanneer monteur begonnen is
   activeWorkStartedBy   String?   @map("active_work_started_by") // Wie is ermee bezig
   activeWorkStartedByName String? @map("active_work_started_by_name") // Naam van monteur
+
+  // Monteur: bevestiging onderdelen/materialen bij "Gereed"
+  partsAndMaterialsCheckedAt DateTime? @map("parts_and_materials_checked_at")
+  partsAndMaterialsCheckedBy String?  @map("parts_and_materials_checked_by")
+
+  // Management: facturatie-voorbereiding (werkzaamheden/onderdelen afgevinkt, uren bevestigd, tariefkeuze)
+  invoicePrepWorkPartsCheckedAt DateTime? @map("invoice_prep_work_parts_checked_at")
+  invoicePrepHoursConfirmedAt   DateTime? @map("invoice_prep_hours_confirmed_at")
+  laborBillingMode   String?   @map("labor_billing_mode") // PLANNED | ACTUAL | FIXED
+  laborFixedAmount   Decimal?  @map("labor_fixed_amount") @db.Decimal(10, 2) // bij FIXED
+  laborHourlyRateName String?  @map("labor_hourly_rate_name") // gekozen tarief uit werkplaatstarieven (bij PLANNED/ACTUAL)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -563,6 +600,9 @@ model LaborLine {
   totalAmount     Decimal? @map("total_amount") @db.Decimal(10, 2)
   notes           String?  @db.Text
   completed       Boolean  @default(false) // Checkbox status voor monteurs
+  completedBy     String?  @map("completed_by")
+  completedByName String?  @map("completed_by_name") // initialen monteur
+  completedAt     DateTime? @map("completed_at")
 
   // BTW fields
   vatRateId     String?  @map("vat_rate_id")
@@ -641,6 +681,17 @@ model Order {
   paymentMethod  String?   @map("payment_method")
   shippingMethod String?   @map("shipping_method")
   totalAmount    Decimal?  @map("total_amount") @db.Decimal(10, 2)
+  subtotalAmount Decimal?  @map("subtotal_amount") @db.Decimal(10, 2)
+  vatTotal       Decimal?  @map("vat_total") @db.Decimal(10, 2)
+  shippingCost   Decimal?  @map("shipping_cost") @db.Decimal(10, 2)
+  currency       String?   @default("EUR")
+  customerEmail  String?   @map("customer_email")
+  billingAddress Json?     @map("billing_address")
+  shippingAddress Json?    @map("shipping_address")
+  placedAt       DateTime? @map("placed_at")
+  paidAt         DateTime? @map("paid_at")
+  shippingCarrier String?  @map("shipping_carrier")
+  shippingTrackingCode String? @map("shipping_tracking_code")
   scheduledAt    DateTime? @map("scheduled_at")
   notes          String?   @db.Text
   orderDate      DateTime? @map("order_date")
@@ -653,10 +704,86 @@ model Order {
   invoices       Invoice[]
   creditInvoices CreditInvoice[] @relation("CreditInvoiceOrder")
   rmas           Rma[]           @relation("RmaOrder")
+  lines          OrderLine[]
+  shipments      Shipment[]
 
   @@index([customerId])
   @@index([vehicleId])
   @@map("orders")
+}
+
+model Shipment {
+  id             String   @id @default(uuid())
+  orderId         String   @map("order_id")
+  carrier         String
+  trackingCode    String   @map("tracking_code")
+  labelPdfBase64  String?  @map("label_pdf_base64") @db.Text
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([trackingCode])
+  @@map("shipments")
+}
+
+model Cart {
+  id         String   @id @default(uuid())
+  token      String   @unique
+  customerId String?  @map("customer_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items    CartItem[]
+
+  @@index([customerId])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String   @map("cart_id")
+  productId String   @map("product_id")
+  quantity  Int      @default(1)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  cart    Cart          @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product ProductCatalog @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@index([productId])
+  @@map("cart_items")
+}
+
+model OrderLine {
+  id              String   @id @default(uuid())
+  orderId         String   @map("order_id")
+  productId       String?  @map("product_id") // ProductCatalog.id (optional snapshot)
+  sku             String   @map("sku")
+  name            String   @map("name")
+  quantity        Int      @default(1)
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice      Decimal  @map("total_price") @db.Decimal(10, 2)
+  vatRate         Decimal? @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount       Decimal? @map("vat_amount") @db.Decimal(10, 2)
+  metadata        Json?    // Options/configuration snapshot (e.g. custom options)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product ProductCatalog? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_lines")
 }
 
 model PurchaseOrder {
@@ -731,7 +858,7 @@ model Invoice {
 
 model Payment {
   id                 String    @id @default(uuid())
-  invoiceId          String    @map("invoice_id")
+  invoiceId          String?   @map("invoice_id") // null tot factuur na betaling is aangemaakt (webshop)
   provider           String    @default("MOLLIE") // MOLLIE, STRIPE, MANUAL, etc.
   providerPaymentId  String?   @map("provider_payment_id") // External payment ID
   amount             Decimal   @db.Decimal(10, 2)
@@ -754,7 +881,7 @@ model Payment {
   createdBy String? @map("created_by")
   
   // Relations
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   
   @@index([invoiceId])
   @@index([providerPaymentId])
@@ -1009,6 +1136,8 @@ model ProductCatalog {
   slug             String    @unique
   description      String?   @db.Text
   shortDescription String?   @map("short_description") @db.Text
+  shelfLocation    String?   @map("shelf_location")
+  binLocation      String?   @map("bin_location")
   price            Decimal?  @db.Decimal(10, 2)
   costPrice        Decimal?  @map("cost_price") @db.Decimal(10, 2)
   specialPrice     Decimal?  @map("special_price") @db.Decimal(10, 2)
@@ -1031,6 +1160,8 @@ model ProductCatalog {
   attributeValues ProductAttributeValue[]
   parentRelations ProductRelation[]       @relation("ParentProduct")
   childRelations  ProductRelation[]       @relation("ChildProduct")
+  orderLines      OrderLine[]
+  cartItems       CartItem[]
 
   @@index([magentoId])
   @@index([sku])

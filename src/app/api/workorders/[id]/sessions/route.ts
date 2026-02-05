@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }, { status: 400 })
     }
 
-    const sessions = await prisma.workSession.findMany({
+    const rows = await prisma.workSession.findMany({
       where: { workOrderId },
       include: {
         user: {
@@ -39,6 +39,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
       orderBy: { startedAt: 'desc' }
     })
+
+    const sessions = rows.map((s) => ({
+      ...s,
+      userId: s.userId,
+      userName: s.user?.displayName || s.user?.email || null
+    }))
 
     return NextResponse.json({
       success: true,
@@ -128,13 +134,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       userId: user.id,
       userName: user.displayName || user.email,
       userEmail: user.email,
-      userRole: user.role,
-      changes: {
+      userRole: user.role ?? undefined,
+      metadata: {
+        workOrderNumber: workOrder.workOrderNumber,
         sessionId: session.id,
         startedAt: session.startedAt.toISOString()
-      },
-      metadata: {
-        workOrderNumber: workOrder.workOrderNumber
       },
       description: `${user.displayName || user.email} is begonnen met werken aan werkorder ${workOrder.workOrderNumber}`,
       request

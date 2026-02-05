@@ -62,3 +62,155 @@
 .ProseMirror s {
   text-decoration: line-through;
 }
+
+/* Public site footer (SiteFooter.tsx) */
+.footer-links a {
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  transition: color 180ms ease, text-shadow 180ms ease;
+}
+
+.footer-links a:hover {
+  color: #8bc342;
+  text-shadow: 0 0 18px rgba(139, 195, 66, 0.55);
+}
+
+/* Flyover underline for list links */
+.footer-links ul a {
+  position: relative;
+  display: inline-block;
+}
+
+.footer-links ul a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(139, 195, 66, 0.95), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 180ms ease;
+}
+
+.footer-links ul a:hover::after {
+  transform: scaleX(1);
+}
+
+/* Opening hours tooltip (flyover) */
+.opening-status-container {
+  position: relative;
+}
+
+.opening-tooltip {
+  position: absolute;
+  left: 18px;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  max-width: min(320px, calc(100vw - 64px));
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(139, 195, 66, 0.25);
+  background: rgba(15, 23, 42, 0.92);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.75rem;
+  line-height: 1.15rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 22px rgba(139, 195, 66, 0.22);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.opening-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  top: 100%;
+  border: 7px solid transparent;
+  border-top-color: rgba(15, 23, 42, 0.92);
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
+}
+
+.opening-status-container:hover .opening-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Social icon buttons */
+.footer-social {
+  width: 66px;
+  height: 66px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(139, 195, 66, 0.18);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.footer-social svg {
+  width: 30px;
+  height: 30px;
+  fill: rgba(255, 255, 255, 0.82);
+  transition: fill 180ms ease;
+}
+
+.footer-social:hover {
+  transform: translateY(-2px);
+  background: rgba(139, 195, 66, 0.09);
+  border-color: rgba(139, 195, 66, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(139, 195, 66, 0.12),
+    0 0 26px rgba(139, 195, 66, 0.35),
+    0 14px 34px rgba(0, 0, 0, 0.38);
+}
+
+.footer-social:hover svg {
+  fill: #8bc342;
+}
+
+/* Review logos */
+.footer-review-logo {
+  height: 36px;
+  width: auto;
+  display: block;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, filter 180ms ease;
+  filter: saturate(0.95);
+}
+
+a:hover .footer-review-logo {
+  transform: translateY(-1px);
+  border-color: rgba(139, 195, 66, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(139, 195, 66, 0.12),
+    0 0 22px rgba(139, 195, 66, 0.25),
+    0 14px 28px rgba(0, 0, 0, 0.38);
+  filter: saturate(1.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-links a,
+  .footer-social,
+  .footer-social svg,
+  .footer-review-logo,
+  .opening-tooltip,
+  .footer-links ul a::after {
+    transition: none !important;
+  }
+
+  .footer-social:hover,
+  a:hover .footer-review-logo {
+    transform: none !important;
+  }
+}

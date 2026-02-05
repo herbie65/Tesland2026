@@ -1,16 +1,18 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken } from '@/lib/api'
 
 type Invoice = {
   id: string
   invoiceNumber?: string | null
   orderId?: string | null
   customerId?: string | null
-  total?: number | null
+  order?: { orderNumber: string } | null
+  customer?: { name: string } | null
+  totalAmount?: number | string | null
   paymentStatus?: string | null
-  dueAt?: string | null
+  dueDate?: string | null
   createdAt?: string | null
 }
 
@@ -23,22 +25,24 @@ export default function InvoicesClient() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'invoiceNumber',
-    'orderId',
-    'customerId',
+    'orderNumber',
+    'customerName',
     'total',
     'paymentStatus',
-    'dueAt',
-    'createdAt'
+    'dueDate',
+    'createdAt',
+    'pdf'
   ])
 
   const columnOptions = [
     { key: 'invoiceNumber', label: 'Factuurnr' },
-    { key: 'orderId', label: 'Order' },
-    { key: 'customerId', label: 'Klant' },
+    { key: 'orderNumber', label: 'Order' },
+    { key: 'customerName', label: 'Klant' },
     { key: 'total', label: 'Totaal' },
     { key: 'paymentStatus', label: 'Status' },
-    { key: 'dueAt', label: 'Vervalt' },
-    { key: 'createdAt', label: 'Aangemaakt' }
+    { key: 'dueDate', label: 'Vervalt' },
+    { key: 'createdAt', label: 'Aangemaakt' },
+    { key: 'pdf', label: 'PDF' }
   ]
 
   useEffect(() => {
@@ -100,10 +104,10 @@ export default function InvoicesClient() {
     return items.filter((item) => {
       const fields = [
         item.invoiceNumber || item.id,
-        item.orderId || '',
-        item.customerId || '',
+        item.order?.orderNumber || '',
+        item.customer?.name || '',
         item.paymentStatus || '',
-        item.dueAt || ''
+        item.dueDate ? new Date(item.dueDate).toISOString() : ''
       ]
       return fields.some((value) => String(value).toLowerCase().includes(term))
     })
@@ -117,16 +121,16 @@ export default function InvoicesClient() {
         switch (sortKey) {
           case 'invoiceNumber':
             return item.invoiceNumber || item.id
-          case 'orderId':
-            return item.orderId || ''
-          case 'customerId':
-            return item.customerId || ''
+          case 'orderNumber':
+            return item.order?.orderNumber || ''
+          case 'customerName':
+            return item.customer?.name || ''
           case 'total':
-            return Number(item.total || 0)
+            return Number(item.totalAmount ?? 0)
           case 'paymentStatus':
             return item.paymentStatus || ''
-          case 'dueAt':
-            return item.dueAt ? new Date(item.dueAt).getTime() : 0
+          case 'dueDate':
+            return item.dueDate ? new Date(item.dueDate).getTime() : 0
           case 'createdAt':
             return item.createdAt ? new Date(item.createdAt).getTime() : 0
           default:
@@ -196,16 +200,16 @@ export default function InvoicesClient() {
                     </button>
                   </th>
                 ) : null}
-                {visibleColumns.includes('orderId') ? (
+                {visibleColumns.includes('orderNumber') ? (
                   <th className="px-4 py-2 text-left">
-                    <button type="button" onClick={() => updateSort('orderId')}>
+                    <button type="button" onClick={() => updateSort('orderNumber')}>
                       Order
                     </button>
                   </th>
                 ) : null}
-                {visibleColumns.includes('customerId') ? (
+                {visibleColumns.includes('customerName') ? (
                   <th className="px-4 py-2 text-left">
-                    <button type="button" onClick={() => updateSort('customerId')}>
+                    <button type="button" onClick={() => updateSort('customerName')}>
                       Klant
                     </button>
                   </th>
@@ -224,12 +228,15 @@ export default function InvoicesClient() {
                     </button>
                   </th>
                 ) : null}
-                {visibleColumns.includes('dueAt') ? (
+                {visibleColumns.includes('dueDate') ? (
                   <th className="px-4 py-2 text-left">
-                    <button type="button" onClick={() => updateSort('dueAt')}>
+                    <button type="button" onClick={() => updateSort('dueDate')}>
                       Vervalt
                     </button>
                   </th>
+                ) : null}
+                {visibleColumns.includes('pdf') ? (
+                  <th className="px-4 py-2 text-left">PDF</th>
                 ) : null}
                 {visibleColumns.includes('createdAt') ? (
                   <th className="px-4 py-2 text-left">
@@ -246,26 +253,72 @@ export default function InvoicesClient() {
                   {visibleColumns.includes('invoiceNumber') ? (
                     <td className="px-4 py-2 font-medium text-slate-900">{item.invoiceNumber || item.id}</td>
                   ) : null}
-                  {visibleColumns.includes('orderId') ? (
-                    <td className="px-4 py-2 text-slate-700">{item.orderId || '-'}</td>
+                  {visibleColumns.includes('orderNumber') ? (
+                    <td className="px-4 py-2 text-slate-700">{item.order?.orderNumber ?? '-'}</td>
                   ) : null}
-                  {visibleColumns.includes('customerId') ? (
-                    <td className="px-4 py-2 text-slate-700">{item.customerId || '-'}</td>
+                  {visibleColumns.includes('customerName') ? (
+                    <td className="px-4 py-2 text-slate-700">{item.customer?.name ?? '-'}</td>
                   ) : null}
                   {visibleColumns.includes('total') ? (
                     <td className="px-4 py-2 text-slate-700">
-                      {Number.isFinite(Number(item.total)) ? `€${Number(item.total).toFixed(2)}` : '-'}
+                      {Number.isFinite(Number(item.totalAmount)) ? `€${Number(item.totalAmount).toFixed(2)}` : '-'}
                     </td>
                   ) : null}
                   {visibleColumns.includes('paymentStatus') ? (
-                    <td className="px-4 py-2 text-slate-700">{item.paymentStatus || '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">{item.paymentStatus ?? '-'}</td>
                   ) : null}
-                  {visibleColumns.includes('dueAt') ? (
-                    <td className="px-4 py-2 text-slate-700">{item.dueAt || '-'}</td>
+                  {visibleColumns.includes('dueDate') ? (
+                    <td className="px-4 py-2 text-slate-700">
+                      {item.dueDate ? new Date(item.dueDate).toLocaleDateString('nl-NL') : '-'}
+                    </td>
                   ) : null}
                   {visibleColumns.includes('createdAt') ? (
                     <td className="px-4 py-2 text-slate-700">
                       {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
+                    </td>
+                  ) : null}
+                  {visibleColumns.includes('pdf') ? (
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const token = getToken()
+                            if (!token) {
+                              alert('Niet ingelogd')
+                              return
+                            }
+                            const res = await fetch(`/api/invoices/${item.id}/pdf`, {
+                              credentials: 'include',
+                              headers: { Authorization: `Bearer ${token}` }
+                            })
+                            if (!res.ok) {
+                              let msg = res.status === 401 ? 'Niet ingelogd' : res.status === 403 ? 'Geen rechten' : 'Download mislukt'
+                              try {
+                                const data = await res.json()
+                                if (data?.error) msg = data.error
+                              } catch {
+                                // ignore
+                              }
+                              throw new Error(msg)
+                            }
+                            const ct = res.headers.get('Content-Type') || ''
+                            if (!ct.includes('application/pdf')) throw new Error('Geen PDF ontvangen')
+                            const blob = await res.blob()
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `Factuur-${item.invoiceNumber ?? item.id}.pdf`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : 'Download mislukt')
+                          }
+                        }}
+                        className="text-sky-600 hover:text-sky-800 text-sm font-medium"
+                      >
+                        Download
+                      </button>
                     </td>
                   ) : null}
                 </tr>

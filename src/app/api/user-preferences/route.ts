@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import { getServerSession } from 'next-auth'
+import { prisma } from '@/lib/prisma'
+import { requireRole } from '@/lib/auth'
 
-const prisma = new PrismaClient()
+const getErrorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+const normalizeKey = (key: string) => key.trim().slice(0, 128)
 
 // GET /api/user-preferences?key=xxx
 export async function GET(request: NextRequest) {
   try {
-    // TODO: Get actual user from session
-    // For now, use a system user or first user
-    const users = await prisma.user.findMany({ take: 1 })
-    if (!users.length) {
-      return NextResponse.json(
-        { success: false, error: 'No users found' },
-        { status: 404 }
-      )
-    }
-    const userId = users[0].id
+    const user = await requireRole(request, ['user'])
+    const userId = user.id
 
     const searchParams = request.nextUrl.searchParams
     const key = searchParams.get('key')
@@ -27,13 +21,14 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+    const normalizedKey = normalizeKey(key)
 
     // Fetch from database
     const preference = await prisma.userPreference.findUnique({
       where: {
         userId_key: {
           userId,
-          key
+          key: normalizedKey
         }
       }
     })
@@ -46,27 +41,17 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching user preference:', error)
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
+      { success: false, error: getErrorMessage(error) || 'Internal server error' },
+      { status: typeof error === 'object' && error !== null && 'status' in error ? Number((error as { status?: unknown }).status) : 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }
 
 // POST /api/user-preferences
 export async function POST(request: NextRequest) {
   try {
-    // TODO: Get actual user from session
-    // For now, use a system user or first user
-    const users = await prisma.user.findMany({ take: 1 })
-    if (!users.length) {
-      return NextResponse.json(
-        { success: false, error: 'No users found' },
-        { status: 404 }
-      )
-    }
-    const userId = users[0].id
+    const user = await requireRole(request, ['user'])
+    const userId = user.id
 
     const body = await request.json()
     const { key, value } = body
@@ -77,18 +62,19 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+    const normalizedKey = normalizeKey(String(key))
 
     // Upsert to database
     const preference = await prisma.userPreference.upsert({
       where: {
         userId_key: {
           userId,
-          key
+          key: normalizedKey
         }
       },
       create: {
         userId,
-        key,
+        key: normalizedKey,
         value
       },
       update: {
@@ -105,10 +91,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error saving user preference:', error)
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
+      { success: false, error: getErrorMessage(error) || 'Internal server error' },
+      { status: typeof error === 'object' && error !== null && 'status' in error ? Number((error as { status?: unknown }).status) : 500 }
     )
-  } finally {
-    await prisma.$disconnect()
   }
 }

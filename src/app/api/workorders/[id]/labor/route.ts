@@ -61,9 +61,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Description is required' }, { status: 400 })
     }
 
+    // Prijs: direct totalAmount, of uit tijd × uurtarief indien nog gebruikt
     const duration = Number(durationMinutes) || 0
-    const rate = hourlyRate ? Number(hourlyRate) : null
-    const calculatedTotal = rate && duration ? (rate * duration) / 60 : totalAmount
+    const rate = hourlyRate != null && hourlyRate !== '' ? Number(hourlyRate) : null
+    const directAmount = totalAmount != null && totalAmount !== '' ? Number(totalAmount) : null
+    const calculatedTotal = directAmount != null && Number.isFinite(directAmount)
+      ? directAmount
+      : rate && duration
+        ? (rate * duration) / 60
+        : null
 
     const labor = await prisma.laborLine.create({
       data: {
@@ -73,7 +79,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         userName: userName || user.displayName || user.email,
         durationMinutes: duration,
         hourlyRate: rate,
-        totalAmount: calculatedTotal ? Number(calculatedTotal) : null,
+        totalAmount: calculatedTotal != null && Number.isFinite(calculatedTotal) ? Number(calculatedTotal) : null,
         notes: notes || null
       },
       include: {

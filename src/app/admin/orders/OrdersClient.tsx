@@ -146,22 +146,24 @@ export default function OrdersClient() {
         apiFetch('/api/settings/paymentMethods'),
         apiFetch('/api/settings/shippingMethods')
       ])
-      const ordersData = await ordersResponse.json()
-      const customersData = await customersResponse.json()
-      const vehiclesData = await vehiclesResponse.json()
-      const statusData = await statusResponse.json()
-      const paymentData = await paymentResponse.json()
-      const shippingData = await shippingResponse.json()
-      if (!ordersResponse.ok || !ordersData.success) {
-        throw new Error(ordersData.error || 'Failed to load orders')
+      const ordersData = ordersResponse
+      const customersData = customersResponse
+      const vehiclesData = vehiclesResponse
+      const statusData = statusResponse
+      const paymentData = paymentResponse
+      const shippingData = shippingResponse
+
+      if (!ordersData?.success) {
+        throw new Error(ordersData?.error || 'Failed to load orders')
       }
-      if (!customersResponse.ok || !customersData.success) {
-        throw new Error(customersData.error || 'Failed to load customers')
+      if (!customersData?.success) {
+        throw new Error(customersData?.error || 'Failed to load customers')
       }
-      if (!vehiclesResponse.ok || !vehiclesData.success) {
-        throw new Error(vehiclesData.error || 'Failed to load vehicles')
+      if (!vehiclesData?.success) {
+        throw new Error(vehiclesData?.error || 'Failed to load vehicles')
       }
-      if (statusResponse.ok && statusData.success) {
+
+      if (statusData?.success) {
         setOrderStatuses(statusData.item?.data?.orderStatus || [])
         setPaymentStatuses(statusData.item?.data?.paymentStatus || [])
         setShipmentStatuses(statusData.item?.data?.shipmentStatus || [])
@@ -170,12 +172,14 @@ export default function OrdersClient() {
         setPaymentStatuses([])
         setShipmentStatuses([])
       }
-      if (paymentResponse.ok && paymentData.success) {
+
+      if (paymentData?.success) {
         setPaymentMethods(paymentData.item?.data || [])
       } else {
         setPaymentMethods([])
       }
-      if (shippingResponse.ok && shippingData.success) {
+
+      if (shippingData?.success) {
         setShippingMethods(shippingData.item?.data || [])
       } else {
         setShippingMethods([])
@@ -222,9 +226,9 @@ export default function OrdersClient() {
           notes: notes || null
         })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to create order')
+      const data = response
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create order')
       }
       setTitle('')
       setCustomerId('none')
@@ -250,9 +254,9 @@ export default function OrdersClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderStatus: nextStatus })
       })
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update order')
+      const data = response
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to update order')
       }
       await loadItems()
     } catch (err: any) {
@@ -790,7 +794,7 @@ export default function OrdersClient() {
                     ) : null}
                     {visibleColumns.includes('totalAmount') ? (
                       <td className="px-4 py-2 text-slate-700">
-                        {item.totalAmount ? `€${item.totalAmount.toFixed(2)}` : '-'}
+                        {Number.isFinite(Number(item.totalAmount)) ? `€${Number(item.totalAmount).toFixed(2)}` : '-'}
                       </td>
                     ) : null}
                     {visibleColumns.includes('scheduledAt') ? (
