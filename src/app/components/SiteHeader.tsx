@@ -51,7 +51,16 @@ export default function SiteHeader() {
     }
   }, [])
 
-  const menuItems = Array.isArray(settings.menuItems) ? settings.menuItems : []
+  const defaultMenuItems: HeaderItem[] = [
+    { label: 'Onderhoud', href: '/onderhoud', hasDropdown: false },
+    { label: 'Reparaties', href: '/reparaties', hasDropdown: false },
+    { label: 'Accessoires', href: '/accessoires', hasDropdown: false },
+    { label: 'Onderdelen', href: '/onderdelen', hasDropdown: false },
+    { label: 'Winterwielen', href: '/winterwielen', hasDropdown: false },
+    { label: 'Fan-Shop', href: '/fan-shop', hasDropdown: false },
+  ]
+  const menuItems =
+    Array.isArray(settings.menuItems) && settings.menuItems.length > 0 ? settings.menuItems : defaultMenuItems
   const actions = settings.actions || {}
   const showSearch = actions.showSearch === true
   const showAccount = actions.showAccount !== false

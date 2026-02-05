@@ -80,10 +80,11 @@ export async function GET() {
     const item = await prisma.setting.findUnique({ where: { group: 'siteHeader' } })
     if (item?.data && typeof item.data === 'object') {
       const saved = item.data as Record<string, unknown>
+      const savedMenuItems = Array.isArray(saved.menuItems) ? saved.menuItems : null
       headerSettings = {
         logoUrl: typeof saved.logoUrl === 'string' ? saved.logoUrl : headerSettings.logoUrl,
         logoAlt: typeof saved.logoAlt === 'string' ? saved.logoAlt : headerSettings.logoAlt,
-        menuItems: Array.isArray(saved.menuItems) ? saved.menuItems : headerSettings.menuItems,
+        menuItems: savedMenuItems && savedMenuItems.length > 0 ? savedMenuItems : headerSettings.menuItems,
         actions: saved.actions && typeof saved.actions === 'object'
           ? { ...headerSettings.actions, ...(saved.actions as Record<string, unknown>) }
           : headerSettings.actions,
