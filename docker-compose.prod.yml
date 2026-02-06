@@ -13,6 +13,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
+      - SITE_ACCESS_PASSWORD=${SITE_ACCESS_PASSWORD}
     networks:
       - tladmin-network
     depends_on:

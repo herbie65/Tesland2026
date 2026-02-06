@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const SUPPORTED_LOCALES = ['nl', 'en', 'de', 'fr'] as const
 const LOCALE_COOKIE = 'tesland_locale'
+const PATHNAME_HEADER = 'x-pathname'
 
 const LOCALE_BY_COUNTRY: Record<string, (typeof SUPPORTED_LOCALES)[number]> = {
   NL: 'nl',
@@ -41,16 +42,44 @@ const getLocaleFromAcceptLanguage = (header: string | null) => {
   return null
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  if (EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return NextResponse.next()
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set(PATHNAME_HEADER, pathname)
+
+  const nextOpts = { request: { headers: requestHeaders } }
+
+  // Gate-pagina: geen locale-redirect
+  if (pathname.startsWith('/_site-access')) {
+    return NextResponse.next(nextOpts)
   }
 
+  // Alleen /api overslaan voor guard (guard + login API); rest van de site beveiligen
+  if (!pathname.startsWith('/api')) {
+    try {
+      const guardUrl = new URL('/api/guard', request.url)
+      const guardRes = await fetch(guardUrl.toString(), {
+        headers: { cookie: request.headers.get('cookie') ?? '' },
+        cache: 'no-store',
+      })
+      if (guardRes.status === 401) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/_site-access'
+        url.searchParams.set('next', pathname)
+        return NextResponse.redirect(url)
+      }
+    } catch {
+      // Bij netwerkfout doorlaten (bijv. dev zonder server)
+    }
+  }
+
+  if (EXCLUDED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next(nextOpts)
+  }
 
   const segments = pathname.split('/').filter(Boolean)
   if (segments.length > 0 && SUPPORTED_LOCALES.includes(segments[0] as any)) {
-    const response = NextResponse.next()
+    const response = NextResponse.next(nextOpts)
     response.cookies.set(LOCALE_COOKIE, segments[0], { path: '/', maxAge: 60 * 60 * 24 * 365 })
     return response
   }

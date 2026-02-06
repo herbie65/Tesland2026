@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import {
+  getSiteAccessCookieValue,
+  isSiteAccessRequired,
+  SITE_ACCESS_COOKIE_NAME,
+} from "@/lib/site-access";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -60,11 +67,29 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Site-wachtwoord: check in Node-runtime (env beschikbaar bij runtime)
+  if (isSiteAccessRequired()) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    const isGate = pathname.startsWith("/_site-access");
+    const isSiteAccessApi = pathname.startsWith("/api/site-access");
+    if (!isGate && !isSiteAccessApi) {
+      const cookieStore = await cookies();
+      const cookie = cookieStore.get(SITE_ACCESS_COOKIE_NAME)?.value;
+      const password = process.env.SITE_ACCESS_PASSWORD!;
+      const secret = process.env.JWT_SECRET ?? "";
+      const expected = getSiteAccessCookieValue(password, secret);
+      if (!cookie || cookie !== expected) {
+        const search = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+        redirect(`/_site-access${search}`);
+      }
+    }
+  }
+
   return (
     <html lang="nl">
       <body
