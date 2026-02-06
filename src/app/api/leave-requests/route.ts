@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireRole, isManager } from '@/lib/auth'
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
-import { calculateRequestedMinutes, getLeaveLedgerSummary, seedOpeningBalanceIfMissing } from '@/lib/leave-ledger'
+import { getHrLeavePolicy } from '@/lib/settings'
+import { calculateLeaveMinutesFromRoster, calculateRequestedMinutes, clampLeaveTimesToRoster, getLeaveLedgerSummary, getPlanningRoster, seedOpeningBalanceIfMissing } from '@/lib/leave-ledger'
 
 /**
  * GET /api/leave-requests
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
       items: requests.map(req => ({
         id: req.id,
         userId: req.userId,
+        planningItemId: req.planningItemId ?? null,
         user: {
           displayName: req.user.displayName,
           email: req.user.email,
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
         leaveBalanceCarryover: true,
         leaveUnit: true,
         hoursPerDay: true,
+        workingDays: true,
       }
     })
 
@@ -129,13 +132,31 @@ export async function POST(request: NextRequest) {
       hoursPerDay: Number(userData.hoursPerDay || 8),
     })
 
-    const { requestedMinutes } = await calculateRequestedMinutes({
-      startDate,
-      endDate,
-      startTime,
-      endTime,
-      hoursPerDay: Number(userData.hoursPerDay || 8),
-    })
+    const roster = await getPlanningRoster()
+    const { startTime: clampedStart, endTime: clampedEnd } = clampLeaveTimesToRoster(startTime, endTime, roster)
+
+    const policy = await getHrLeavePolicy()
+    const workingDays = Array.isArray(userData.workingDays) ? userData.workingDays : ['ma', 'di', 'wo', 'do', 'vr']
+
+    let requestedMinutes: number
+    if (policy.useRosterForHours) {
+      requestedMinutes = await calculateLeaveMinutesFromRoster({
+        startDate,
+        endDate,
+        startTime: clampedStart,
+        endTime: clampedEnd,
+        workingDays,
+      })
+    } else {
+      const result = await calculateRequestedMinutes({
+        startDate,
+        endDate,
+        startTime: clampedStart,
+        endTime: clampedEnd,
+        hoursPerDay: Number(userData.hoursPerDay || 8),
+      })
+      requestedMinutes = result.requestedMinutes
+    }
 
     const totalHours = Math.round((requestedMinutes / 60) * 100) / 100
     const totalDays = Math.round((totalHours / Number(userData.hoursPerDay || 8)) * 100) / 100
@@ -167,8 +188,8 @@ export async function POST(request: NextRequest) {
         absenceTypeCode,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
-        startTime,
-        endTime,
+        startTime: clampedStart,
+        endTime: clampedEnd,
         totalDays,
         totalHours,
         totalMinutes: requestedMinutes,

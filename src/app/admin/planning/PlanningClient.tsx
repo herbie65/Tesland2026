@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
@@ -79,6 +80,7 @@ type PlanningItem = {
   notes?: string | null
   priority?: string | null
   durationMinutes?: number | null
+  leaveRequestId?: string | null
 }
 
 type Customer = {
@@ -124,6 +126,7 @@ type LeaveRequest = {
   id: string
   userId: string
   userName: string
+  planningItemId?: string | null
   absenceTypeCode: string
   startDate: string
   endDate: string
@@ -478,6 +481,17 @@ export default function PlanningClient() {
         ) : null}
         {item.planningTypeName ? (
           <div className="planning-day-popover-row">Type: {item.planningTypeName}</div>
+        ) : null}
+        {(item.leaveRequestId || (item.planningTypeName && ['VERLOF', 'ZIEK', 'VRIJ', 'DOKTER', 'VAKANTIE'].includes(item.planningTypeName))) ? (
+          <div className="planning-day-popover-row mt-2 pt-2 border-t border-slate-100">
+            <Link
+              href="/admin/leave-management"
+              className="text-xs text-blue-600 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              → Bekijk / bewerk in Verlof Beheer
+            </Link>
+          </div>
         ) : null}
         {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
           <div className="planning-day-popover-row">
@@ -898,6 +912,8 @@ export default function PlanningClient() {
     const g = parseInt(value.slice(2, 4), 16)
     const b = parseInt(value.slice(4, 6), 16)
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    /* Rode/donkere balken (ZIEK etc.): altijd wit voor leesbaarheid */
+    if (luminance <= 0.5) return '#ffffff'
     return luminance > 0.6 ? '#0f172a' : '#ffffff'
   }
 
@@ -1235,6 +1251,18 @@ export default function PlanningClient() {
     loadPlanningSettings()
   }, [authReady, hasUser])
 
+  // Refresh planning bij terugkeer naar het tabblad (push van de pagina)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && authReady && hasUser) {
+        loadLookups()
+        loadItems()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [authReady, hasUser])
+
   const loadPlanningPartsWarning = async () => {
     try {
       const data = await apiFetch('/api/planning/parts-warning')
@@ -1289,15 +1317,12 @@ export default function PlanningClient() {
 // Load iCal events when users change (check both plannable and other users)
 useEffect(() => {
   const allActiveUsers = [...users, ...otherUsers]
-  const usersWithIcal = allActiveUsers.filter(u => u.icalUrl)
-  console.log('Users with iCal:', usersWithIcal.map(u => ({ name: u.name, icalUrl: u.icalUrl })))
+  const usersWithIcal = allActiveUsers.filter(u => u.icalUrl && String(u.icalUrl).trim().length > 0)
   if (usersWithIcal.length > 0) {
     loadIcalEvents(usersWithIcal)
   } else {
-    console.log('No users with iCal URLs found')
+    setIcalEvents([])
   }
-  
-  // Load leave requests
   loadLeaveRequests()
 }, [users, otherUsers, currentDate])
 
@@ -1356,7 +1381,16 @@ useEffect(() => {
   }, [items])
 
   const filteredItems = useMemo(() => {
-    return statusFilter === 'all' ? items : items.filter((item) => item.status === statusFilter)
+    const list = statusFilter === 'all' ? items : items.filter((item) => item.status === statusFilter)
+    // Eén item per leaveRequestId (voorkomt dubbele verlofbalken)
+    const seenLeaveIds = new Set<string>()
+    return list.filter((item) => {
+      const lid = item.leaveRequestId
+      if (!lid) return true
+      if (seenLeaveIds.has(lid)) return false
+      seenLeaveIds.add(lid)
+      return true
+    })
   }, [items, statusFilter])
 
   const setDateToday = () => setCurrentDate(new Date())
@@ -1378,8 +1412,16 @@ useEffect(() => {
     setViewMode('day')
   }
 
+  const isLeaveItem = (item: PlanningItem) =>
+    !!item.leaveRequestId ||
+    item.status === 'AFWEZIG' ||
+    (!!item.planningTypeName && ['VERLOF', 'ZIEK', 'VRIJ', 'DOKTER', 'VAKANTIE'].includes(item.planningTypeName))
+
   const handlePlanningClick = (item: PlanningItem) => {
-    // Always open in edit modal, regardless of workOrderId
+    if (isLeaveItem(item)) {
+      router.push('/admin/leave-management')
+      return
+    }
     startEdit(item)
   }
 
@@ -1848,6 +1890,34 @@ useEffect(() => {
   const dayEndMinutes = toMinutes(planningSettings.dayEnd)
   const viewStartMinutes = Math.min(dayStartMinutes, 8 * 60)
   const viewTotalMinutes = Math.max(dayEndMinutes - viewStartMinutes, 60)
+
+  /** Berekent start- en eindminuten (t.o.v. middernacht) voor een verlofblok op een gegeven dag; gebruikt startTime/endTime van de aanvraag. */
+  const getLeaveBlockMinutesForDay = (
+    req: LeaveRequest,
+    day: Date,
+    dayStartMin: number,
+    dayEndMin: number
+  ): { startMinutes: number; endMinutes: number } => {
+    const dayKey = format(day, 'yyyy-MM-dd')
+    const startDateOnly = String(req.startDate).slice(0, 10)
+    const endDateOnly = String(req.endDate).slice(0, 10)
+    const parseTime = (t: string | null | undefined): number | null => {
+      if (!t || typeof t !== 'string') return null
+      const [h, m] = t.trim().split(':').map(Number)
+      if (!Number.isFinite(h)) return null
+      return (h || 0) * 60 + (Number.isFinite(m) ? m : 0)
+    }
+    const reqStartMin = parseTime(req.startTime)
+    const reqEndMin = parseTime(req.endTime)
+    const isFirstDay = dayKey === startDateOnly
+    const isLastDay = dayKey === endDateOnly
+    let startMinutes = dayStartMin
+    let endMinutes = dayEndMin
+    if (isFirstDay && reqStartMin != null) startMinutes = Math.max(dayStartMin, Math.min(reqStartMin, dayEndMin))
+    if (isLastDay && reqEndMin != null) endMinutes = Math.min(dayEndMin, Math.max(reqEndMin, dayStartMin))
+    if (endMinutes <= startMinutes) endMinutes = startMinutes + 60
+    return { startMinutes, endMinutes }
+  }
   const totalMinutes = Math.max(dayEndMinutes - dayStartMinutes, 60)
   const slotMinutes = Math.max(planningSettings.slotMinutes || 60, 15)
   const dayViewDays = Math.max(0.5, Math.min(5, Number(dayZoom || 1)))
@@ -2548,7 +2618,7 @@ useEffect(() => {
             const rowHeight = Math.max(baseRowHeight, maxLanesForUser * laneHeight)
             
             return (
-              <div key={user.id} className="planning-day-row" style={{ minHeight: `${rowHeight}px` }}>
+              <div key={user.id} className="planning-day-row" style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, maxHeight: `${rowHeight}px` }}>
                 <div className="planning-day-label">
                   <span className="inline-flex items-center gap-2">
                     {renderAvatar(user.name, user.photoUrl, user.color)}
@@ -2562,7 +2632,9 @@ useEffect(() => {
                   data-user-id={user.id}
                   style={{ 
                     gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
-                    minHeight: `${rowHeight}px`
+                    height: `${rowHeight}px`,
+                    minHeight: `${rowHeight}px`,
+                    maxHeight: `${rowHeight}px`
                   }}
                   onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
                 >
@@ -2596,33 +2668,40 @@ useEffect(() => {
                     const lane = laneMap.get(laneKey) || 0
                     const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
                     const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
+                    /* Balk binnen zichtbaar gebied (0–100%) zodat hij niet afgeknipt lijkt */
+                    const leftClamped = Math.max(0, leftPercent)
+                    const rightClamped = Math.min(100, leftPercent + widthPercent)
+                    const widthClamped = Math.max(0, rightClamped - leftClamped)
                     const hoverId = `${item.id}-${dayKey}-${segmentIndex}-assigned`
                     const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
                     const backgroundColor = getPlanningTypeColorForItem(item, planningTypes) || item.assigneeColor || FALLBACK_BLOCK_COLOR
                     const textColor = getReadableTextColor(backgroundColor)
-                    const showCustomer = widthPercent >= 18
-                    const showPlate = widthPercent >= 10
+                    const showCustomer = widthClamped >= 18
+                    const showPlate = widthClamped >= 10
                     const plate = item.vehiclePlate && showPlate ? normalizeLicensePlate(item.vehiclePlate) : null
                     const customer = item.customerName && showCustomer ? truncateText(item.customerName, 16) : null
-                    
+                    const isLeave = isLeaveItem(item)
+                    const blockHeight = isLeave ? Math.max(1, Math.floor((laneHeight - 4) / 2)) : laneHeight - 4
+                    const blockTop = isLeave ? lane * laneHeight + 2 + Math.floor((laneHeight - 4) / 4) : lane * laneHeight + 2
+                    if (widthClamped <= 0) return null
                     return (
                       <div
                         key={hoverId}
                         className={`planning-day-block${
                           placement ? ` planning-day-block--${placement}` : ''
-                        }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
+                        }${isLeave ? ' planning-day-block--leave' : ''}${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
                         style={{
-                          left: `${leftPercent}%`,
-                          width: `${widthPercent}%`,
-                          top: `${lane * laneHeight + 2}px`,
-                          height: `${laneHeight - 4}px`,
+                          left: `${leftClamped}%`,
+                          width: `${widthClamped}%`,
+                          top: `${blockTop}px`,
+                          height: `${blockHeight}px`,
                           borderColor: backgroundColor,
                           background: backgroundColor,
                           color: textColor,
                         }}
-                        onPointerDown={(event) => handleBlockPointerDown(event, item)}
-                        onPointerMove={handleBlockPointerMove}
-                        onPointerUp={(event) => handleBlockPointerUp(event, item)}
+                        onPointerDown={isLeave ? undefined : (event) => handleBlockPointerDown(event, item)}
+                        onPointerMove={isLeave ? undefined : handleBlockPointerMove}
+                        onPointerUp={isLeave ? undefined : (event) => handleBlockPointerUp(event, item)}
                         onMouseEnter={(event) =>
                           dragState
                             ? null
@@ -2637,11 +2716,16 @@ useEffect(() => {
                           handlePlanningClick(item)
                         }}
                       >
-                        <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
-                          {item.status === 'AFWEZIG' ? (
-                            <span className="text-lg">🏖️</span>
-                          ) : (
-                            <>
+                        {isLeave ? (
+                          <div className="flex min-w-0 items-center gap-1 overflow-hidden px-0.5 py-0">
+                            <span className="shrink-0 text-xs" aria-hidden>🏖️</span>
+                            <span className="min-w-0 truncate text-[0.6rem] font-medium leading-tight">
+                              {item.planningTypeName || item.title || 'Verlof'}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
                               {plate ? (
                                 <span
                                   className={`license-plate text-[0.7rem] ${
@@ -2654,19 +2738,19 @@ useEffect(() => {
                               {customer ? (
                                 <span className="min-w-0 truncate font-semibold">{customer}</span>
                               ) : null}
-                            </>
-                          )}
-                        </div>
-                        <div className="mt-1 truncate text-[0.72rem] font-semibold">
-                          {item.title || item.planningTypeName || 'Planning'}
-                        </div>
-                        {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
-                          <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
-                            {item.laborDescriptions.length === 1
-                              ? truncateText(item.laborDescriptions[0], 28)
-                              : `${item.laborDescriptions.length} werkzaamheden`}
-                          </div>
-                        ) : null}
+                            </div>
+                            <div className="mt-1 truncate text-[0.72rem] font-semibold">
+                              {item.title || item.planningTypeName || 'Planning'}
+                            </div>
+                            {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
+                              <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
+                                {item.laborDescriptions.length === 1
+                                  ? truncateText(item.laborDescriptions[0], 28)
+                                  : `${item.laborDescriptions.length} werkzaamheden`}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                         {renderDayPopover(item)}
                       </div>
                     )
@@ -2732,58 +2816,6 @@ useEffect(() => {
                         </div>
                       )
                     })}
-                    {/* Leave requests for this user */}
-{leaveRequests
-  .filter(req => req.userId === user.id)
-  .filter(req => {
-    // Check if this day is a working day (Monday-Friday)
-    const dayOfWeek = day.getDay()
-    if (dayOfWeek === 0 || dayOfWeek === 6) return false // Skip weekends
-    
-    const reqStart = new Date(req.startDate)
-    const reqEnd = new Date(req.endDate)
-    const dayStart = new Date(day)
-    dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(day)
-    dayEnd.setHours(23, 59, 59, 999)
-    return reqStart <= dayEnd && reqEnd >= dayStart
-  })
-  .map((req) => {
-    const startMinutes = viewStartMinutes
-    const endMinutes = viewStartMinutes + timelineMinutes
-    
-    const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
-    const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
-    
-    const isPending = req.status === 'PENDING'
-    const backgroundColor = '#8b5cf6'
-    const textColor = '#ffffff'
-    
-    return (
-      <div
-        key={`leave-${req.id}`}
-        className="planning-day-block"
-        style={{
-          left: `${leftPercent}%`,
-          width: `${widthPercent}%`,
-          top: '2px',
-          height: `${laneHeight - 4}px`,
-          borderColor: backgroundColor,
-          backgroundColor: backgroundColor,
-          color: textColor,
-          opacity: isPending ? 0.5 : 1,
-          pointerEvents: 'none'
-        }}
-        title={`${req.absenceTypeCode} ${isPending ? '(AANGEVRAAGD)' : ''}`}
-      >
-        <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
-          <span className="truncate font-medium">
-            🏖️ {req.absenceTypeCode} {isPending ? '(AANGEVRAAGD)' : ''}
-          </span>
-        </div>
-      </div>
-    )
-  })}
                 </div>
               </div>
             )
@@ -2808,12 +2840,12 @@ useEffect(() => {
             const laneHeight = 40
             const baseRowHeight = 78
             
-            // Use consistent max lanes across all days for unassigned
+            // Use consistent max lanes across all days for unassigned; rij 170% hoogte
             const maxLanesForUnassigned = userMaxLanes.get('unassigned') || 1
-            const rowHeight = Math.max(baseRowHeight, maxLanesForUnassigned * laneHeight)
+            const rowHeight = Math.max(baseRowHeight, maxLanesForUnassigned * laneHeight) * 1.7
             
             return (
-              <div className="planning-day-row" style={{ minHeight: `${rowHeight}px` }}>
+              <div className="planning-day-row" style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, maxHeight: `${rowHeight}px` }}>
                 <div className="planning-day-label">Nog niet ingepland</div>
                 <div
                   className="planning-day-axis"
@@ -2822,7 +2854,9 @@ useEffect(() => {
                   data-user-id=""
                   style={{ 
                     gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
-                    minHeight: `${rowHeight}px`
+                    height: `${rowHeight}px`,
+                    minHeight: `${rowHeight}px`,
+                    maxHeight: `${rowHeight}px`
                   }}
                   onDoubleClick={(event) => startCreate(getDateTimeFromClick(day, event))}
                 >
@@ -2834,33 +2868,39 @@ useEffect(() => {
                     const lane = unassignedLaneMap.get(laneKey) || 0
                     const leftPercent = ((segment.start - viewStartMinutes) / timelineMinutes) * 100
                     const widthPercent = ((segment.end - segment.start) / timelineMinutes) * 100
+                    const leftClamped = Math.max(0, leftPercent)
+                    const rightClamped = Math.min(100, leftPercent + widthPercent)
+                    const widthClamped = Math.max(0, rightClamped - leftClamped)
                     const hoverId = `${item.id}-${dayKey}-${segmentIndex}-unassigned`
                     const placement = hoveredPopover?.id === hoverId ? hoveredPopover.placement : null
                     const backgroundColor = getPlanningTypeColorForItem(item, planningTypes) || item.assigneeColor || FALLBACK_BLOCK_COLOR
                     const textColor = getReadableTextColor(backgroundColor)
-                    const showCustomer = widthPercent >= 18
-                    const showPlate = widthPercent >= 10
+                    const showCustomer = widthClamped >= 18
+                    const showPlate = widthClamped >= 10
                     const plate = item.vehiclePlate && showPlate ? normalizeLicensePlate(item.vehiclePlate) : null
                     const customer = item.customerName && showCustomer ? truncateText(item.customerName, 16) : null
-                    
+                    const isLeave = isLeaveItem(item)
+                    const blockHeight = isLeave ? Math.max(1, Math.floor((laneHeight - 4) / 2)) : laneHeight - 4
+                    const blockTop = isLeave ? lane * laneHeight + 2 + Math.floor((laneHeight - 4) / 4) : lane * laneHeight + 2
+                    if (widthClamped <= 0) return null
                     return (
                       <div
                         key={hoverId}
                         className={`planning-day-block${
                           placement ? ` planning-day-block--${placement}` : ''
-                        }${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
+                        }${isLeave ? ' planning-day-block--leave' : ''}${dragState?.itemId === item.id ? ' planning-day-block--dragging' : ''}`}
                         style={{
-                          left: `${leftPercent}%`,
-                          width: `${widthPercent}%`,
-                          top: `${lane * laneHeight + 2}px`,
-                          height: `${laneHeight - 4}px`,
+                          left: `${leftClamped}%`,
+                          width: `${widthClamped}%`,
+                          top: `${blockTop}px`,
+                          height: `${blockHeight}px`,
                           borderColor: backgroundColor,
                           background: backgroundColor,
                           color: textColor,
                         }}
-                        onPointerDown={(event) => handleBlockPointerDown(event, item)}
-                        onPointerMove={handleBlockPointerMove}
-                        onPointerUp={(event) => handleBlockPointerUp(event, item)}
+                        onPointerDown={isLeave ? undefined : (event) => handleBlockPointerDown(event, item)}
+                        onPointerMove={isLeave ? undefined : handleBlockPointerMove}
+                        onPointerUp={isLeave ? undefined : (event) => handleBlockPointerUp(event, item)}
                         onMouseEnter={(event) =>
                           dragState
                             ? null
@@ -2875,11 +2915,16 @@ useEffect(() => {
                           handlePlanningClick(item)
                         }}
                       >
-                        <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
-                          {item.status === 'AFWEZIG' ? (
-                            <span className="text-lg">🏖️</span>
-                          ) : (
-                            <>
+                        {isLeave ? (
+                          <div className="flex min-w-0 items-center gap-1 overflow-hidden px-0.5 py-0">
+                            <span className="shrink-0 text-xs" aria-hidden>🏖️</span>
+                            <span className="min-w-0 truncate text-[0.6rem] font-medium leading-tight">
+                              {item.planningTypeName || item.title || 'Verlof'}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 items-center gap-2 text-[0.7rem]">
                               {plate ? (
                                 <span
                                   className={`license-plate text-[0.7rem] ${
@@ -2892,19 +2937,19 @@ useEffect(() => {
                               {customer ? (
                                 <span className="min-w-0 truncate font-semibold">{customer}</span>
                               ) : null}
-                            </>
-                          )}
-                        </div>
-                        <div className="mt-1 truncate text-[0.72rem] font-semibold">
-                          {item.title || item.planningTypeName || 'Planning'}
-                        </div>
-                        {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
-                          <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
-                            {item.laborDescriptions.length === 1
-                              ? truncateText(item.laborDescriptions[0], 28)
-                              : `${item.laborDescriptions.length} werkzaamheden`}
-                          </div>
-                        ) : null}
+                            </div>
+                            <div className="mt-1 truncate text-[0.72rem] font-semibold">
+                              {item.title || item.planningTypeName || 'Planning'}
+                            </div>
+                            {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
+                              <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
+                                {item.laborDescriptions.length === 1
+                                  ? truncateText(item.laborDescriptions[0], 28)
+                                  : `${item.laborDescriptions.length} werkzaamheden`}
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                         {renderDayPopover(item)}
                       </div>
                     )
@@ -2917,44 +2962,44 @@ useEffect(() => {
           {/* Other users section (vrij, ziek, etc.) - with same timeline */}
           {otherUsers.length > 0 ? (
             <>
-              <div className="planning-day-row" style={{ height: '40px', minHeight: '40px', borderTop: '1px solid #e2e8f0', marginTop: '8px' }}>
-                <div className="planning-day-label text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wide" style={{ paddingTop: '12px' }}>
+              <div className="planning-day-row planning-day-row--other-header" style={{ height: '53px', minHeight: '53px', maxHeight: '53px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+                <div className="planning-day-label text-[0.65rem] font-semibold text-slate-500 uppercase tracking-wide" style={{ paddingTop: '4px' }}>
                   Overige medewerkers
                 </div>
                 <div 
                   className="planning-day-axis" 
                   style={{ 
                     gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
-                    minHeight: '40px'
+                    height: '44px',
+                    minHeight: '44px',
+                    maxHeight: '44px'
                   }}
                 >
                   {gridSlots.map((slot) => (
-                    <div key={`other-header-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '40px', minHeight: '40px' }} />
+                    <div key={`other-header-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '44px', minHeight: '44px' }} />
                   ))}
                 </div>
               </div>
-              {otherUsers.map((user) => {
-                return (
+              {otherUsers.map((user) => (
                   <div 
                     key={`other-${user.id}`} 
-                    className="planning-day-row" 
-                    style={{ height: '40px', minHeight: '40px' }}
+                    className="planning-day-row planning-day-row--other" 
+                    style={{ height: '44px', minHeight: '44px', maxHeight: '44px' }}
                   >
-                    <div className="planning-day-label" style={{ fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center' }}>
-                    </div>
+                    <div className="planning-day-label" style={{ fontSize: '0.75rem', opacity: 0.7, display: 'flex', alignItems: 'center' }} />
                     <div
                       className="planning-day-axis"
                       style={{ 
                         gridTemplateColumns: `repeat(${gridSlots.length}, minmax(0, 1fr))`,
-                        height: '40px',
-                        minHeight: '40px',
+                        height: '44px',
+                        minHeight: '44px',
                         background: '#f8fafc',
                         backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(148, 163, 184, 0.15) 3px, rgba(148, 163, 184, 0.15) 6px)',
                         position: 'relative'
                       }}
                     >
                       {gridSlots.map((slot) => (
-                        <div key={`other-${user.id}-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '40px', minHeight: '40px' }} />
+                        <div key={`other-${user.id}-${slot.toISOString()}`} className="planning-day-axis-slot" style={{ height: '44px', minHeight: '44px' }} />
                       ))}
                       {/* iCal events for this other user */}
                       {icalEvents
@@ -3002,7 +3047,7 @@ useEffect(() => {
                                 left: `${leftPercent}%`,
                                 width: `${widthPercent}%`,
                                 top: '2px',
-                                height: '36px',
+                                height: '44px',
                                 borderColor: backgroundColor,
                                 background: `repeating-linear-gradient(45deg, ${backgroundColor}, ${backgroundColor} 4px, ${backgroundColor}dd 4px, ${backgroundColor}dd 8px)`,
                                 color: textColor,
@@ -3017,62 +3062,9 @@ useEffect(() => {
                             </div>
                           )
                         })}
-                       {/* Leave requests for this other user */}
-{leaveRequests
-  .filter(req => req.userId === user.id)
-  .filter(req => {
-    // Check if this day is a working day (Monday-Friday)
-    const dayOfWeek = day.getDay()
-    if (dayOfWeek === 0 || dayOfWeek === 6) return false // Skip weekends
-    
-    const reqStart = new Date(req.startDate)
-    const reqEnd = new Date(req.endDate)
-    const dayStart = new Date(day)
-    dayStart.setHours(0, 0, 0, 0)
-    const dayEnd = new Date(day)
-    dayEnd.setHours(23, 59, 59, 999)
-    return reqStart <= dayEnd && reqEnd >= dayStart
-  })
-  .map((req) => {
-    const startMinutes = viewStartMinutes
-    const endMinutes = viewStartMinutes + timelineMinutes
-    
-    const leftPercent = ((startMinutes - viewStartMinutes) / timelineMinutes) * 100
-    const widthPercent = ((endMinutes - startMinutes) / timelineMinutes) * 100
-    
-    const isPending = req.status === 'PENDING'
-    const backgroundColor = '#8b5cf6'
-    const textColor = '#ffffff'
-    
-    return (
-      <div
-        key={`leave-other-${req.id}`}
-        className="planning-day-block"
-        style={{
-          left: `${leftPercent}%`,
-          width: `${widthPercent}%`,
-          top: '2px',
-          height: '36px',
-          borderColor: backgroundColor,
-          backgroundColor: backgroundColor,
-          color: textColor,
-          opacity: isPending ? 0.5 : 1,
-          pointerEvents: 'none'
-        }}
-        title={`${req.absenceTypeCode} ${isPending ? '(AANGEVRAAGD)' : ''}`}
-      >
-        <div className="flex min-w-0 items-center gap-1 text-[0.65rem]">
-          <span className="truncate font-medium">
-            🏖️ {req.absenceTypeCode} {isPending ? '(AANGEVRAAGD)' : ''}
-          </span>
-        </div>
-      </div>
-    )
-  })}
                     </div>
                   </div>
-                )
-              })}
+              ))}
             </>
           ) : null}
         </div>
@@ -3457,7 +3449,7 @@ useEffect(() => {
                       <div 
                         key={user.id} 
                         className="planning-day-label-cell"
-                        style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, paddingTop: maxLanesForUser > 1 ? '8px' : undefined }}
+                        style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, paddingTop: maxLanesForUser > 1 ? '8px' : 0 }}
                       >
                         <div className="planning-day-label-name">
                           <span className="inline-flex items-center gap-2">
@@ -3476,10 +3468,11 @@ useEffect(() => {
                     const baseRowHeight = 78
                     const maxLanesForUnassigned = userMaxLanes.get('unassigned') || 1
                     const rowHeight = Math.max(baseRowHeight, maxLanesForUnassigned * laneHeight)
+                    const labelHeight = Math.round(rowHeight * 1.25)
                     return (
                       <div 
                         className="planning-day-label-cell"
-                        style={{ height: `${rowHeight}px`, minHeight: `${rowHeight}px`, paddingTop: maxLanesForUnassigned > 1 ? '8px' : undefined }}
+                        style={{ height: `${labelHeight}px`, minHeight: `${labelHeight}px`, paddingTop: maxLanesForUnassigned > 1 ? '8px' : 0 }}
                       >
                         Nog niet ingepland
                       </div>
@@ -3489,16 +3482,19 @@ useEffect(() => {
                     <>
                       <div 
                         style={{ 
-                          height: '40px', 
-                          minHeight: '40px',
-                          marginTop: '8px',
-                          paddingTop: '12px',
+                          height: '53px', 
+                          minHeight: '53px',
+                          maxHeight: '53px',
+                          paddingTop: '8px',
                           fontSize: '0.65rem', 
                           fontWeight: 600, 
                           color: '#64748b', 
                           textTransform: 'uppercase', 
                           letterSpacing: '0.05em',
-                          borderTop: '1px solid #e2e8f0'
+                          borderTop: '1px solid #e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          boxSizing: 'border-box'
                         }}
                       >
                         Overige medewerkers
@@ -3509,12 +3505,15 @@ useEffect(() => {
                           <div 
                             key={`label-other-${user.id}`} 
                             style={{ 
-                              height: '40px', 
-                              minHeight: '40px',
+                              height: '44px', 
+                              minHeight: '44px',
+                              maxHeight: '44px',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px',
-                              opacity: 0.8
+                              opacity: 0.8,
+                              overflow: 'hidden',
+                              flexShrink: 0
                             }}
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem' }}>

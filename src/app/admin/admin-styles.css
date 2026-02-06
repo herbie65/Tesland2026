@@ -200,19 +200,25 @@
 .planning-day-schedule {
   display: grid;
   gap: 0.5rem;
+  box-sizing: border-box;
+  padding-bottom: 1rem;
 }
 
 .planning-day-scroll {
   overflow-x: auto;
-  padding-bottom: 0.5rem;
+  overflow-y: visible;
+  padding-bottom: 1rem;
 }
 
+/* Rijen recht houden: vaste hoogtes, geen groei/krimp; onderkant niet afknippen */
 .planning-day-wrapper {
   display: grid;
   grid-template-columns: 176px 1fr;
   gap: 1rem;
   align-items: start;
   min-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
 }
 
 .planning-day-labels {
@@ -223,9 +229,11 @@
   min-width: 176px;
   background: rgba(248, 250, 252, 0.98);
   display: grid;
-  gap: 10px;
+  grid-auto-rows: minmax(0, auto);
+  gap: 0.5rem;
   padding-right: 0.5rem;
   border-right: 1px solid rgba(226, 232, 240, 0.9);
+  box-sizing: border-box;
 }
 
 .planning-day-title {
@@ -251,13 +259,22 @@
 
 .planning-day-label-cell {
   height: 68px;
+  min-height: 68px;
   display: flex;
-  align-items: center;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 60px;
+  padding-top: 0;
   color: rgba(15, 23, 42, 0.85);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* Overige medewerkers-rijen: vaste hoogte zodat rijen horizontaal recht blijven */
+.planning-day-row--other-header,
+.planning-day-row--other {
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .planning-day-label-name {
@@ -316,15 +333,20 @@
 
 .planning-day-column-body {
   position: relative;
+  box-sizing: border-box;
+  overflow: visible;
 }
 
+/* Rechte verticale lijn voor huidige tijd – geen afronding of blur */
 .planning-day-column-nowline {
   position: absolute;
   top: 52px;
   bottom: 0;
-  width: 2px;
-  background: rgba(239, 68, 68, 0.9);
+  width: 0;
+  border-left: 2px solid rgba(239, 68, 68, 0.95);
+  transform: translateX(-1px); /* centreer 2px lijn op percentage */
   z-index: 4;
+  box-sizing: border-box;
 }
 
 .planning-day-column-nowlabel {
@@ -391,11 +413,29 @@
   display: grid;
   grid-template-columns: 180px 1fr;
   gap: 0.75rem;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* Flyover zichtbaar: rijen niet afknippen (popover kan buiten rij vallen) */
+.planning-day-rows .planning-day-row {
+  overflow: visible;
 }
 
 .planning-day-compact .planning-day-header,
 .planning-day-compact .planning-day-row {
   grid-template-columns: 1fr;
+}
+
+/* Headerrij 36px zodat labels (Werknemer) en tijdsas netjes op één lijn komen */
+.planning-day-compact .planning-day-header {
+  height: 36px;
+  min-height: 36px;
+  align-items: center;
+}
+
+.planning-day-compact .planning-day-header .planning-day-axis {
+  min-height: 36px;
 }
 
 .planning-day-compact .planning-day-label {
@@ -488,6 +528,24 @@
   overflow: visible;
 }
 
+/* Rode/donkere balken (ZIEK, VERLOF): dunne balk, compacte inhoud */
+.planning-day-block--leave {
+  color: #fff !important;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.6), 0 1px 2px rgba(0, 0, 0, 0.4);
+  padding: 0.15rem 0.35rem;
+  display: flex;
+  align-items: center;
+}
+.planning-day-block--leave * {
+  color: inherit;
+}
+/* Flyover-popover: geen glow/shadow op de tekst */
+.planning-day-block--leave .planning-day-popover,
+.planning-day-block--leave .planning-day-popover * {
+  text-shadow: none;
+  color: rgba(15, 23, 42, 0.9);
+}
+
 .planning-day-block--dragging {
   cursor: grabbing;
   opacity: 0.9;
@@ -496,6 +554,7 @@
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
 }
 
+/* Flyover-popover: hoog z-index en zichtbaar boven alles (niet afgeknipt door overflow) */
 .planning-day-popover {
   position: absolute;
   top: calc(100% + 6px);
@@ -508,7 +567,7 @@
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
   padding: 0.6rem 0.7rem;
-  z-index: 12;
+  z-index: 100;
   color: rgba(15, 23, 42, 0.9);
   backdrop-filter: blur(8px);
 }
@@ -980,7 +1039,7 @@
 }
 
 
-/* Dutch license plate styling */
+/* Dutch license plate styling – breedte past zich aan inhoud aan */
 .license-plate {
   display: inline-flex;
   align-items: center;
@@ -989,7 +1048,7 @@
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: uppercase;
-  padding: 0.18rem 0.45rem 0.18rem 0.75rem;
+  padding: 0.18rem 0.5rem 0.18rem 0.75rem;
   border-radius: 0.35rem;
   border: 2px solid #0f172a;
   background: #f6c90e;
@@ -1000,10 +1059,8 @@
   line-height: 1;
   box-shadow: none;
   outline: none;
-  /* Fixed width for consistency */
-  min-width: 7rem;
-  width: auto;
-  max-width: 9rem;
+  width: fit-content;
+  min-width: min-content;
 }
 
 .license-plate.nl::before {

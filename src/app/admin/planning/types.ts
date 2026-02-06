@@ -28,6 +28,7 @@ export type PlanningItem = {
   assigneeId?: string | null
   assigneeName?: string | null
   assigneeColor?: string | null
+  laborDescriptions?: string[] | null
   location?: string | null
   customerId?: string | null
   customerName?: string | null

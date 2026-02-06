@@ -390,6 +390,20 @@ export default function ToolsClient() {
         </div>
       </section>
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold">Efficiëntie werkplaats</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Geplande vs. werkelijke uren en benutting (8u/dag).
+        </p>
+        <div className="mt-4">
+          <Link
+            href="/admin/tools/efficiency"
+            className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
+          >
+            Efficiëntie openen
+          </Link>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold">Bootstrap settings</h2>
         <p className="mt-2 text-sm text-slate-600">
           Plak hier de JSON met statuses, defaults en pricingModes.

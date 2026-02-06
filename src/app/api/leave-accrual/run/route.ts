@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
+import { getHrLeavePolicy } from '@/lib/settings'
 import { accrueMonthlyForUser, getUserLeaveConfig, seedOpeningBalanceIfMissing, syncUserBalancesFromLedger } from '@/lib/leave-ledger'
 
 export async function POST(request: NextRequest) {
@@ -11,6 +12,9 @@ export async function POST(request: NextRequest) {
     const year = Number.isFinite(Number(body?.year)) ? Number(body.year) : now.getFullYear()
     const month = Number.isFinite(Number(body?.month)) ? Number(body.month) : now.getMonth() + 1
     const userId = body?.userId ? String(body.userId) : null
+
+    const policy = await getHrLeavePolicy()
+    const usePolicyForAnnual = policy.accrualMethod === 'MONTHLY'
 
     const users = await prisma.user.findMany({
       where: {
@@ -26,6 +30,7 @@ export async function POST(request: NextRequest) {
         leaveBalanceLegal: true,
         leaveBalanceExtra: true,
         leaveBalanceCarryover: true,
+        contractHoursPerWeek: true,
       },
     })
 
@@ -33,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     for (const user of users) {
       const config = getUserLeaveConfig({
-        hoursPerDay: user.hoursPerDay || 8,
+        hoursPerDay: user.hoursPerDay || policy.hoursPerDayDefault,
         annualLeaveDaysOrHours: user.annualLeaveDaysOrHours ?? null,
         leaveUnit: user.leaveUnit === 'HOURS' ? 'HOURS' : 'DAYS',
         employmentStartDate: user.employmentStartDate,
@@ -47,9 +52,16 @@ export async function POST(request: NextRequest) {
         hoursPerDay: config.hoursPerDay,
       })
 
+      let annualLeaveMinutes = config.annualLeaveMinutes
+      if (usePolicyForAnnual) {
+        const fte = Number(user.contractHoursPerWeek ?? 40) / 40
+        const annualHours = policy.annualLeaveDaysFullTime * policy.hoursPerDayDefault * Math.min(1, Math.max(0, fte))
+        annualLeaveMinutes = Math.round(annualHours * 60)
+      }
+
       const accrual = await accrueMonthlyForUser({
         userId: user.id,
-        annualLeaveMinutes: config.annualLeaveMinutes,
+        annualLeaveMinutes,
         month,
         year,
         employmentStartDate: config.employmentStartDate,

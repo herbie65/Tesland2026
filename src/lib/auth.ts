@@ -114,6 +114,11 @@ export const requireAuth = async (request: NextRequest): Promise<AuthUser> => {
     resolvedRole = fallbackRole
   }
 
+  // Efficiëntie werkplaats (onder Tools) voor MANAGEMENT en SYSTEM_ADMIN
+  if (isSystemAdmin || resolvedRole === 'MANAGEMENT') {
+    pagePermissions = { ...pagePermissions, '/admin/tools/efficiency': true }
+  }
+
   return {
     id: user.id,
     email: user.email,

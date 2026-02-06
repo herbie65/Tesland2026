@@ -6,20 +6,31 @@ export async function GET(request: NextRequest) {
   try {
     await requireAuth(request)
     
+    // Alleen medewerkers tonen; klanten (rol CUSTOMER) horen niet in Gebruikers
     const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { roleRef: null },
+          { roleRef: { name: { not: 'CUSTOMER' } } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       include: {
         roleRef: true, // Include role details
       },
     })
     
-    // Map displayName to name for frontend compatibility
-    const items = users.map(user => ({
-      ...user,
-      name: user.displayName || user.email, // Fallback to email if no displayName
-      photoUrl: user.photoURL,
-      role: user.roleRef?.name || user.role || null, // Use roleRef.name if available, fallback to old role field
-    }))
+    // Map displayName to name for frontend compatibility; explicit icalUrl for planning
+    const items = users.map(user => {
+      const { password: _, ...rest } = user
+      return {
+        ...rest,
+        name: user.displayName || user.email, // Fallback to email if no displayName
+        photoUrl: user.photoURL,
+        role: user.roleRef?.name || user.role || null, // Use roleRef.name if available, fallback to old role field
+        icalUrl: user.icalUrl ?? null, // Expliciet voor planning iCal
+      }
+    })
     
     return NextResponse.json({ success: true, items })
   } catch (error: any) {

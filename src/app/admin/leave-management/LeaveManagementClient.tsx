@@ -41,6 +41,14 @@ type User = {
   leaveBalanceExtra: number
   leaveBalanceCarryover: number
   leaveBalanceSpecial: number
+  role?: string
+}
+
+type AbsenceType = {
+  code: string
+  label: string
+  color: string
+  deductsFromBalance?: boolean
 }
 
 // Helper to check if request has negative balance warning
@@ -75,10 +83,54 @@ export default function LeaveManagementClient() {
     reason: '',
     notes: '',
   })
+  const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([])
+  const [adminLeaveUserId, setAdminLeaveUserId] = useState('')
+  const [adminLeaveStartDate, setAdminLeaveStartDate] = useState('')
+  const [adminLeaveEndDate, setAdminLeaveEndDate] = useState('')
+  const [adminLeaveStartTime, setAdminLeaveStartTime] = useState('08:00')
+  const [adminLeaveEndTime, setAdminLeaveEndTime] = useState('17:00')
+  const [adminLeaveAbsenceCode, setAdminLeaveAbsenceCode] = useState('VRIJE_DAG')
+  const [adminLeaveNotes, setAdminLeaveNotes] = useState('')
+  const [adminLeaveSubmitting, setAdminLeaveSubmitting] = useState(false)
 
   useEffect(() => {
     fetchData()
   }, [activeTab])
+
+  useEffect(() => {
+    const loadAbsenceTypes = async () => {
+      try {
+        const res = await apiFetch('/api/leave-requests/absence-types')
+        if (res.success && Array.isArray(res.items)) {
+          setAbsenceTypes(res.items)
+          if (res.items.length && !res.items.some((t: AbsenceType) => t.code === 'VRIJE_DAG')) {
+            setAdminLeaveAbsenceCode(res.items[0]?.code || '')
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadAbsenceTypes()
+  }, [])
+
+  useEffect(() => {
+    const loadPlanningDefaults = async () => {
+      try {
+        const res = await apiFetch('/api/settings/planning')
+        const data = res.item?.data ?? res.data ?? null
+        if (data && typeof data === 'object') {
+          const dayStart = typeof (data as any).dayStart === 'string' ? (data as any).dayStart : ''
+          const dayEnd = typeof (data as any).dayEnd === 'string' ? (data as any).dayEnd : ''
+          if (dayStart) setAdminLeaveStartTime(dayStart)
+          if (dayEnd) setAdminLeaveEndTime(dayEnd)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadPlanningDefaults()
+  }, [])
 
   const fetchData = async () => {
     try {
@@ -90,12 +142,10 @@ export default function LeaveManagementClient() {
         setRequests(response.items || [])
       }
       
-      // Fetch users for team overview
-      if (activeTab === 'team') {
-        const usersResponse = await apiFetch('/api/users')
-        if (usersResponse.success) {
-          setUsers(usersResponse.items || [])
-        }
+      // Fetch users (voor team-overzicht en voor "Vrije dag inzetten")
+      const usersResponse = await apiFetch('/api/users')
+      if (usersResponse.success) {
+        setUsers(usersResponse.items || [])
       }
     } catch (error) {
       console.error('Failed to fetch data:', error)
@@ -301,6 +351,44 @@ export default function LeaveManagementClient() {
     }
   }
 
+  const handleAdminLeaveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!adminLeaveUserId || !adminLeaveStartDate || !adminLeaveEndDate) {
+      alert('Vul medewerker, startdatum en einddatum in.')
+      return
+    }
+    setAdminLeaveSubmitting(true)
+    try {
+      const response = await apiFetch('/api/leave-requests/admin', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: adminLeaveUserId,
+          startDate: adminLeaveStartDate,
+          endDate: adminLeaveEndDate,
+          startTime: adminLeaveStartTime || undefined,
+          endTime: adminLeaveEndTime || undefined,
+          absenceTypeCode: adminLeaveAbsenceCode || 'VRIJE_DAG',
+          notes: adminLeaveNotes || undefined,
+        }),
+      })
+      if (response.success) {
+        alert(response.message || 'Vrije tijd ingeboekt.')
+        setAdminLeaveUserId('')
+        setAdminLeaveStartDate('')
+        setAdminLeaveEndDate('')
+        setAdminLeaveNotes('')
+        fetchData()
+      } else {
+        alert(response.error || 'Er is een fout opgetreden.')
+      }
+    } catch (err) {
+      console.error(err)
+      alert('Er is een fout opgetreden.')
+    } finally {
+      setAdminLeaveSubmitting(false)
+    }
+  }
+
   const filteredRequests = requests.filter(req => {
     if (activeTab === 'pending') return req.status === 'PENDING'
     return true
@@ -353,6 +441,106 @@ export default function LeaveManagementClient() {
             Team overzicht
           </button>
         </nav>
+      </div>
+
+      {/* Vrije tijd inboeken (zonder aanvraag door medewerker) */}
+      <div className="bg-white shadow-sm rounded-lg border border-slate-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+          <h2 className="text-sm font-semibold text-slate-800">Vrije tijd inboeken</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Boek vrije tijd (of ander afwezigheidstype) in voor een medewerker zonder dat deze zelf een aanvraag heeft gedaan. Er wordt geen saldo afgetrokken.
+          </p>
+        </div>
+        <form onSubmit={handleAdminLeaveSubmit} className="p-4 flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Medewerker</label>
+            <select
+              value={adminLeaveUserId}
+              onChange={(e) => setAdminLeaveUserId(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[180px] focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+              required
+            >
+              <option value="">Kies medewerker</option>
+              {users
+                .filter((u) => u.role !== 'CUSTOMER')
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.displayName}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Startdatum (dd-mm-jjjj)</label>
+            <div className="w-[140px]">
+              <DatePicker
+                value={adminLeaveStartDate}
+                onChange={setAdminLeaveStartDate}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Starttijd</label>
+            <input
+              type="time"
+              value={adminLeaveStartTime}
+              onChange={(e) => setAdminLeaveStartTime(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+              title="Begin werkzaamheden"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Einddatum (dd-mm-jjjj)</label>
+            <div className="w-[140px]">
+              <DatePicker
+                value={adminLeaveEndDate}
+                onChange={setAdminLeaveEndDate}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Eindtijd</label>
+            <input
+              type="time"
+              value={adminLeaveEndTime}
+              onChange={(e) => setAdminLeaveEndTime(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+              title="Einde werkdag"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Type</label>
+            <select
+              value={adminLeaveAbsenceCode}
+              onChange={(e) => setAdminLeaveAbsenceCode(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[140px] focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+            >
+              {absenceTypes.length === 0 && <option value="VRIJE_DAG">VRIJE_DAG</option>}
+              {absenceTypes.map((t) => (
+                <option key={t.code} value={t.code}>
+                  {t.label || t.code}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-600">Opmerking (optioneel)</label>
+            <input
+              type="text"
+              value={adminLeaveNotes}
+              onChange={(e) => setAdminLeaveNotes(e.target.value)}
+              placeholder="Bijv. feestdag, bedrijfsvrije dag"
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-400"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={adminLeaveSubmitting}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {adminLeaveSubmitting ? 'Bezig...' : 'Inboeken'}
+          </button>
+        </form>
       </div>
 
       {/* Content */}
@@ -969,13 +1157,13 @@ export default function LeaveManagementClient() {
               {/* Datums */}
               <div className="grid grid-cols-2 gap-4">
                 <DatePicker
-                  label="Startdatum"
+                  label="Startdatum (dd-mm-jjjj)"
                   value={editFormData.startDate}
                   onChange={(date) => setEditFormData({ ...editFormData, startDate: date })}
                   required
                 />
                 <DatePicker
-                  label="Einddatum"
+                  label="Einddatum (dd-mm-jjjj)"
                   value={editFormData.endDate}
                   onChange={(date) => setEditFormData({ ...editFormData, endDate: date })}
                   required

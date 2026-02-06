@@ -203,14 +203,13 @@ export function LeaveRequestModal({
 
     setPreview({ minutes: roundedMinutes, hours, days })
     
-    // Check saldo en toon waarschuwing
+    // Check saldo en toon waarschuwing bij negatief wettelijk verlof
     if (formData.absenceTypeCode === 'VERLOF' && balance) {
       const totalAvailable = balance.vacation + balance.carryover
       if (hours > totalAvailable) {
-        const negativeAmount = hours - totalAvailable
+        const saldoNaAftrek = totalAvailable - hours
         setWarning(
-          `⚠️ LET OP: Uw saldo zal hiermee negatief worden met ${negativeAmount.toFixed(2)} uur (${(negativeAmount / hoursPerDay).toFixed(2)} dagen). ` +
-          `Goedkeuring door bedrijfsleiding is vereist. U kunt de aanvraag wel indienen.`
+          `Let op: je wettelijk verlof komt op ${saldoNaAftrek.toFixed(2)} uur te staan. Dit wordt komende maanden weer opgebouwd. Je kunt de aanvraag gewoon indienen.`
         )
       } else {
         setWarning(null)

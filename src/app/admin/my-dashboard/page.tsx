@@ -270,7 +270,7 @@ export default function MyDashboardPage() {
         </div>
         
         {/* Balance Cards */}
-        {balance && (
+        {balance ? (
           <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <LeaveBalanceCard
               title="Vakantie-uren"
@@ -301,6 +301,13 @@ export default function MyDashboardPage() {
               color="bg-purple-500"
               icon={<GiftIcon className="h-6 w-6" />}
             />
+          </div>
+        ) : !loading && (
+          <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+            <p className="font-medium">Geen saldo zichtbaar</p>
+            <p className="mt-1 text-amber-700">
+              Je verlofsaldo kon niet worden geladen. Vraag HR of management om je verlofgegevens in <strong>HR → HR Instellingen</strong> in te stellen.
+            </p>
           </div>
         )}
         

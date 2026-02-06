@@ -217,6 +217,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       data: updateData
     })
 
+    const changes: Record<string, { from: any; to: any }> = {}
+    for (const field of Object.keys(updateData)) {
+      const oldVal = (item as any)[field]
+      const newVal = updateData[field]
+      if (oldVal !== newVal && (oldVal != null || newVal != null)) {
+        changes[field] = { from: oldVal ?? null, to: newVal ?? null }
+      }
+    }
+    if (Object.keys(changes).length > 0) {
+      await logAudit({
+        entityType: 'PlanningItem',
+        entityId: id,
+        action: 'UPDATE',
+        userId: user.id,
+        userName: user.displayName || user.email || null,
+        userEmail: user.email,
+        userRole: user.role,
+        changes,
+        description: 'Planning gewijzigd',
+        metadata: { workOrderId: workOrderId || null },
+        request
+      })
+    }
+
     // Sync to work order if needed
     if (workOrderId && shouldSyncWorkOrder) {
       const workOrderUpdateData: any = {}
@@ -338,14 +362,28 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    await requireRole(request, ['MANAGEMENT'])
+    const user = await requireRole(request, ['MANAGEMENT'])
     const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
+
+    const item = await prisma.planningItem.findUnique({ where: { id }, select: { title: true } })
     
     await prisma.planningItem.delete({
       where: { id }
+    })
+
+    await logAudit({
+      entityType: 'PlanningItem',
+      entityId: id,
+      action: 'DELETE',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: item ? `Planning verwijderd: ${item.title}` : 'Planning verwijderd',
+      request
     })
     
     return NextResponse.json({ success: true })

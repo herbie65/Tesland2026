@@ -21,6 +21,13 @@ type WorkSession = {
   durationMinutes?: number | null
 }
 
+type LaborLine = {
+  id: string
+  description: string
+  durationMinutes?: number | null
+  completed?: boolean | null
+}
+
 type WorkOrder = {
   id: string
   title?: string | null
@@ -39,6 +46,7 @@ type WorkOrder = {
   activeWorkStartedBy?: string | null
   activeWorkStartedByName?: string | null
   workSessions?: WorkSession[]
+  laborLines?: LaborLine[]
 }
 
 type PlanningType = {
@@ -297,9 +305,24 @@ function DraggableWorkOrderCard({
           </span>
         )}
       </div>
-      <div className="mt-2 text-xs text-slate-500">
-        {item.orderNumber ? `#${item.orderNumber}` : `#${item.id}`}
-        {item.customerName ? ` · ${item.customerName}` : ''}
+      <div className="mt-2 text-xs text-slate-600">
+        {(item.laborLines?.length ?? 0) > 0 ? (
+          <ul className="list-inside list-disc space-y-0.5">
+            {item.laborLines!.slice(0, 5).map((line) => (
+              <li key={line.id} className={line.completed ? 'text-slate-400 line-through' : ''}>
+                {line.description}
+                {line.durationMinutes != null && line.durationMinutes > 0
+                  ? ` (${line.durationMinutes} min)`
+                  : ''}
+              </li>
+            ))}
+            {(item.laborLines?.length ?? 0) > 5 && (
+              <li className="text-slate-400">+{(item.laborLines?.length ?? 0) - 5} meer</li>
+            )}
+          </ul>
+        ) : (
+          <span className="text-slate-400">Geen werkzaamheden</span>
+        )}
       </div>
       <div className="mt-1 text-xs text-slate-500">
         {formatTimeRange(item.scheduledAt, item.durationMinutes)}

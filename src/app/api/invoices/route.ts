@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { getSalesStatusSettings } from '@/lib/settings'
 import { generateSalesNumber } from '@/lib/numbering'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,6 +51,19 @@ export async function POST(request: NextRequest) {
         invoiceDate: new Date(),
         dueDate: dueAt ? new Date(dueAt) : null
       }
+    })
+
+    await logAudit({
+      entityType: 'Invoice',
+      entityId: item.id,
+      action: 'CREATE',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: `Factuur aangemaakt: ${item.invoiceNumber}`,
+      metadata: { invoiceNumber: item.invoiceNumber },
+      request
     })
     
     return NextResponse.json({ success: true, item }, { status: 201 })

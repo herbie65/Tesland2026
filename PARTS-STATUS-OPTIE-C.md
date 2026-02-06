@@ -116,7 +116,7 @@ Gebruikt **direct** `partsLines` voor real-time berekening (niet de cache), om a
 
 ```typescript
 // Priority (worst to best):
-if (ANY part === "WACHT_OP_BESTELLING" || "SPECIAAL")
+if (ANY part === "WACHT_OP_BESTELLING" || "PENDING")
   → 🟠 "WACHT_OP_BESTELLING"
 
 else if (ANY part === "BESTELD")

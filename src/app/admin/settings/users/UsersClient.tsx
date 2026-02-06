@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { apiFetch } from "@/lib/api"
 import MediaPickerModal from "../../components/MediaPickerModal"
 
@@ -450,6 +451,13 @@ export default function UsersClient() {
       {/* Users Tab */}
       {activeTab === 'users' && (
         <>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        Verlofsaldo, jaarlijks verlof en contractgegevens per medewerker beheer je in{" "}
+        <Link href="/admin/hr-settings" className="font-medium text-blue-600 hover:text-blue-700 underline">
+          HR → HR Instellingen
+        </Link>
+        . Klik daar op een medewerker om verlof in te stellen.
+      </div>
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold">Nieuwe gebruiker</h2>
         <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>

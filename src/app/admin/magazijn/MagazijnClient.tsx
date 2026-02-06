@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { 
   calculatePartsStatus, 
@@ -22,6 +22,7 @@ type WorkOrder = {
   title?: string | null
   scheduledAt?: string | null
   vehiclePlate?: string | null
+  licensePlate?: string | null
   vehicleLabel?: string | null
   workOrderStatus?: string | null
   partsRequired?: boolean | null
@@ -70,6 +71,42 @@ export default function MagazijnClient() {
 
   useEffect(() => {
     loadData()
+  }, [])
+
+  // SSE: live updates (ook van andere gebruikers/computers)
+  useEffect(() => {
+    let eventSource: EventSource | null = null
+    const connectSSE = () => {
+      const token = getToken()
+      if (!token) {
+        setTimeout(connectSSE, 2000)
+        return
+      }
+      try {
+        eventSource = new EventSource(`/api/workorders/stream?token=${encodeURIComponent(token)}`)
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === 'workorder-update') {
+              loadData()
+            }
+          } catch {
+            // ignore
+          }
+        }
+        eventSource.onerror = () => {
+          eventSource?.close()
+          eventSource = null
+          setTimeout(connectSSE, 5000)
+        }
+      } catch {
+        setTimeout(connectSSE, 5000)
+      }
+    }
+    connectSSE()
+    return () => {
+      eventSource?.close()
+    }
   }, [])
 
   const statusLabel = (code?: string | null) =>
@@ -142,74 +179,69 @@ export default function MagazijnClient() {
           <p className="mt-4 text-sm text-slate-500">Geen werkorders met onderdelen nodig.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm text-slate-700">
+            <table className="w-full text-left text-sm text-slate-700 table-fixed">
               <thead className="text-xs uppercase text-slate-400">
                 <tr>
-                  <th className="py-2 pr-4">Onderdelen</th>
-                  <th className="py-2 pr-4">WO#</th>
-                  <th className="py-2 pr-4">Voertuig</th>
-                  <th className="py-2 pr-4">Klus</th>
-                  <th className="py-2 pr-4">Gepland</th>
-                  <th className="py-2 pr-4">Onderdelen Status</th>
-                  <th className="py-2 pr-4">Actie</th>
+                  <th className="w-24 py-2 pr-2">WO#</th>
+                  <th className="w-52 py-2 pr-2">Voertuig</th>
+                  <th className="w-40 py-2 pr-2">Klus</th>
+                  <th className="w-28 py-2 pr-2">Gepland</th>
+                  <th className="w-48 py-2 pr-2">Onderdelen Status</th>
+                  <th className="w-36 py-2 pr-2">Actie</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {warehouseOrders.map((order) => {
                   const urgency = getUrgency(order.scheduledAt)
-                  
-                  // Calculate actual status from parts lines using shared helper
                   const actualPartsStatus = calculatePartsStatus(order.partsLines)
                   const partsStatusLabelText = getPartsStatusLabel(actualPartsStatus)
                   const statusColorClass = getPartsStatusColor(actualPartsStatus)
-                  
+                  const plate = order.vehiclePlate || order.licensePlate
                   return (
-                    <tr 
+                    <tr
                       key={order.id}
                       className="bg-amber-50 border-l-4 border-l-amber-500"
                     >
-                      <td className="py-3 pr-4">
-                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
-                          ⚠️ ACTIE
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <a 
+                      <td className="py-3 pr-2">
+                        <a
                           href={`/admin/workorders/${order.id}`}
                           className="text-blue-600 hover:text-blue-800 font-medium"
                         >
                           {order.workOrderNumber || order.id.slice(0, 8)}
                         </a>
                       </td>
-                      <td className="py-3 pr-4">
-                        {order.vehiclePlate ? (
-                          <span
-                            className={`license-plate text-xs ${
-                              isDutchLicensePlate(order.vehiclePlate) ? 'nl' : ''
-                            }`}
-                          >
-                            {normalizeLicensePlate(order.vehiclePlate)}
-                          </span>
-                        ) : (
-                          order.vehicleLabel || '-'
-                        )}
+                      <td className="py-3 pr-2">
+                        <span className="inline-flex items-center gap-2 flex-wrap">
+                          {plate ? (
+                            <span
+                              className={`license-plate text-xs shrink-0 ${
+                                isDutchLicensePlate(plate) ? 'nl' : ''
+                              }`}
+                            >
+                              {normalizeLicensePlate(plate)}
+                            </span>
+                          ) : null}
+                          {order.vehicleLabel ? (
+                            <span className="text-slate-700">{order.vehicleLabel}</span>
+                          ) : plate ? null : '-'}
+                        </span>
                       </td>
-                      <td className="py-3 pr-4">{order.title || '-'}</td>
-                      <td className="py-3 pr-4">
-                        <div className="flex flex-col gap-1">
+                      <td className="py-3 pr-2">{order.title || '-'}</td>
+                      <td className="py-3 pr-2">
+                        <div className="flex flex-col gap-0.5">
                           <span className="text-xs text-slate-600">{formatDate(order.scheduledAt)}</span>
                           <span className={`text-xs ${urgency.color}`}>{urgency.label}</span>
                         </div>
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-2">
                         <span className={`text-sm ${statusColorClass}`}>
                           {partsStatusLabelText}
                         </span>
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-2 align-middle">
                         <a
                           href={`/admin/workorders/${order.id}`}
-                          className="rounded-lg border border-blue-600 bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
+                          className="inline-block whitespace-nowrap rounded-lg border border-blue-600 bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
                         >
                           Open Werkorder
                         </a>
@@ -253,47 +285,51 @@ export default function MagazijnClient() {
         <p className="mt-4 text-sm text-slate-500">Geen werkorders voor magazijn.</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-left text-sm text-slate-700">
+          <table className="min-w-full text-left text-sm text-slate-700 table-fixed">
             <thead className="text-xs uppercase text-slate-400">
               <tr>
-                <th className="py-2 pr-4">Datum/tijd</th>
-                <th className="py-2 pr-4">Voertuig</th>
-                <th className="py-2 pr-4">Klus</th>
-                <th className="py-2 pr-4">Parts / Status</th>
-                <th className="py-2 pr-4">Mist items</th>
-                <th className="py-2 pr-4">Acties</th>
+                <th className="w-36 py-2 pr-2">Datum/tijd</th>
+                <th className="py-2 pr-2">Voertuig</th>
+                <th className="py-2 pr-2">Klus</th>
+                <th className="py-2 pr-2">Parts / Status</th>
+                <th className="w-16 py-2 pr-2">Mist</th>
+                <th className="w-20 py-2 pr-2">Acties</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {visibleOrders.map((order) => {
                 const partsStatus = calculatePartsStatus(order.partsLines)
                 const missingCount = order.partsLines?.filter(pl => pl.status !== 'ONTVANGEN' && pl.status !== 'KLAAR').length ?? 0
+                const plate = order.vehiclePlate || order.licensePlate
                 return (
                 <tr key={order.id}>
-                  <td className="py-3 pr-4">
+                  <td className="py-3 pr-2">
                     {order.scheduledAt ? new Date(order.scheduledAt).toLocaleString() : '-'}
                   </td>
-                  <td className="py-3 pr-4">
-                    {order.vehiclePlate ? (
-                      <span
-                        className={`license-plate text-xs ${
-                          isDutchLicensePlate(order.vehiclePlate) ? 'nl' : ''
-                        }`}
-                      >
-                        {normalizeLicensePlate(order.vehiclePlate)}
-                      </span>
-                    ) : (
-                      order.vehicleLabel || '-'
-                    )}
+                  <td className="py-3 pr-2">
+                    <span className="inline-flex items-center gap-2 flex-wrap">
+                      {plate ? (
+                        <span
+                          className={`license-plate text-xs shrink-0 ${
+                            isDutchLicensePlate(plate) ? 'nl' : ''
+                          }`}
+                        >
+                          {normalizeLicensePlate(plate)}
+                        </span>
+                      ) : null}
+                      {order.vehicleLabel ? (
+                        <span className="text-slate-700">{order.vehicleLabel}</span>
+                      ) : plate ? null : '-'}
+                    </span>
                   </td>
-                  <td className="py-3 pr-4">{order.title || '-'}</td>
-                  <td className="py-3 pr-4">
+                  <td className="py-3 pr-2">{order.title || '-'}</td>
+                  <td className="py-3 pr-2">
                     {getPartsStatusLabel(partsStatus)} · {statusLabel(order.workOrderStatus)}
                   </td>
-                  <td className="py-3 pr-4">{missingCount}</td>
-                  <td className="py-3 pr-4">
+                  <td className="py-3 pr-2">{missingCount}</td>
+                  <td className="py-3 pr-2">
                     <Link
-                      className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                      className="rounded-lg border border-slate-200 px-2 py-1 text-sm text-slate-700 hover:bg-slate-50"
                       href={`/admin/magazijn/${order.id}`}
                     >
                       Open

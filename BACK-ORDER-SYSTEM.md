@@ -95,10 +95,10 @@ System:
     - productId: null
     - status: "PENDING"
     - notes: "Custom onderdeel (niet in catalogus)"
-  ✓ PartsLine status: "SPECIAAL"
+  ✓ PartsLine status: "WACHT_OP_BESTELLING"
 Result:
   📋 Back-order aangemaakt
-  🔧 Gemarkeerd als "SPECIAAL"
+  🔧 Gemarkeerd als "WACHT_OP_BESTELLING"
 ```
 
 ---
@@ -437,7 +437,7 @@ Check of parts line een actieve back-order heeft.
    - SKU: "CUSTOM-001"
    - Aantal: 1
    - Prijs: €2500
-3. ✅ PartsLine status: "SPECIAAL"
+3. ✅ PartsLine status: "WACHT_OP_BESTELLING"
 4. ✅ Back-order aangemaakt (productId = null)
 5. ✅ notes: "Custom onderdeel (niet in catalogus)"
 

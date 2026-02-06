@@ -13,6 +13,8 @@ import {
 } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
+import { fetchRdwAndUpdateVehicle } from '@/lib/rdw-vehicle'
+import { logAudit } from '@/lib/audit'
 
 function getAbsenceTypeColor(code: string): string {
   const colors: Record<string, string> = {
@@ -72,6 +74,7 @@ export async function GET(request: NextRequest) {
             warehouseStatus: true,
             warehouseEtaDate: true,
             warehouseLocation: true,
+            laborLines: { select: { description: true }, orderBy: { createdAt: 'asc' } },
           }
         },
         leaveRequest: {
@@ -131,6 +134,7 @@ export async function GET(request: NextRequest) {
         warehouseStatus: item.workOrder?.warehouseStatus || null,
         warehouseEtaDate: item.workOrder?.warehouseEtaDate || null,
         warehouseLocation: item.workOrder?.warehouseLocation || null,
+        laborDescriptions: (item.workOrder as any)?.laborLines?.map((l: { description: string }) => l.description).filter(Boolean) ?? [],
         // Leave request fields
         leaveRequestId: item.leaveRequest?.id || null,
         absenceTypeCode: item.leaveRequest?.absenceTypeCode || null,
@@ -140,8 +144,12 @@ export async function GET(request: NextRequest) {
       }
     })
     
-    // Add leave requests as planning items
-    const leaveItems = leaveRequests.map((leave) => {
+    // Leave die al als PlanningItem in merged zitten niet nog eens als synthetisch item toevoegen (voorkomt dubbele balken)
+    const mergedLeaveIds = new Set(merged.map((m: { leaveRequestId?: string | null }) => m.leaveRequestId).filter(Boolean) as string[])
+    const leaveRequestsWithoutItem = leaveRequests.filter(
+      (leave) => !leave.planningItemId && !mergedLeaveIds.has(leave.id)
+    )
+    const leaveItems = leaveRequestsWithoutItem.map((leave) => {
       const startDate = new Date(leave.startDate)
       const endDate = new Date(leave.endDate)
       const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
@@ -354,6 +362,7 @@ export async function POST(request: NextRequest) {
                 durationMinutes: workOrderDefaults.laborLineDurationMinutes,
                 userId: assigneeId || null,
                 userName: assigneeName || null,
+                totalAmount: item.totalAmount != null && Number.isFinite(Number(item.totalAmount)) ? Number(item.totalAmount) : null,
               }))
 
             if (laborLines.length > 0) {
@@ -376,6 +385,13 @@ export async function POST(request: NextRequest) {
               }
             })
           }
+        }
+      }
+      // Bij aanmaken werkorder: laatst bekende kilometerstand bij RDW ophalen voor gekoppeld voertuig
+      if (vehicleId) {
+        const rdwResult = await fetchRdwAndUpdateVehicle(vehicleId).catch(() => ({ ok: false, error: 'unknown' }))
+        if (!rdwResult.ok) {
+          console.warn('RDW fetch at planning/work order creation:', rdwResult.error)
         }
       }
     }
@@ -405,6 +421,19 @@ export async function POST(request: NextRequest) {
         durationMinutes: resolvedDuration,
         workOrderId,
       }
+    })
+
+    await logAudit({
+      entityType: 'PlanningItem',
+      entityId: item.id,
+      action: 'CREATE',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: `Planning aangemaakt: ${item.title}`,
+      metadata: { workOrderId: workOrderId || null },
+      request
     })
 
     if (sendEmail === true && customerEmail && scheduledAt) {

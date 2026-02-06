@@ -4,6 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { apiFetch } from '@/lib/api'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
+import { getPartsStatusDotColor, getPartsStatusDotLabel } from '@/lib/parts-status'
+
+/** Map part status naar form dropdown (PENDING | BESTELD | BINNEN). */
+function partStatusToFormValue(status: string): 'PENDING' | 'BESTELD' | 'BINNEN' {
+  const s = (status || '').trim().toUpperCase()
+  if (['BINNEN', 'ONTVANGEN', 'KLAAR', 'BESCHIKBAAR', 'KLAARGELEGD', 'GEMONTEERD'].includes(s)) return 'BINNEN'
+  if (['BESTELD', 'ONDERWEG'].includes(s)) return 'BESTELD'
+  return 'PENDING'
+}
 
 type PartsLine = {
   id: string
@@ -78,6 +87,10 @@ type WorkOrder = {
   customerSignedAt?: string | null
   customerSignedBy?: string | null
   vehiclePinCode?: string | null
+  mileageAtCompletion?: number | null
+  mileageNotAvailable?: boolean | null
+  partsRequired?: boolean | null
+  normalStockProducts?: boolean | null
   workOverviewColumn?: string | null
   activeWorkStartedAt?: string | null
   activeWorkStartedBy?: string | null
@@ -169,6 +182,13 @@ export default function WorkOrderDetailClient() {
   const [processingAutoBinnen, setProcessingAutoBinnen] = useState(false)
   const [workOverviewColumns, setWorkOverviewColumns] = useState<string[]>([])
 
+  // Voertuig: VIN en actuele kilometerstand (monteur vult in; bij nieuwe WO leeg, verplicht om werkorder compleet te maken)
+  const [vehicleVin, setVehicleVin] = useState('')
+  const [vehicleMileage, setVehicleMileage] = useState('')
+  const [vehicleNoMileage, setVehicleNoMileage] = useState(false) // vinkje "geen kilometerstand"
+  const [savingVehicle, setSavingVehicle] = useState(false)
+  const [savingNormalStock, setSavingNormalStock] = useState(false)
+
   const loadData = async () => {
     if (!workOrderId) return
     try {
@@ -190,6 +210,12 @@ export default function WorkOrderDetailClient() {
       }
 
       setWorkOrder(workOrderWithSessions)
+      const wo = workOrderWithSessions
+      const v = wo.vehicle
+      setVehicleVin(v?.vin ?? '')
+      // Actuele kilometerstand: alleen van werkorder (bij nieuwe WO leeg); nooit van voertuig overnemen
+      setVehicleMileage(wo.mileageAtCompletion != null ? String(wo.mileageAtCompletion) : '')
+      setVehicleNoMileage(wo.mileageNotAvailable === true)
       setNotesForm({
         customerNotes: workOrderData.item.customerNotes || '',
         internalNotes: workOrderData.item.internalNotes || ''
@@ -232,6 +258,8 @@ export default function WorkOrderDetailClient() {
     currentUser?.isSystemAdmin === true ||
     roleRaw === 'MANAGEMENT' ||
     roleRaw === 'SYSTEM_ADMIN'
+  const isMagazijn = roleRaw === 'MAGAZIJN'
+  const canEditNormalStock = isMagazijn || isManagement
   const canToggleLabor = hasActiveSession || isManagement
 
   useEffect(() => {
@@ -259,15 +287,21 @@ export default function WorkOrderDetailClient() {
       ? workOverviewColumns[1]
       : 'Auto binnen'
 
-  // Toon "Auto binnen" knop: kolom is Afspraak, OF nog geen kolom maar wel gepland (bv. geopend vanuit planning)
+  // Toon "Auto binnen" knop: kolom is Afspraak, OF nog geen kolom maar wel gepland, OF gepland vandaag of eerder (zodat auto zonder handtekening binnen kan)
   const workOverviewColNorm = String(workOrder?.workOverviewColumn ?? '').trim().toLowerCase()
   const status = String(workOrder?.workOrderStatus ?? '')
   const notYetStartedOrDone = !['IN_UITVOERING', 'GEREED', 'GEFACTUREERD'].includes(status)
   const isPlannedOrScheduled = !!workOrder?.scheduledAt || status === 'GEPLAND'
+  const scheduledDate = workOrder?.scheduledAt ? new Date(workOrder.scheduledAt) : null
+  const todayEnd = new Date()
+  todayEnd.setHours(23, 59, 59, 999)
+  const isScheduledTodayOrEarlier = scheduledDate !== null && scheduledDate.getTime() <= todayEnd.getTime()
   const isInAfspraakColumn =
     workOrder &&
+    notYetStartedOrDone &&
     (workOverviewColNorm === 'afspraak' ||
-      (!workOverviewColNorm && isPlannedOrScheduled && notYetStartedOrDone))
+      (!workOverviewColNorm && isPlannedOrScheduled) ||
+      (isPlannedOrScheduled && isScheduledTodayOrEarlier))
 
   const handleConfirmAutoBinnen = async () => {
     if (!workOrder) return
@@ -492,6 +526,90 @@ export default function WorkOrderDetailClient() {
       alert(err.message || 'Fout bij opslaan')
     } finally {
       setSavingBevindingen(false)
+    }
+  }
+
+  const handleSaveVehicle = async () => {
+    if (!workOrder?.vehicle?.id) return
+    if (!vehicleNoMileage && !vehicleMileage.trim()) {
+      alert('Vul de actuele kilometerstand in of vink "Geen kilometerstand" aan om de werkorder compleet te maken.')
+      return
+    }
+    setSavingVehicle(true)
+    try {
+      if (vehicleNoMileage) {
+        await apiFetch(`/api/vehicles/${workOrder.vehicle.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ vin: vehicleVin.trim() || null })
+        })
+        await apiFetch(`/api/workorders/${workOrderId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ mileageNotAvailable: true, mileageAtCompletion: null })
+        })
+        setWorkOrder((prev) =>
+          prev?.vehicle
+            ? { ...prev, vehicle: { ...prev.vehicle, vin: vehicleVin.trim() || null }, mileageNotAvailable: true, mileageAtCompletion: null }
+            : prev ? { ...prev, mileageNotAvailable: true, mileageAtCompletion: null } : prev
+        )
+      } else {
+        const mileageNum = parseInt(vehicleMileage.replace(/\s/g, ''), 10)
+        if (Number.isNaN(mileageNum) || mileageNum < 0) {
+          alert('Voer een geldig positief getal in voor de kilometerstand.')
+          setSavingVehicle(false)
+          return
+        }
+        await apiFetch(`/api/vehicles/${workOrder.vehicle.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            vin: vehicleVin.trim() || null,
+            mileage: mileageNum
+          })
+        })
+        await apiFetch(`/api/workorders/${workOrderId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ mileageAtCompletion: mileageNum, mileageNotAvailable: false })
+        })
+        setWorkOrder((prev) =>
+          prev?.vehicle
+            ? {
+                ...prev,
+                vehicle: { ...prev.vehicle, vin: vehicleVin.trim() || null, mileage: mileageNum },
+                mileageAtCompletion: mileageNum,
+                mileageNotAvailable: false
+              }
+            : prev ? { ...prev, mileageAtCompletion: mileageNum, mileageNotAvailable: false } : prev
+        )
+      }
+    } catch (err: any) {
+      alert(err.message || 'Fout bij opslaan voertuiggegevens')
+    } finally {
+      setSavingVehicle(false)
+    }
+  }
+
+  const handleToggleNormalStock = async (checked: boolean) => {
+    if (!workOrderId) return
+    setSavingNormalStock(true)
+    try {
+      const res = await apiFetch<{ success?: boolean; error?: string; item?: { normalStockProducts?: boolean; partsSummaryStatus?: string | null } }>(`/api/workorders/${workOrderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ normalStockProducts: checked })
+      })
+      if (!res?.success) {
+        throw new Error(res?.error || 'Opslaan mislukt')
+      }
+      setWorkOrder((prev) => {
+        if (!prev) return prev
+        const next = { ...prev, normalStockProducts: checked }
+        if (checked && res?.item?.partsSummaryStatus != null) next.partsSummaryStatus = res.item.partsSummaryStatus
+        else if (checked) next.partsSummaryStatus = 'BINNEN'
+        return next
+      })
+      await loadData()
+    } catch (err: any) {
+      alert(err.message || 'Fout bij opslaan')
+    } finally {
+      setSavingNormalStock(false)
     }
   }
 
@@ -724,7 +842,14 @@ export default function WorkOrderDetailClient() {
         <div className="flex items-center justify-between">
           <div>
             <button
-              onClick={() => router.back()}
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.history.length > 1) {
+                  window.history.back()
+                } else {
+                  router.push('/admin/workorders')
+                }
+              }}
               className="mb-2 text-sm text-slate-600 hover:text-slate-900"
             >
               ← Terug
@@ -824,8 +949,8 @@ export default function WorkOrderDetailClient() {
             <h2 className="mb-4 text-lg font-semibold text-slate-900">Voertuig</h2>
             {workOrder.vehicle ? (
               <div className="space-y-3 text-sm">
-                <div><strong>Merk:</strong> {workOrder.vehicle.make}</div>
-                <div><strong>Model:</strong> {workOrder.vehicle.model}</div>
+                <div><strong>Merk:</strong> {workOrder.vehicle.make ?? '–'}</div>
+                <div><strong>Model:</strong> {workOrder.vehicle.model ?? '–'}</div>
                 {workOrder.vehicle.licensePlate && (
                   <div className="flex items-center gap-2">
                     <strong>Kenteken:</strong>
@@ -836,6 +961,62 @@ export default function WorkOrderDetailClient() {
                     </span>
                   </div>
                 )}
+                <div className="pt-2 border-t border-slate-100">
+                  <div className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Laatst bekende kilometerstand</div>
+                  <div className="text-slate-800">
+                    {workOrder.vehicle.rdwOdometer != null
+                      ? `${Number(workOrder.vehicle.rdwOdometer).toLocaleString('nl-NL')} km`
+                      : workOrder.vehicle.mileage != null
+                        ? `${Number(workOrder.vehicle.mileage).toLocaleString('nl-NL')} km`
+                        : '–'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">VIN (chassisnummer)</label>
+                  <input
+                    type="text"
+                    value={vehicleVin}
+                    onChange={(e) => setVehicleVin(e.target.value)}
+                    placeholder="Vul in als bekend"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Actuele kilometerstand</label>
+                  <p className="text-xs text-slate-500 mb-1">Vul in om de werkorder compleet te maken, of vink hieronder aan als er geen stand is.</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={vehicleMileage}
+                    onChange={(e) => setVehicleMileage(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    placeholder="Bij nieuwe werkorder leeg; vul actuele stand in"
+                    disabled={vehicleNoMileage}
+                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                      vehicleNoMileage
+                        ? 'bg-slate-100 border-slate-200 text-slate-500'
+                        : !vehicleMileage.trim()
+                          ? 'border-slate-200 focus:border-slate-400 focus:ring-slate-200'
+                          : 'border-slate-200 focus:border-slate-400 focus:ring-slate-200'
+                    }`}
+                  />
+                </div>
+                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={vehicleNoMileage}
+                    onChange={(e) => setVehicleNoMileage(e.target.checked)}
+                    className="rounded border-slate-300 text-slate-700 focus:ring-slate-500"
+                  />
+                  <span className="text-sm text-slate-700">Geen kilometerstand beschikbaar</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSaveVehicle}
+                  disabled={savingVehicle || (!vehicleMileage.trim() && !vehicleNoMileage)}
+                  className="mt-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingVehicle ? 'Opslaan…' : 'VIN / kilometerstand opslaan'}
+                </button>
                 {workOrder.vehiclePinCode && (
                   <div className="mt-3 pt-3 border-t border-slate-200">
                     <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
@@ -924,6 +1105,27 @@ export default function WorkOrderDetailClient() {
                     + Onderdeel toevoegen
                   </button>
                 </div>
+
+                {workOrder.partsRequired === true && (
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-medium text-slate-700">Normale voorraadproducten</span>
+                    {canEditNormalStock ? (
+                      <label className="relative inline-flex cursor-pointer items-center">
+                        <input
+                          type="checkbox"
+                          checked={workOrder.normalStockProducts === true}
+                          onChange={(e) => handleToggleNormalStock(e.target.checked)}
+                          disabled={savingNormalStock}
+                          className="peer sr-only"
+                        />
+                        <div className="peer h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-0.5 after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-green-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-300 peer-disabled:opacity-50" />
+                        <span className="ml-2 text-sm text-slate-600">{savingNormalStock ? 'Opslaan…' : workOrder.normalStockProducts ? 'Aan' : 'Uit'}</span>
+                      </label>
+                    ) : (
+                      <span className="text-sm text-slate-600">{workOrder.normalStockProducts === true ? 'Aan' : 'Uit'}</span>
+                    )}
+                  </div>
+                )}
 
                 {showPartForm && (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -1051,11 +1253,9 @@ export default function WorkOrderDetailClient() {
                           onChange={(e) => setPartForm({ ...partForm, status: e.target.value })}
                           className="w-full rounded-lg border border-slate-300 px-3 py-2"
                         >
-                          <option value="PENDING">In behandeling</option>
-                          <option value="BESTELD">Besteld</option>
-                          <option value="ONDERWEG">Onderweg</option>
-                          <option value="BINNEN">Binnen</option>
-                          <option value="GEMONTEERD">Gemonteerd</option>
+                          <option value="PENDING">Rood: onderdelen nodig</option>
+                          <option value="BESTELD">Geel: onderdelen in behandeling</option>
+                          <option value="BINNEN">Groen: onderdelen binnen</option>
                         </select>
                       </div>
                       <div className="md:col-span-2">
@@ -1119,8 +1319,13 @@ export default function WorkOrderDetailClient() {
                             {formatCurrency(part.totalPrice)}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                              {part.status}
+                            <span className="inline-flex items-center gap-2">
+                              <span
+                                className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: getPartsStatusDotColor(part.status) }}
+                                aria-label={getPartsStatusDotLabel(part.status)}
+                              />
+                              <span className="text-sm text-slate-700">{getPartsStatusDotLabel(part.status)}</span>
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -1132,7 +1337,7 @@ export default function WorkOrderDetailClient() {
                                   articleNumber: part.articleNumber || '',
                                   quantity: part.quantity,
                                   unitPrice: part.unitPrice?.toString() || '',
-                                  status: part.status,
+                                  status: partStatusToFormValue(part.status),
                                   notes: part.notes || ''
                                 })
                                 setShowPartForm(true)

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useRef } from 'react'
+import Link from 'next/link'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
 import ClickToDialButton from '@/components/ClickToDialButton'
@@ -1130,13 +1131,23 @@ const filteredItems = useMemo(() => {
           <div className="planning-modal" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-lg font-semibold">Voertuig bewerken</h3>
-              <button
-                className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
-                type="button"
-                onClick={() => setShowEdit(false)}
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                {editingItem.id ? (
+                  <Link
+                    href={`/admin/vehicles/${editingItem.id}/history`}
+                    className="rounded-lg border border-purple-300/50 bg-purple-50/80 px-3 py-1.5 text-sm font-medium text-purple-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-purple-100/80 hover:shadow-md active:scale-95"
+                  >
+                    Geschiedenis
+                  </Link>
+                ) : null}
+                <button
+                  className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-1 text-sm font-medium text-slate-700 shadow-sm backdrop-blur-sm transition-all duration-200 hover:bg-white/80 hover:shadow-md hover:shadow-purple-200/30 active:scale-95"
+                  type="button"
+                  onClick={() => setShowEdit(false)}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleUpdate}>
               <label className="grid gap-2 text-sm font-medium text-slate-700">

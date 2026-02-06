@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { releaseInventory, reserveInventory } from '@/lib/inventory-reservation'
 import { syncWorkOrderStatus } from '@/lib/workorder-status'
+import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
   params: { id?: string; partId?: string } | Promise<{ id?: string; partId?: string }>
@@ -19,7 +20,7 @@ const getIdsFromContext = async (context: RouteContext) => {
 // PATCH /api/workorders/[id]/parts/[partId] - Update a part
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
+    const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN', 'MONTEUR'])
     const { workOrderId, partId } = await getIdsFromContext(context)
     
     if (!workOrderId || !partId) {
@@ -80,6 +81,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // Sync work order status after update
     await syncWorkOrderStatus(workOrderId)
 
+    const changes: Record<string, { from: any; to: any }> = {}
+    for (const key of Object.keys(updateData)) {
+      const oldVal = (currentPart as any)[key]
+      const newVal = updateData[key]
+      if (oldVal !== newVal && (oldVal != null || newVal != null)) {
+        changes[key] = { from: oldVal ?? null, to: newVal ?? null }
+      }
+    }
+    if (Object.keys(changes).length > 0) {
+      await logAudit({
+        entityType: 'WorkOrder',
+        entityId: workOrderId,
+        action: 'PARTS_UPDATE',
+        userId: user.id,
+        userName: user.displayName || user.email || null,
+        userEmail: user.email,
+        userRole: user.role,
+        changes,
+        description: `Onderdeel gewijzigd: ${part.productName}`,
+        metadata: { partsLineId: partId, productName: part.productName },
+        request
+      })
+    }
+
     return NextResponse.json({ success: true, item: part })
   } catch (error: any) {
     console.error('Error updating part:', error)
@@ -90,7 +115,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 // DELETE /api/workorders/[id]/parts/[partId] - Delete a part
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
+    const user = await requireRole(request, ['MANAGEMENT', 'MAGAZIJN'])
     const { workOrderId, partId } = await getIdsFromContext(context)
     
     if (!workOrderId || !partId) {
@@ -105,6 +130,19 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (!part) {
       return NextResponse.json({ success: false, error: 'Part not found' }, { status: 404 })
     }
+
+    await logAudit({
+      entityType: 'WorkOrder',
+      entityId: workOrderId,
+      action: 'PARTS_REMOVE',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: `Onderdeel verwijderd: ${part.productName} (${part.quantity}x)`,
+      metadata: { partsLineId: partId, productName: part.productName, quantity: part.quantity },
+      request
+    })
 
     // Delete the part
     await prisma.partsLine.delete({

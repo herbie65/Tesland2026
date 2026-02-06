@@ -469,6 +469,44 @@ export const getStatusSortOrder = (code: string, list: StatusEntry[], label: str
   return Number(entry.sortOrder)
 }
 
+export type HrLeavePolicy = {
+  accrualMethod: 'MONTHLY'
+  annualLeaveDaysFullTime: number
+  hoursPerDayDefault: number
+  allowNegativeLegal: boolean
+  allowNegativeNonLegal: boolean
+  deductionOrder: ('CARRYOVER' | 'NON_LEGAL' | 'LEGAL')[]
+  accrualDayOfMonth: number
+  useRosterForHours: boolean
+}
+
+const DEFAULT_HR_LEAVE_POLICY: HrLeavePolicy = {
+  accrualMethod: 'MONTHLY',
+  annualLeaveDaysFullTime: 24,
+  hoursPerDayDefault: 8,
+  allowNegativeLegal: true,
+  allowNegativeNonLegal: false,
+  deductionOrder: ['CARRYOVER', 'NON_LEGAL', 'LEGAL'],
+  accrualDayOfMonth: 1,
+  useRosterForHours: true,
+}
+
+export const getHrLeavePolicy = async (): Promise<HrLeavePolicy> => {
+  const data = await readSettingsDocOptional('hrLeavePolicy')
+  if (!data || typeof data !== 'object') return DEFAULT_HR_LEAVE_POLICY
+  const d = data as Record<string, unknown>
+  return {
+    accrualMethod: (d.accrualMethod as HrLeavePolicy['accrualMethod']) || 'MONTHLY',
+    annualLeaveDaysFullTime: Number.isFinite(Number(d.annualLeaveDaysFullTime)) ? Number(d.annualLeaveDaysFullTime) : 24,
+    hoursPerDayDefault: Number.isFinite(Number(d.hoursPerDayDefault)) ? Number(d.hoursPerDayDefault) : 8,
+    allowNegativeLegal: d.allowNegativeLegal !== false,
+    allowNegativeNonLegal: d.allowNegativeNonLegal === true,
+    deductionOrder: Array.isArray(d.deductionOrder) ? d.deductionOrder as HrLeavePolicy['deductionOrder'] : DEFAULT_HR_LEAVE_POLICY.deductionOrder,
+    accrualDayOfMonth: Math.min(28, Math.max(1, Number(d.accrualDayOfMonth) || 1)),
+    useRosterForHours: d.useRosterForHours !== false,
+  }
+}
+
 export const getMollieSettings = async (): Promise<MollieSettings | null> => {
   try {
     const data = await readSettingsDocOptional('mollie')

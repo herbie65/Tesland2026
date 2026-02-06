@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronLeftIcon, ChevronRightIcon, CalendarDaysIcon } from '@heroicons/react/24/outline'
 
 type DatePickerProps = {
   value: string // YYYY-MM-DD format
@@ -13,11 +14,33 @@ type DatePickerProps = {
   placeholder?: string
 }
 
+/** Parse dd-mm-yyyy or dd/mm/yyyy to YYYY-MM-DD, or return null if invalid */
+function parseDdMmYyyy(s: string): string | null {
+  const trimmed = s.trim().replace(/\//g, '-')
+  const parts = trimmed.split('-')
+  if (parts.length !== 3) return null
+  let day = parseInt(parts[0], 10)
+  let month = parseInt(parts[1], 10)
+  let year = parseInt(parts[2], 10)
+  if (Number.isNaN(day) || Number.isNaN(month) || Number.isNaN(year)) return null
+  if (year < 100) year += year >= 50 ? 1900 : 2000
+  if (month < 1 || month > 12) return null
+  const lastDay = new Date(year, month, 0).getDate()
+  if (day < 1 || day > lastDay) return null
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 const DAYS = ['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo']
 const MONTHS = [
   'januari', 'februari', 'maart', 'april', 'mei', 'juni',
   'juli', 'augustus', 'september', 'oktober', 'november', 'december'
 ]
+
+const formatDisplayDate = (dateStr: string) => {
+  if (!dateStr) return ''
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`
+}
 
 export function DatePicker({
   value,
@@ -26,9 +49,10 @@ export function DatePicker({
   required,
   minDate,
   maxDate,
-  placeholder = 'Selecteer datum',
+  placeholder = 'dd-mm-jjjj',
 }: DatePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [displayValue, setDisplayValue] = useState(() => (value ? formatDisplayDate(value) : ''))
   const [viewDate, setViewDate] = useState(() => {
     if (value) {
       // Parse date string as UTC to avoid timezone issues
@@ -38,32 +62,61 @@ export function DatePicker({
     return new Date()
   })
   const containerRef = useRef<HTMLDivElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null)
 
-  // Close on outside click
+  // Position dropdown (voor portal: fixed onder het veld, altijd zichtbaar boven modals)
+  useLayoutEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return
+    const el = containerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setDropdownPosition({
+      top: rect.bottom + 8,
+      left: rect.left,
+      width: Math.max(rect.width, 320),
+    })
+  }, [isOpen])
+
+  // Close on outside click (inclusief portal-dropdown)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false)
-      }
+      const target = e.target as Node
+      if (containerRef.current?.contains(target)) return
+      if (dropdownRef.current?.contains(target)) return
+      setIsOpen(false)
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen])
 
   // Update viewDate when value changes
   useEffect(() => {
     if (value) {
-      // Parse date string as UTC to avoid timezone issues
       const [year, month, day] = value.split('-').map(Number)
       setViewDate(new Date(year, month - 1, day))
     }
   }, [value])
 
-  const formatDisplayDate = (dateStr: string) => {
-    if (!dateStr) return ''
-    // Parse date string as local date to avoid timezone shift
-    const [year, month, day] = dateStr.split('-').map(Number)
-    return `${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}-${year}`
+  // Sync display value from value prop (e.g. after load)
+  useEffect(() => {
+    setDisplayValue(value ? formatDisplayDate(value) : '')
+  }, [value])
+
+  const handleInputBlur = () => {
+    const parsed = parseDdMmYyyy(displayValue)
+    if (parsed) {
+      if (minDate && parsed < minDate) return
+      if (maxDate && parsed > maxDate) return
+      onChange(parsed)
+      setDisplayValue(formatDisplayDate(parsed))
+    } else if (displayValue.trim() === '') {
+      onChange('')
+    } else {
+      setDisplayValue(value ? formatDisplayDate(value) : '')
+    }
   }
 
   const getDaysInMonth = (year: number, month: number) => {
@@ -158,22 +211,41 @@ export function DatePicker({
         </label>
       )}
       
-      {/* Input field */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-base shadow-sm hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-200/50 focus:outline-none transition-colors"
-      >
-        {value ? (
-          <span className="text-slate-900">{formatDisplayDate(value)}</span>
-        ) : (
-          <span className="text-slate-400">{placeholder}</span>
-        )}
-      </button>
+      {/* Input: type dd-mm-yyyy + calendar button; min-width zodat dd-mm-jjjj past */}
+      <div className="flex gap-2 rounded-xl border border-slate-200 bg-white shadow-sm hover:border-slate-300 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-200/50 transition-colors min-w-[10rem]">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder={placeholder}
+          value={displayValue}
+          onChange={(e) => setDisplayValue(e.target.value)}
+          onBlur={handleInputBlur}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          className="flex-1 min-w-0 rounded-xl border-0 bg-transparent px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0 focus:outline-none"
+          aria-label={label || 'Datum'}
+        />
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex-shrink-0 p-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-r-xl transition-colors"
+          title="Kalender openen"
+        >
+          <CalendarDaysIcon className="w-5 h-5" />
+        </button>
+      </div>
 
-      {/* Calendar dropdown */}
-      {isOpen && (
-        <div className="absolute z-[9999] mt-2 w-full min-w-[320px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+      {/* Calendar dropdown via portal zodat hij boven modals zichtbaar is */}
+      {isOpen && dropdownPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[99999] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
+          style={{
+            top: dropdownPosition.top,
+            left: dropdownPosition.left,
+            width: dropdownPosition.width,
+            minWidth: 320,
+          }}
+        >
           {/* Header with month navigation */}
           <div className="flex items-center justify-between mb-4">
             <button
@@ -279,7 +351,8 @@ export function DatePicker({
               Morgen
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

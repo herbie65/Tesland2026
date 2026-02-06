@@ -356,6 +356,7 @@ model WorkOrder {
   // Updated via syncWorkOrderStatus() when parts change
   partsSummaryStatus  String?   @map("parts_summary_status")
   partsRequired       Boolean   @default(false) @map("parts_required")
+  normalStockProducts Boolean   @default(false) @map("normal_stock_products") // Magazijn: "Normale voorraadproducten"
   planningRiskActive  Boolean   @default(false) @map("planning_risk_active")
   planningRiskHistory Json?     @map("planning_risk_history") // Array of risk events
   warehouseHistory    Json?     @map("warehouse_history") // Array of warehouse status changes
@@ -388,6 +389,10 @@ model WorkOrder {
   // Monteur: bevestiging onderdelen/materialen bij "Gereed"
   partsAndMaterialsCheckedAt DateTime? @map("parts_and_materials_checked_at")
   partsAndMaterialsCheckedBy String?  @map("parts_and_materials_checked_by")
+
+  // Monteur: actuele kilometerstand bij deze werkorder (of aangeven geen stand)
+  mileageAtCompletion  Int?     @map("mileage_at_completion")   // Ingevuld door monteur; later naar RDW
+  mileageNotAvailable   Boolean? @map("mileage_not_available")  // Vinkje "geen kilometerstand"
 
   // Management: facturatie-voorbereiding (werkzaamheden/onderdelen afgevinkt, uren bevestigd, tariefkeuze)
   invoicePrepWorkPartsCheckedAt DateTime? @map("invoice_prep_work_parts_checked_at")

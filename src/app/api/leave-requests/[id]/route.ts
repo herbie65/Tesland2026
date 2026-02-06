@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole, isManager } from '@/lib/auth'
-import { calculateRequestedMinutes } from '@/lib/leave-ledger'
+import { getHrLeavePolicy } from '@/lib/settings'
+import { calculateLeaveMinutesFromRoster, calculateRequestedMinutes, clampLeaveTimesToRoster, getPlanningRoster } from '@/lib/leave-ledger'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -132,18 +133,37 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
     // Managers can edit any request (no status restriction)
     
+    const requestUserId = leaveRequest?.userId ?? user.id
     const userData = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { hoursPerDay: true },
+      where: { id: requestUserId },
+      select: { hoursPerDay: true, workingDays: true },
     })
 
-    const { requestedMinutes } = await calculateRequestedMinutes({
-      startDate: body.startDate,
-      endDate: body.endDate,
-      startTime: body.startTime,
-      endTime: body.endTime,
-      hoursPerDay: Number(userData?.hoursPerDay || 8),
-    })
+    const roster = await getPlanningRoster()
+    const { startTime: clampedStart, endTime: clampedEnd } = clampLeaveTimesToRoster(body.startTime, body.endTime, roster)
+
+    const policy = await getHrLeavePolicy()
+    const workingDays = Array.isArray(userData?.workingDays) ? userData.workingDays : ['ma', 'di', 'wo', 'do', 'vr']
+
+    let requestedMinutes: number
+    if (policy.useRosterForHours) {
+      requestedMinutes = await calculateLeaveMinutesFromRoster({
+        startDate: body.startDate,
+        endDate: body.endDate,
+        startTime: clampedStart,
+        endTime: clampedEnd,
+        workingDays,
+      })
+    } else {
+      const result = await calculateRequestedMinutes({
+        startDate: body.startDate,
+        endDate: body.endDate,
+        startTime: clampedStart,
+        endTime: clampedEnd,
+        hoursPerDay: Number(userData?.hoursPerDay || 8),
+      })
+      requestedMinutes = result.requestedMinutes
+    }
 
     const totalHours = Math.round((requestedMinutes / 60) * 100) / 100
     const totalDays = Math.round((totalHours / Number(userData?.hoursPerDay || 8)) * 100) / 100
@@ -154,8 +174,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         absenceTypeCode: body.absenceTypeCode,
         startDate: body.startDate ? new Date(body.startDate) : undefined,
         endDate: body.endDate ? new Date(body.endDate) : undefined,
-        startTime: body.startTime,
-        endTime: body.endTime,
+        startTime: clampedStart,
+        endTime: clampedEnd,
         totalDays,
         totalHours,
         totalMinutes: requestedMinutes,
@@ -163,7 +183,21 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         notes: body.notes,
       }
     })
-    
+
+    // Planning blok in sync houden: gekoppeld PlanningItem bijwerken met nieuwe datum/duur
+    if (updated.planningItemId) {
+      const [h, m] = clampedStart.split(':').map(Number)
+      const scheduledAt = new Date(updated.startDate)
+      scheduledAt.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0)
+      const durationMinutes =
+        updated.totalMinutes ??
+        Math.round(Number(updated.totalDays) * Number(userData?.hoursPerDay || 8) * 60)
+      await prisma.planningItem.update({
+        where: { id: updated.planningItemId },
+        data: { scheduledAt, durationMinutes },
+      })
+    }
+
     return NextResponse.json({ success: true, data: updated })
   } catch (error: any) {
     console.error('Error updating leave request:', error)

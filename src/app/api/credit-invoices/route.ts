@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { generateSalesNumber } from '@/lib/numbering'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,6 +43,19 @@ export async function POST(request: NextRequest) {
         creditDate: new Date(),
         reason: reason || null
       }
+    })
+
+    await logAudit({
+      entityType: 'CreditInvoice',
+      entityId: item.id,
+      action: 'CREATE',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: `Creditfactuur aangemaakt: ${item.creditNumber}`,
+      metadata: { creditNumber: item.creditNumber },
+      request
     })
 
     return NextResponse.json({ success: true, item }, { status: 201 })

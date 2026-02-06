@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth'
 import { getNotificationSettings, getPricingModes, getWorkOrderDefaults } from '@/lib/settings'
 import { createNotification } from '@/lib/notifications'
 import { workOrderEvents } from '@/lib/workorder-events'
+import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -97,13 +98,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const user = await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT'])
+    const user = await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT', 'MAGAZIJN'])
     const id = await getIdFromRequest(request, context)
     if (!id) {
       return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 })
     }
 
     const body = await request.json()
+    const isMagazijnOnly = String(user.role || '').toUpperCase() === 'MAGAZIJN'
+
     if ('workOrderStatus' in body || 'partsSummaryStatus' in body || 'executionStatus' in body) {
       return NextResponse.json(
         { success: false, error: 'Status updates must use the status endpoint' },
@@ -114,6 +117,45 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const existing = await prisma.workOrder.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 })
+    }
+
+    // Magazijn mag alleen "Normale voorraadproducten" aan/uit zetten
+    if (isMagazijnOnly) {
+      if (body.normalStockProducts === undefined) {
+        return NextResponse.json({ success: false, error: 'Magazijn kan alleen normalStockProducts wijzigen' }, { status: 403 })
+      }
+      const data: Record<string, unknown> = {
+        normalStockProducts: body.normalStockProducts === true
+      }
+      if (user.id) data.createdBy = user.id
+      if (data.normalStockProducts) data.partsSummaryStatus = 'BINNEN'
+      try {
+        const item = await prisma.workOrder.update({
+          where: { id },
+          data: data as { normalStockProducts: boolean; createdBy?: string; partsSummaryStatus?: string },
+          include: { customer: true, vehicle: true, assignee: true }
+        })
+        await logAudit({
+          entityType: 'WorkOrder',
+          entityId: id,
+          action: 'UPDATE',
+          userId: user.id,
+          userName: user.displayName || user.email || null,
+          userEmail: user.email,
+          userRole: user.role,
+          changes: { normalStockProducts: { from: existing.normalStockProducts, to: item.normalStockProducts } },
+          description: 'Normale voorraadproducten gewijzigd',
+          metadata: { workOrderNumber: existing.workOrderNumber },
+          request
+        })
+        return NextResponse.json({ success: true, item })
+      } catch (prismaErr: any) {
+        console.error('Magazijn workOrder.update error:', prismaErr?.message ?? prismaErr)
+        return NextResponse.json(
+          { success: false, error: prismaErr?.message ?? 'Werkorder bijwerken mislukt' },
+          { status: 500 }
+        )
+      }
     }
 
     if (body.customerId && body.vehicleId) {
@@ -176,12 +218,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (body.laborBillingMode !== undefined) updateData.laborBillingMode = body.laborBillingMode
     if (body.laborFixedAmount !== undefined) updateData.laborFixedAmount = body.laborFixedAmount != null && Number.isFinite(Number(body.laborFixedAmount)) ? Number(body.laborFixedAmount) : null
     if (body.laborHourlyRateName !== undefined) updateData.laborHourlyRateName = body.laborHourlyRateName
-    
+    if (body.mileageAtCompletion !== undefined) updateData.mileageAtCompletion = body.mileageAtCompletion != null && Number.isFinite(Number(body.mileageAtCompletion)) ? Number(body.mileageAtCompletion) : null
+    if (body.mileageNotAvailable !== undefined) updateData.mileageNotAvailable = body.mileageNotAvailable === true
+    if (body.normalStockProducts !== undefined) {
+      updateData.normalStockProducts = body.normalStockProducts === true
+      if (updateData.normalStockProducts) updateData.partsSummaryStatus = 'BINNEN'
+    }
+
     // NOTE: Extended fields removed - they don't exist in WorkOrder schema
     // If these fields are needed, they should be stored in the 'notes' or 'internalNotes' text fields,
     // or the schema should be updated to add them as actual columns
     
-    updateData.createdBy = user.id
+    if (user.id) updateData.createdBy = user.id
+
+    // Prisma does not accept undefined; only pass defined values
+    const cleanUpdateData = Object.fromEntries(
+      Object.entries(updateData).filter(([, v]) => v !== undefined)
+    ) as typeof updateData
 
     const shouldUpdatePlanning = shouldSyncPlanning(body)
     let planningItem = null
@@ -231,10 +284,41 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     // Update work order
-    const item = await prisma.workOrder.update({
-      where: { id },
-      data: updateData
-    })
+    let item
+    try {
+      item = await prisma.workOrder.update({
+        where: { id },
+        data: cleanUpdateData
+      })
+    } catch (prismaErr: any) {
+      console.error('workOrder.update error:', prismaErr?.message ?? prismaErr, 'data keys:', Object.keys(cleanUpdateData))
+      throw prismaErr
+    }
+
+    const changes: Record<string, { from: any; to: any }> = {}
+    for (const field of Object.keys(cleanUpdateData)) {
+      if (field === 'createdBy') continue
+      const oldVal = (existing as any)[field]
+      const newVal = cleanUpdateData[field]
+      if (oldVal !== newVal && (oldVal != null || newVal != null)) {
+        changes[field] = { from: oldVal ?? null, to: newVal ?? null }
+      }
+    }
+    if (Object.keys(changes).length > 0) {
+      await logAudit({
+        entityType: 'WorkOrder',
+        entityId: id,
+        action: 'UPDATE',
+        userId: user.id,
+        userName: user.displayName || user.email || null,
+        userEmail: user.email,
+        userRole: user.role,
+        changes,
+        description: 'Werkorder gewijzigd',
+        metadata: { workOrderNumber: existing.workOrderNumber },
+        request
+      })
+    }
 
     // Update associated planning item if needed
     if (planningItem && shouldUpdatePlanning) {

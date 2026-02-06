@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
+import { formatHoursAsDaysAndHours, formatDecimalDaysAsDaysAndHours } from '@/lib/time-utils'
 import { DatePicker } from '@/components/ui/DatePicker'
 
 type User = {
@@ -52,17 +53,89 @@ export default function HRSettingsClient() {
     lastName: '',
     role: 'MONTEUR',
   })
+  const [systemBalance, setSystemBalance] = useState<{ total: number; vacation: number; carryover: number } | null>(null)
+  const currentYear = new Date().getFullYear()
+  const [overviewYear, setOverviewYear] = useState(currentYear)
+  const [leaveOverview, setLeaveOverview] = useState<{
+    year: number
+    hoursPerDay: number
+    legalHours: number
+    extraHours: number
+    carryoverHours: number
+    accruedHoursForYear: number
+    takenHours: number
+    balanceHours: number
+    balanceDays: number
+    pendingHours: number
+    byAbsenceType: { code: string; label: string; hours: number; usedHours?: number; plannedHours?: number }[]
+  } | null>(null)
+  const [carryoverEditValue, setCarryoverEditValue] = useState<number | null>(null)
+  const [carryoverSaving, setCarryoverSaving] = useState(false)
 
   useEffect(() => {
     fetchUsers()
   }, [])
+
+  useEffect(() => {
+    if (!selectedUser?.id) {
+      setSystemBalance(null)
+      return
+    }
+    let cancelled = false
+    apiFetch(`/api/leave-balance/${selectedUser.id}`)
+      .then((data: any) => {
+        if (cancelled || !data) return
+        setSystemBalance({
+          total: data.total ?? 0,
+          vacation: data.vacation ?? 0,
+          carryover: data.carryover ?? 0,
+        })
+      })
+      .catch(() => setSystemBalance(null))
+    return () => { cancelled = true }
+  }, [selectedUser?.id])
+
+  const fetchLeaveOverview = () => {
+    if (!selectedUser?.id) return
+    apiFetch(`/api/leave-overview/${selectedUser.id}?year=${overviewYear}`)
+      .then((data: any) => {
+        if (!data) return
+        setLeaveOverview({
+          year: data.year ?? overviewYear,
+          hoursPerDay: data.hoursPerDay ?? 8,
+          legalHours: data.legalHours ?? 0,
+          extraHours: data.extraHours ?? 0,
+          carryoverHours: data.carryoverHours ?? 0,
+          accruedHoursForYear: data.accruedHoursForYear ?? 0,
+          takenHours: data.takenHours ?? 0,
+          balanceHours: data.balanceHours ?? 0,
+          balanceDays: data.balanceDays ?? 0,
+          pendingHours: data.pendingHours ?? 0,
+          byAbsenceType: Array.isArray(data.byAbsenceType) ? data.byAbsenceType : [],
+        })
+      })
+      .catch(() => setLeaveOverview(null))
+  }
+
+  useEffect(() => {
+    if (!selectedUser?.id) {
+      setLeaveOverview(null)
+      setCarryoverEditValue(null)
+      return
+    }
+    setCarryoverEditValue(null)
+    fetchLeaveOverview()
+  }, [selectedUser?.id, overviewYear])
 
   const fetchUsers = async () => {
     try {
       const response = await apiFetch('/api/users')
       
       if (response && response.success) {
-        setUsers(response.items || [])
+        const all = response.items || []
+        // Alleen medewerkers tonen; klanten (CUSTOMER) met login horen niet in HR-overzicht
+        const employees = all.filter((u: User) => u.role !== 'CUSTOMER')
+        setUsers(employees)
       } else {
         console.error('Failed to load users:', response)
         setUsers([])
@@ -214,8 +287,8 @@ export default function HRSettingsClient() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* User List */}
         <div className="lg:col-span-1">
-          <div className="bg-white shadow-sm rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
+            <div className="bg-white shadow-sm rounded-lg p-4">
+            <div className="flex justify-between items-center mb-2">
               <h3 className="font-semibold">Medewerkers</h3>
               <button
                 onClick={() => setShowNewUserModal(true)}
@@ -224,6 +297,7 @@ export default function HRSettingsClient() {
                 + Nieuw
               </button>
             </div>
+            <p className="text-xs text-slate-500 mb-3">Klik op een naam om verlofsaldo en jaarlijks verlof in te stellen.</p>
             <div className="space-y-2 max-h-[calc(100vh-300px)] overflow-y-auto">
               {users.map((user) => (
                 <button
@@ -358,66 +432,155 @@ export default function HRSettingsClient() {
                     />
                   </div>
 
-                  {/* Verlof Saldo */}
-                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h5 className="font-medium text-slate-900 mb-3">Huidig Verlof Saldo</h5>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Wettelijk (min. 20 dagen)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={formData.leaveBalanceLegal || ''}
-                          onChange={(e) => setFormData({ ...formData, leaveBalanceLegal: parseFloat(e.target.value) || 0 })}
-                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                        />
+                  {/* Overzichten naast elkaar */}
+                  {leaveOverview && (
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Overzicht verlofuren [year] */}
+                      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                          <h5 className="font-medium text-slate-800">
+                            Overzicht verlofuren {leaveOverview.year}
+                          </h5>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={overviewYear}
+                              onChange={(e) => setOverviewYear(Number(e.target.value))}
+                              className="rounded border border-slate-300 bg-white text-slate-700 text-sm py-1.5 pl-2 pr-8 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            >
+                              {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setCarryoverEditValue(leaveOverview.carryoverHours)}
+                              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              Bewerken
+                            </button>
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-2 text-sm">
+                          <div className="flex justify-between"><span className="text-slate-600">Wettelijke verlofuren</span><span>{leaveOverview.legalHours}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Bovenwettelijke verlofuren</span><span>{leaveOverview.extraHours}</span></div>
+                          <div className="flex justify-between items-center gap-2">
+                            <span className="text-slate-600">Verlofuren over uit voorgaande jaren</span>
+                            {carryoverEditValue === null ? (
+                              <span>{leaveOverview.carryoverHours} uur</span>
+                            ) : (
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min={0}
+                                  value={carryoverEditValue}
+                                  onChange={(e) => setCarryoverEditValue(parseFloat(e.target.value) || 0)}
+                                  className="w-20 border border-slate-300 rounded px-2 py-1 text-sm"
+                                />
+                                <span className="text-slate-500 text-xs">uur</span>
+                                <button
+                                  type="button"
+                                  disabled={carryoverSaving}
+                                  onClick={async () => {
+                                    if (!selectedUser?.id) return
+                                    setCarryoverSaving(true)
+                                    try {
+                                      const res = await apiFetch(`/api/users/${selectedUser.id}`, {
+                                        method: 'PATCH',
+                                        body: JSON.stringify({ leaveBalanceCarryover: carryoverEditValue }),
+                                      })
+                                      if (res?.success) {
+                                        setFormData((prev) => ({ ...prev, leaveBalanceCarryover: carryoverEditValue ?? 0 }))
+                                        setCarryoverEditValue(null)
+                                        fetchLeaveOverview()
+                                        apiFetch(`/api/leave-balance/${selectedUser.id}`).then((d: any) => {
+                                          if (d) setSystemBalance({ total: d.total ?? 0, vacation: d.vacation ?? 0, carryover: d.carryover ?? 0 })
+                                        }).catch(() => {})
+                                      } else {
+                                        alert(res?.error || 'Opslaan mislukt')
+                                      }
+                                    } catch {
+                                      alert('Opslaan mislukt')
+                                    } finally {
+                                      setCarryoverSaving(false)
+                                    }
+                                  }}
+                                  className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {carryoverSaving ? '…' : 'Opslaan'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCarryoverEditValue(null)}
+                                  className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                  Annuleren
+                                </button>
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex justify-between"><span className="text-slate-600">Opgebouwd in {leaveOverview.year}</span><span>{leaveOverview.accruedHoursForYear} uur</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Verlofuren opgenomen of ingepland</span><span>{leaveOverview.takenHours}</span></div>
+                          <div className="flex justify-between font-medium pt-2 mt-2 border-t border-slate-100"><span className="text-slate-700">Saldo verlofuren</span><span>{formatHoursAsDaysAndHours(leaveOverview.balanceHours, leaveOverview.hoursPerDay)} ({leaveOverview.balanceHours} uur)</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Aanvragen in behandeling</span><span>{leaveOverview.pendingHours} uur</span></div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Bovenwettelijk (extra)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={formData.leaveBalanceExtra || ''}
-                          onChange={(e) => setFormData({ ...formData, leaveBalanceExtra: parseFloat(e.target.value) || 0 })}
-                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Overdracht vorig jaar
-                        </label>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={formData.leaveBalanceCarryover || ''}
-                          onChange={(e) => setFormData({ ...formData, leaveBalanceCarryover: parseFloat(e.target.value) || 0 })}
-                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
-                        />
+
+                      {/* Overzicht afwezigheid (betaald verlof, ziekte, buitengewoon, etc.) */}
+                      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                        <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+                          <h5 className="font-medium text-slate-800">
+                            Overzicht afwezigheid {leaveOverview.year}
+                          </h5>
+                          <p className="text-sm text-slate-500 mt-0.5">Betaald verlof, ziekte, buitengewoon, dokter, etc.</p>
+                        </div>
+                        <div className="p-4 space-y-2 text-sm">
+                          {leaveOverview.byAbsenceType.length === 0 ? (
+                            <p className="text-slate-500">Geen goedgekeurde afwezigheid in dit jaar.</p>
+                          ) : (
+                            leaveOverview.byAbsenceType.map((row) => {
+                              const hasSplit = typeof row.usedHours === 'number' || typeof row.plannedHours === 'number'
+                              const used = row.usedHours ?? 0
+                              const planned = row.plannedHours ?? 0
+                              return (
+                                <div key={row.code} className="flex flex-col gap-0.5">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-slate-600">{row.label}</span>
+                                    <span>{row.hours} uur</span>
+                                  </div>
+                                  {hasSplit && (used > 0 || planned > 0) ? (
+                                    <div className="flex justify-end gap-4 text-xs text-slate-500 pl-2">
+                                      <span>{used} uur gebruikt</span>
+                                      <span>{planned} uur ingepland</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })
+                          )}
+                          <p className="text-slate-500 mt-3 pt-3 border-t border-slate-100 text-xs">
+                            Alleen formeel goedgekeurde afwezigheid.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="mt-2 text-xs text-slate-600">
-                      Totaal saldo: {((formData.leaveBalanceLegal || 0) + (formData.leaveBalanceExtra || 0) + (formData.leaveBalanceCarryover || 0)).toFixed(1)} dagen
-                    </div>
-                  </div>
+                  )}
 
                   <div className="mt-4">
-                    <label className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={formData.hasFixedTermContract || false}
                         onChange={(e) => setFormData({ ...formData, hasFixedTermContract: e.target.checked })}
                         className="rounded border-slate-300"
                       />
-                      <span className="text-sm font-medium text-slate-700">Contract voor bepaalde tijd</span>
+                      <span className="text-sm font-medium text-slate-700">Tijdelijk contract</span>
                     </label>
                   </div>
 
                   {formData.hasFixedTermContract && (
-                    <div className="mt-4">
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                      <h5 className="text-sm font-medium text-slate-800 mb-3">Einde dienstverband</h5>
                       <DatePicker
                         label="Einddatum dienstverband"
                         value={formData.employmentEndDate || ''}
@@ -611,7 +774,8 @@ export default function HRSettingsClient() {
             </div>
           ) : (
             <div className="bg-white shadow-sm rounded-lg p-12 text-center text-slate-500">
-              Selecteer een medewerker om de gegevens te bekijken en bewerken
+              <p className="font-medium text-slate-600 mb-1">Geen medewerker geselecteerd</p>
+              <p className="text-sm">Klik links op een medewerker om gegevens, <strong>verlofsaldo</strong> (wettelijk, extra, overdracht) en <strong>jaarlijks verlof</strong> te bekijken en bewerken.</p>
             </div>
           )}
         </div>

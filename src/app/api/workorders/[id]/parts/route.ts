@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth'
 import { reserveInventory, getInventorySummary } from '@/lib/inventory-reservation'
 import { createBackOrder, checkBexAvailability } from '@/lib/back-order'
 import { syncWorkOrderStatus } from '@/lib/workorder-status'
+import { logAudit } from '@/lib/audit'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -184,13 +185,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
         
         await prisma.partsLine.update({
           where: { id: part.id },
-          data: { status: 'SPECIAAL' }
+          data: { status: 'WACHT_OP_BESTELLING' }
         })
       }
     }
 
     // Sync work order status after adding part
     await syncWorkOrderStatus(workOrderId)
+
+    await logAudit({
+      entityType: 'WorkOrder',
+      entityId: workOrderId,
+      action: 'PARTS_ADD',
+      userId: user.id,
+      userName: user.displayName || user.email || null,
+      userEmail: user.email,
+      userRole: user.role,
+      description: `Onderdeel geplaatst: ${part.productName} (${part.quantity}x)`,
+      metadata: { partsLineId: part.id, productName: part.productName, quantity: part.quantity },
+      request
+    })
 
     return NextResponse.json({ 
       success: true, 

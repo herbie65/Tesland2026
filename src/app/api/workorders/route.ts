@@ -17,6 +17,7 @@ import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
 import { logAudit } from '@/lib/audit'
 import { workOrderEvents } from '@/lib/workorder-events'
+import { fetchRdwAndUpdateVehicle } from '@/lib/rdw-vehicle'
 
 export async function GET(request: NextRequest) {
   try {
@@ -58,6 +59,15 @@ export async function GET(request: NextRequest) {
             productName: true,
             quantity: true
           }
+        },
+        laborLines: {
+          select: {
+            id: true,
+            description: true,
+            durationMinutes: true,
+            completed: true
+          },
+          orderBy: { id: 'asc' }
         }
       }
     })
@@ -67,12 +77,16 @@ export async function GET(request: NextRequest) {
       items = items.filter((item) => allowed.has(String(item.workOrderStatus || '')))
     }
 
-    // Merge denormalized fields for frontend
+    // Merge denormalized fields for frontend – voertuiglabel altijd uit gekoppeld voertuig (merk eerst), anders vehicleLabel
     const merged = items.map((item) => {
       const resolvedLicensePlate = item.licensePlate || item.vehiclePlate || item.vehicle?.licensePlate || null
-      const resolvedVehicleLabel = item.vehicleLabel || (item.vehicle 
-        ? `${item.vehicle.make || ''} ${item.vehicle.model || ''}${item.vehicle.licensePlate ? ` (${item.vehicle.licensePlate})` : ''}`.trim()
-        : null)
+      // Alleen merk + model; kenteken staat apart op de kaart
+      const rawVehicleLabel = item.vehicle
+        ? [String(item.vehicle.make ?? '').trim(), String(item.vehicle.model ?? '').trim()]
+            .filter(Boolean)
+            .join(' ')
+        : (item.vehicleLabel || null)
+      const resolvedVehicleLabel = rawVehicleLabel?.replace(/\bundefined\b/gi, '').trim() || null
       const resolvedCustomerName = item.customerName || item.customer?.name || null
       const resolvedAssigneeName = item.assigneeName || item.assignee?.displayName || null
       const resolvedPlanningTypeName = item.planningItem?.planningTypeName || item.planningItem?.planningType?.name || null
@@ -237,6 +251,14 @@ export async function POST(request: NextRequest) {
         ]
       }
     })
+
+    // Bij aanmaken werkorder: laatst bekende kilometerstand bij RDW ophalen voor gekoppeld voertuig
+    if (vehicleId) {
+      const rdwResult = await fetchRdwAndUpdateVehicle(vehicleId).catch(() => ({ ok: false, error: 'unknown' }))
+      if (!rdwResult.ok) {
+        console.warn('RDW fetch at work order creation:', rdwResult.error)
+      }
+    }
 
     await logAudit({
       entityType: 'WorkOrder',

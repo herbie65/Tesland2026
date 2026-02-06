@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { apiFetch, getCurrentUser, logout } from '@/lib/api'
+import { apiFetch, getCurrentUser, getToken, logout } from '@/lib/api'
 import {
   ArrowDownTrayIcon,
   ArrowUturnLeftIcon,
@@ -25,6 +25,7 @@ import {
   UsersIcon,
   UserGroupIcon
 } from '@heroicons/react/24/outline'
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid'
 import './admin-styles.css'
 import AdminAuthGate from './components/AdminAuthGate'
 
@@ -34,6 +35,7 @@ const SETTINGS_MENU_ITEMS = [
   { id: 'planning', label: 'Planning', href: '/admin/settings' },
   { id: 'email', label: 'E-mail', href: '/admin/settings' },
   { id: 'notifications', label: 'Notificaties', href: '/admin/settings' },
+  { id: 'users', label: 'Gebruikers', href: '/admin/settings/users' },
   { id: 'mollie', label: 'Mollie', href: '/admin/settings/mollie' },
   { id: 'vat', label: 'BTW', href: '/admin/settings/vat' },
   { id: 'webshop', label: 'Webshop', href: '/admin/settings/webshop' },
@@ -49,16 +51,6 @@ const NAV_ITEMS: NavItem[] = [
   { type: 'link', name: 'Dashboard', href: '/admin', icon: ChartBarIcon },
   {
     type: 'group',
-    name: 'Website',
-    icon: DocumentTextIcon,
-    children: [
-      { type: 'link', name: 'Homepage', href: '/admin/website/pages/home', icon: DocumentTextIcon },
-      { type: 'link', name: 'Header', href: '/admin/website/header', icon: DocumentTextIcon },
-      { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
-    ]
-  },
-  {
-    type: 'group',
     name: 'Werkplaats',
     icon: WrenchScrewdriverIcon,
     children: [
@@ -66,17 +58,6 @@ const NAV_ITEMS: NavItem[] = [
       { type: 'link', name: 'Werkoverzicht', href: '/admin/workoverzicht', icon: ChartBarIcon },
       { type: 'link', name: 'Werkorders', href: '/admin/workorders', icon: WrenchScrewdriverIcon },
       { type: 'link', name: 'Voertuigen', href: '/admin/vehicles', icon: TruckIcon }
-    ]
-  },
-  {
-    type: 'group',
-    name: 'HR',
-    icon: UserGroupIcon,
-    children: [
-      { type: 'link', name: 'Mijn Dashboard', href: '/admin/my-dashboard', icon: HomeIcon },
-      { type: 'link', name: 'Verlof Beheer', href: '/admin/leave-management', icon: CalendarDaysIcon },
-      { type: 'link', name: 'Rapportage', href: '/admin/leave-reports', icon: ChartBarIcon },
-      { type: 'link', name: 'HR Instellingen', href: '/admin/hr-settings', icon: Cog6ToothIcon }
     ]
   },
   { type: 'link', name: 'Klanten', href: '/admin/customers', icon: UsersIcon },
@@ -102,7 +83,37 @@ const NAV_ITEMS: NavItem[] = [
       { type: 'link', name: 'Creditfacturen', href: '/admin/credit-invoices', icon: ReceiptRefundIcon }
     ]
   },
-  { type: 'link', name: 'Tools', href: '/admin/tools', icon: Cog6ToothIcon },
+  {
+    type: 'group',
+    name: 'Website',
+    icon: DocumentTextIcon,
+    children: [
+      { type: 'link', name: 'Homepage', href: '/admin/website/pages/home', icon: DocumentTextIcon },
+      { type: 'link', name: 'Header', href: '/admin/website/header', icon: DocumentTextIcon },
+      { type: 'link', name: 'Categorieën', href: '/admin/categories', icon: FolderIcon }
+    ]
+  },
+  {
+    type: 'group',
+    name: 'Tools',
+    icon: Cog6ToothIcon,
+    children: [
+      { type: 'link', name: 'Overzicht', href: '/admin/tools', icon: Cog6ToothIcon },
+      { type: 'link', name: 'Audit logs', href: '/admin/tools/audit', icon: DocumentTextIcon },
+      { type: 'link', name: 'Efficiëntie werkplaats', href: '/admin/tools/efficiency', icon: ClockIcon }
+    ]
+  },
+  {
+    type: 'group',
+    name: 'HR',
+    icon: UserGroupIcon,
+    children: [
+      { type: 'link', name: 'Mijn Dashboard', href: '/admin/my-dashboard', icon: HomeIcon },
+      { type: 'link', name: 'Verlof Beheer', href: '/admin/leave-management', icon: CalendarDaysIcon },
+      { type: 'link', name: 'Rapportage', href: '/admin/leave-reports', icon: ChartBarIcon },
+      { type: 'link', name: 'HR Instellingen', href: '/admin/hr-settings', icon: Cog6ToothIcon }
+    ]
+  },
   { type: 'link', name: 'Import', href: '/admin/import', icon: ArrowDownTrayIcon },
   {
     type: 'group',
@@ -126,6 +137,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [hrOpen, setHrOpen] = useState(false)
   const [werkplaatsOpen, setWerkplaatsOpen] = useState(false)
   const [websiteOpen, setWebsiteOpen] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -134,6 +146,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [pagePermissions, setPagePermissions] = useState<{ [path: string]: boolean }>({})
   const [isSystemAdmin, setIsSystemAdmin] = useState(false)
   const [pendingLeaveRequests, setPendingLeaveRequests] = useState(0)
+  const [magazijnRedCount, setMagazijnRedCount] = useState(0)
+  const [magazijnYellowCount, setMagazijnYellowCount] = useState(0)
+  const [magazijnRedNumbers, setMagazijnRedNumbers] = useState<string[]>([])
+  const [magazijnYellowNumbers, setMagazijnYellowNumbers] = useState<string[]>([])
+  const [planningPartsWarningCount, setPlanningPartsWarningCount] = useState(0)
+  const [planningPartsWarningPlates, setPlanningPartsWarningPlates] = useState<string[]>([])
   const [notificationsPos, setNotificationsPos] = useState<{ top: number; left: number } | null>(
     null
   )
@@ -284,15 +302,133 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         console.error('Failed to load leave requests', error)
       }
     }
+
+    const loadMagazijnPartsCounts = async () => {
+      try {
+        const data = await apiFetch('/api/magazijn/parts-counts')
+        if (data && typeof data.red === 'number' && typeof data.yellow === 'number') {
+          setMagazijnRedCount(data.red)
+          setMagazijnYellowCount(data.yellow)
+          setMagazijnRedNumbers(Array.isArray(data.redWorkOrderNumbers) ? data.redWorkOrderNumbers : [])
+          setMagazijnYellowNumbers(Array.isArray(data.yellowWorkOrderNumbers) ? data.yellowWorkOrderNumbers : [])
+        }
+      } catch {
+        // Silently fail (e.g. not logged in yet)
+      }
+    }
+
+    const loadPlanningPartsWarning = async () => {
+      try {
+        const data = await apiFetch('/api/planning/parts-warning')
+        if (data && typeof data.count === 'number') {
+          setPlanningPartsWarningCount(data.count)
+          setPlanningPartsWarningPlates(Array.isArray(data.licensePlates) ? data.licensePlates : [])
+        }
+      } catch {
+        // Silently fail
+      }
+    }
     
     loadNotifications()
     loadPendingLeaveRequests()
+    loadMagazijnPartsCounts()
+    loadPlanningPartsWarning()
     const interval = setInterval(() => {
       loadNotifications()
       loadPendingLeaveRequests()
+      loadMagazijnPartsCounts()
+      loadPlanningPartsWarning()
     }, 30000)
     
     return () => clearInterval(interval)
+  }, [])
+  
+  // Magazijn-badges en planning parts warning ook direct bij mount ophalen
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const data = await apiFetch('/api/magazijn/parts-counts')
+        if (!cancelled && data && typeof data.red === 'number' && typeof data.yellow === 'number') {
+          setMagazijnRedCount(data.red)
+          setMagazijnYellowCount(data.yellow)
+          setMagazijnRedNumbers(Array.isArray(data.redWorkOrderNumbers) ? data.redWorkOrderNumbers : [])
+          setMagazijnYellowNumbers(Array.isArray(data.yellowWorkOrderNumbers) ? data.yellowWorkOrderNumbers : [])
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        const pw = await apiFetch('/api/planning/parts-warning')
+        if (!cancelled && pw && typeof pw.count === 'number') {
+          setPlanningPartsWarningCount(pw.count)
+          setPlanningPartsWarningPlates(Array.isArray(pw.licensePlates) ? pw.licensePlates : [])
+        }
+      } catch {
+        // ignore
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  // SSE: live updates voor magazijn-badges en planning parts warning (ook naar andere gebruikers/computers)
+  useEffect(() => {
+    const refreshMagazijnAndPlanning = async () => {
+      try {
+        const data = await apiFetch('/api/magazijn/parts-counts')
+        if (data && typeof data.red === 'number' && typeof data.yellow === 'number') {
+          setMagazijnRedCount(data.red)
+          setMagazijnYellowCount(data.yellow)
+          setMagazijnRedNumbers(Array.isArray(data.redWorkOrderNumbers) ? data.redWorkOrderNumbers : [])
+          setMagazijnYellowNumbers(Array.isArray(data.yellowWorkOrderNumbers) ? data.yellowWorkOrderNumbers : [])
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        const pw = await apiFetch('/api/planning/parts-warning')
+        if (pw && typeof pw.count === 'number') {
+          setPlanningPartsWarningCount(pw.count)
+          setPlanningPartsWarningPlates(Array.isArray(pw.licensePlates) ? pw.licensePlates : [])
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    let eventSource: EventSource | null = null
+    const connectSSE = () => {
+      const token = getToken()
+      if (!token) {
+        setTimeout(connectSSE, 2000)
+        return
+      }
+      try {
+        eventSource = new EventSource(`/api/workorders/stream?token=${encodeURIComponent(token)}`)
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.type === 'workorder-update') {
+              refreshMagazijnAndPlanning()
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+        eventSource.onerror = () => {
+          eventSource?.close()
+          eventSource = null
+          setTimeout(connectSSE, 5000)
+        }
+      } catch {
+        setTimeout(connectSSE, 5000)
+      }
+    }
+    connectSSE()
+    return () => {
+      eventSource?.close()
+    }
   }, [])
 
   const markAllRead = async () => {
@@ -381,6 +517,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       const isActive = werkplaatsGroup.children.some((child) => child.href === pathname)
       if (isActive) {
         setWerkplaatsOpen(true)
+      }
+    }
+
+    const toolsGroup = NAV_ITEMS.find((item) => item.type === 'group' && item.name === 'Tools')
+    if (toolsGroup && toolsGroup.type === 'group') {
+      const isActive = toolsGroup.children.some((child) => child.href === pathname)
+      if (isActive) {
+        setToolsOpen(true)
       }
     }
 
@@ -478,10 +622,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <nav className="px-4 py-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
               <div className="space-y-1">
                 {NAV_ITEMS.map((item) => {
-                  if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
-                    return null
-                  }
-                  
                   // Check page access for single links
                   if (item.type === 'link' && !hasPageAccess(item.href)) {
                     return null
@@ -504,6 +644,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       item.name === 'Magazijn' ? magazijnOpen :
                       item.name === 'HR' ? hrOpen : 
                       item.name === 'Werkplaats' ? werkplaatsOpen :
+                      item.name === 'Tools' ? toolsOpen :
                       item.name === 'Instellingen' ? settingsOpen :
                       false
                     const setOpen = 
@@ -512,15 +653,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       item.name === 'Magazijn' ? setMagazijnOpen :
                       item.name === 'HR' ? setHrOpen :
                       item.name === 'Werkplaats' ? setWerkplaatsOpen :
+                      item.name === 'Tools' ? setToolsOpen :
                       item.name === 'Instellingen' ? setSettingsOpen :
                       () => {}
                     
+                    const isMagazijnGroup = item.name === 'Magazijn'
+                    const showMagazijnBadgesOnGroup = isMagazijnGroup && (!isOpen || !showText)
+                    const isWerkplaatsGroup = item.name === 'Werkplaats'
+                    const showPlanningPartsWarningOnGroup = isWerkplaatsGroup && planningPartsWarningCount > 0 && (!isOpen || !showText)
                     return (
                       <div key={item.name} className="space-y-1">
                         <button
                           type="button"
                           onClick={() => setOpen((prev) => !prev)}
-                          className={`flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
+                          className={`relative flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
                             isActive ? 'active' : ''
                           } ${!showText ? 'justify-center' : ''}`}
                           title={!showText ? item.name : undefined}
@@ -535,10 +681,96 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           {showText && (
                             <>
                               <span className="flex-1 text-left whitespace-nowrap overflow-hidden">{item.name}</span>
+                              {showPlanningPartsWarningOnGroup && (
+                                <span className="ml-2 relative inline-flex group">
+                                  <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1 bg-amber-500 text-white">
+                                    <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                                  </span>
+                                  <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                    <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                                    {planningPartsWarningPlates.length > 0 && (
+                                      <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">
+                                        {planningPartsWarningPlates.join(', ')}
+                                      </div>
+                                    )}
+                                  </span>
+                                </span>
+                              )}
+                              {showMagazijnBadgesOnGroup && (
+                                <span className="ml-2 flex items-center gap-1">
+                                  <span className="relative inline-flex group">
+                                    <span
+                                      className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white"
+                                      style={{ backgroundColor: '#ef4444' }}
+                                    >
+                                      {magazijnRedCount}
+                                    </span>
+                                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                      <span className="font-medium">Rood: onderdelen nodig</span>
+                                      {magazijnRedNumbers.length > 0 && (
+                                        <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">
+                                          {magazijnRedNumbers.join(', ')}
+                                        </div>
+                                      )}
+                                    </span>
+                                  </span>
+                                  <span className="relative inline-flex group">
+                                    <span
+                                      className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white"
+                                      style={{ backgroundColor: '#eab308' }}
+                                    >
+                                      {magazijnYellowCount}
+                                    </span>
+                                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                      <span className="font-medium">Geel: onderdelen in behandeling</span>
+                                      {magazijnYellowNumbers.length > 0 && (
+                                        <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">
+                                          {magazijnYellowNumbers.join(', ')}
+                                        </div>
+                                      )}
+                                    </span>
+                                  </span>
+                                </span>
+                              )}
                               <ChevronDownIcon
-                                className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                                className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''} ${showMagazijnBadgesOnGroup || showPlanningPartsWarningOnGroup ? 'ml-1' : ''}`}
                               />
                             </>
+                          )}
+                          {!showText && isMagazijnGroup && (
+                            <span className="absolute -top-0.5 -right-0.5 flex items-center gap-0.5">
+                              <span className="relative inline-flex group">
+                                <span className="inline-flex h-4 min-w-[16px] cursor-help items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white" style={{ backgroundColor: '#ef4444' }}>
+                                  {magazijnRedCount}
+                                </span>
+                                <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-800 px-2 py-1.5 text-left text-[11px] text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                  <span className="font-medium">Rood: onderdelen nodig</span>
+                                  {magazijnRedNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1 text-slate-200">{magazijnRedNumbers.join(', ')}</div>}
+                                </span>
+                              </span>
+                              <span className="relative inline-flex group">
+                                <span className="inline-flex h-4 min-w-[16px] cursor-help items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white" style={{ backgroundColor: '#eab308' }}>
+                                  {magazijnYellowCount}
+                                </span>
+                                <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-800 px-2 py-1.5 text-left text-[11px] text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                  <span className="font-medium">Geel: onderdelen in behandeling</span>
+                                  {magazijnYellowNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1 text-slate-200">{magazijnYellowNumbers.join(', ')}</div>}
+                                </span>
+                              </span>
+                            </span>
+                          )}
+                          {!showText && isWerkplaatsGroup && planningPartsWarningCount > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 flex items-center">
+                              <span className="relative inline-flex group">
+                                <span className="inline-flex h-4 min-w-[16px] cursor-help items-center justify-center rounded-full bg-amber-500 text-white">
+                                  <ExclamationTriangleIcon className="h-2.5 w-2.5" />
+                                </span>
+                                <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 max-w-[220px] -translate-x-1/2 rounded-lg bg-slate-800 px-2 py-1.5 text-left text-[11px] text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                  <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                                  {planningPartsWarningPlates.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1 text-slate-200">{planningPartsWarningPlates.join(', ')}</div>}
+                                </span>
+                              </span>
+                            </span>
                           )}
                         </button>
                         {isOpen && showText ? (
@@ -551,9 +783,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                               
                               const childActive = pathname === child.href
                               const showBadge = child.name === 'Verlof Beheer' && pendingLeaveRequests > 0
+                              const isMagazijnOverzicht = child.name === 'Overzicht' && item.name === 'Magazijn'
+                              const isPlanningLink = child.name === 'Planning' && item.name === 'Werkplaats'
                               return (
                                 <Link
-                                  key={child.href}
+                                  key={`${item.name}-${child.name}`}
                                   href={child.href}
                                   className={`flex items-center px-4 py-2 text-sm font-medium glass-nav-item ${
                                     childActive ? 'active' : ''
@@ -569,9 +803,46 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                     />
                                   </div>
                                   <span className="whitespace-nowrap overflow-hidden flex-1">{child.name}</span>
+                                  {isPlanningLink && planningPartsWarningCount > 0 && (
+                                    <span className="ml-2 relative inline-flex group">
+                                      <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1 bg-amber-500 text-white">
+                                        <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                                      </span>
+                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                        <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                                        {planningPartsWarningPlates.length > 0 && (
+                                          <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">
+                                            {planningPartsWarningPlates.join(', ')}
+                                          </div>
+                                        )}
+                                      </span>
+                                    </span>
+                                  )}
                                   {showBadge && (
                                     <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
                                       {pendingLeaveRequests}
+                                    </span>
+                                  )}
+                                  {isMagazijnOverzicht && (
+                                    <span className="ml-2 flex items-center gap-1">
+                                      <span className="relative inline-flex group">
+                                        <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#ef4444' }}>
+                                          {magazijnRedCount}
+                                        </span>
+                                        <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                          <span className="font-medium">Rood: onderdelen nodig</span>
+                                          {magazijnRedNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnRedNumbers.join(', ')}</div>}
+                                        </span>
+                                      </span>
+                                      <span className="relative inline-flex group">
+                                        <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#eab308' }}>
+                                          {magazijnYellowCount}
+                                        </span>
+                                        <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                          <span className="font-medium">Geel: onderdelen in behandeling</span>
+                                          {magazijnYellowNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnYellowNumbers.join(', ')}</div>}
+                                        </span>
+                                      </span>
                                     </span>
                                   )}
                                 </Link>
@@ -742,10 +1013,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <nav className="px-4 py-3">
             <div className="space-y-1">
               {NAV_ITEMS.map((item) => {
-                if (item.type === 'link' && item.name === 'Tools' && userRole !== 'SYSTEM_ADMIN') {
-                  return null
-                }
-                
                 // Check page access for single links
                 if (item.type === 'link' && !hasPageAccess(item.href)) {
                   return null
@@ -764,6 +1031,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     item.name === 'Magazijn' ? magazijnOpen :
                     item.name === 'HR' ? hrOpen : 
                     item.name === 'Werkplaats' ? werkplaatsOpen :
+                    item.name === 'Tools' ? toolsOpen :
                     item.name === 'Instellingen' ? settingsOpen :
                     false
                   const setOpen = 
@@ -772,15 +1040,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     item.name === 'Magazijn' ? setMagazijnOpen :
                     item.name === 'HR' ? setHrOpen :
                     item.name === 'Werkplaats' ? setWerkplaatsOpen :
+                    item.name === 'Tools' ? setToolsOpen :
                     item.name === 'Instellingen' ? setSettingsOpen :
                     () => {}
-                  
+                  const isMagazijnGroup = item.name === 'Magazijn'
+                  const showMagazijnBadgesOnGroup = isMagazijnGroup && !isOpen
+                  const isWerkplaatsGroup = item.name === 'Werkplaats'
+                  const showPlanningPartsWarningOnGroup = isWerkplaatsGroup && planningPartsWarningCount > 0 && !isOpen
                   return (
                     <div key={item.name} className="space-y-1">
                       <button
                         type="button"
                         onClick={() => setOpen((prev) => !prev)}
-                        className={`flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
+                        className={`relative flex w-full items-center px-4 py-2.5 text-sm font-medium glass-nav-item ${
                           isActive ? 'active' : ''
                         }`}
                       >
@@ -792,8 +1064,41 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                           <item.icon className={`h-5 w-5 ${isActive ? 'text-white' : 'text-gray-600'}`} />
                         </div>
                         <span className="flex-1 text-left">{item.name}</span>
+                        {showPlanningPartsWarningOnGroup && (
+                          <span className="ml-2 relative inline-flex group">
+                            <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1 bg-amber-500 text-white">
+                              <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                              <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                              {planningPartsWarningPlates.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{planningPartsWarningPlates.join(', ')}</div>}
+                            </span>
+                          </span>
+                        )}
+                        {showMagazijnBadgesOnGroup && (
+                          <span className="ml-2 flex items-center gap-1">
+                            <span className="relative inline-flex group">
+                              <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#ef4444' }}>
+                                {magazijnRedCount}
+                              </span>
+                              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                <span className="font-medium">Rood: onderdelen nodig</span>
+                                {magazijnRedNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnRedNumbers.join(', ')}</div>}
+                              </span>
+                            </span>
+                            <span className="relative inline-flex group">
+                              <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#eab308' }}>
+                                {magazijnYellowCount}
+                              </span>
+                              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                <span className="font-medium">Geel: onderdelen in behandeling</span>
+                                {magazijnYellowNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnYellowNumbers.join(', ')}</div>}
+                              </span>
+                            </span>
+                          </span>
+                        )}
                         <ChevronDownIcon
-                          className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''} ${showMagazijnBadgesOnGroup || showPlanningPartsWarningOnGroup ? 'ml-1' : ''}`}
                         />
                       </button>
                       {isOpen ? (
@@ -806,9 +1111,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             
                             const childActive = pathname === child.href
                             const showBadge = child.name === 'Verlof Beheer' && pendingLeaveRequests > 0
+                            const isMagazijnOverzicht = child.name === 'Overzicht' && item.name === 'Magazijn'
+                            const isPlanningLink = child.name === 'Planning' && item.name === 'Werkplaats'
                             return (
                               <Link
-                                key={child.href}
+                                key={`${item.name}-${child.name}`}
                                 href={child.href}
                                 className={`flex items-center px-4 py-2 text-sm font-medium glass-nav-item ${
                                   childActive ? 'active' : ''
@@ -824,9 +1131,42 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                                   />
                                 </div>
                                 <span className="flex-1">{child.name}</span>
+                                {isPlanningLink && planningPartsWarningCount > 0 && (
+                                  <span className="ml-2 relative inline-flex group">
+                                    <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1 bg-amber-500 text-white">
+                                      <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                                    </span>
+                                    <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                      <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                                      {planningPartsWarningPlates.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{planningPartsWarningPlates.join(', ')}</div>}
+                                    </span>
+                                  </span>
+                                )}
                                 {showBadge && (
                                   <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
                                     {pendingLeaveRequests}
+                                  </span>
+                                )}
+                                {isMagazijnOverzicht && (
+                                  <span className="ml-2 flex items-center gap-1">
+                                    <span className="relative inline-flex group">
+                                      <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#ef4444' }}>
+                                        {magazijnRedCount}
+                                      </span>
+                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                        <span className="font-medium">Rood: onderdelen nodig</span>
+                                        {magazijnRedNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnRedNumbers.join(', ')}</div>}
+                                      </span>
+                                    </span>
+                                    <span className="relative inline-flex group">
+                                      <span className="inline-flex h-5 min-w-[20px] cursor-help items-center justify-center rounded-full px-1.5 text-xs font-semibold text-white" style={{ backgroundColor: '#eab308' }}>
+                                        {magazijnYellowCount}
+                                      </span>
+                                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 max-w-[240px] -translate-x-1/2 rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                                        <span className="font-medium">Geel: onderdelen in behandeling</span>
+                                        {magazijnYellowNumbers.length > 0 && <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">{magazijnYellowNumbers.join(', ')}</div>}
+                                      </span>
+                                    </span>
                                   </span>
                                 )}
                               </Link>

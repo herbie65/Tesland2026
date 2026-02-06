@@ -115,6 +115,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const updateData: {
       workOverviewColumn: string
       workOrderStatus?: string
+      completedAt?: Date
       activeWorkStartedAt?: Date | null
       activeWorkStartedBy?: string | null
       activeWorkStartedByName?: string | null
@@ -123,6 +124,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     } = {
       workOverviewColumn: column,
       ...(newStatus && { workOrderStatus: newStatus }),
+      ...(isMovingToGereed && { completedAt: new Date() }),
       ...(isStartingWork && {
         activeWorkStartedAt: new Date(),
         activeWorkStartedBy: user.id,

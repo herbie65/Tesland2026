@@ -7,6 +7,7 @@ const SETTINGS_MENU_ITEMS = [
   { id: 'planning', label: 'Planning', href: '/admin/settings' },
   { id: 'email', label: 'E-mail', href: '/admin/settings' },
   { id: 'notifications', label: 'Notificaties', href: '/admin/settings' },
+  { id: 'users', label: 'Gebruikers', href: '/admin/settings/users' },
   { id: 'mollie', label: 'Mollie', href: '/admin/settings/mollie' },
   { id: 'vat', label: 'BTW', href: '/admin/settings/vat' },
   { id: 'webshop', label: 'Webshop', href: '/admin/settings/webshop' },

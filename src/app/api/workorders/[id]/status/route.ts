@@ -133,15 +133,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       partsSummaryStatus
     })
 
+    const updateData: Record<string, unknown> = {
+      workOrderStatus: transition.finalStatus,
+      planningRiskActive: transition.finalStatus === 'GEPLAND' ? transition.planningRisk : false,
+      planningRiskHistory,
+      executionStatus: executionStatus || undefined,
+      statusHistory: history
+    }
+    if (transition.finalStatus === 'GEREED' || transition.finalStatus === 'GEFACTUREERD') {
+      updateData.completedAt = new Date()
+    }
+
     await prisma.workOrder.update({
       where: { id },
-      data: {
-        workOrderStatus: transition.finalStatus,
-        planningRiskActive: transition.finalStatus === 'GEPLAND' ? transition.planningRisk : false,
-        planningRiskHistory,
-        executionStatus: executionStatus || undefined,
-        statusHistory: history
-      }
+      data: updateData
     })
 
     await logAudit({

@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireRole } from '@/lib/auth'
 import { createNotification } from '@/lib/notifications'
 import { sendTemplatedEmail } from '@/lib/email'
-import { getAbsenceTypes } from '@/lib/settings'
-import { createLeaveLedgerEntry, getLeaveLedgerSummary, seedOpeningBalanceIfMissing, syncUserBalancesFromLedger } from '@/lib/leave-ledger'
+import { getAbsenceTypes, getHrLeavePolicy } from '@/lib/settings'
+import { createLeaveLedgerEntry, deductLeaveBalanceInOrder, getLeaveLedgerSummary, seedOpeningBalanceIfMissing } from '@/lib/leave-ledger'
 
 type RouteContext = {
   params: { id?: string } | Promise<{ id?: string }>
@@ -81,6 +81,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
         ? leaveRequest.totalMinutes
         : Math.round(Number(leaveRequest.totalDays) * Number(leaveRequest.user.hoursPerDay || 8) * 60)
 
+      const policy = await getHrLeavePolicy()
+      const afterDeduct = await deductLeaveBalanceInOrder(leaveRequest.userId, requestedMinutes, {
+        deductionOrder: policy.deductionOrder,
+        allowNegativeLegal: policy.allowNegativeLegal,
+        allowNegativeNonLegal: policy.allowNegativeNonLegal,
+      })
+      newBalanceHours = afterDeduct.newLegal + afterDeduct.newExtra + afterDeduct.newCarryover
+
       await createLeaveLedgerEntry({
         userId: leaveRequest.userId,
         type: 'TAKEN',
@@ -90,9 +98,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         createdBy: user.id,
         notes: `Leave approved (${leaveRequest.absenceTypeCode})`,
       })
-
-      const synced = await syncUserBalancesFromLedger(leaveRequest.userId)
-      newBalanceHours = synced.balanceHours
     }
     
     // Create planning item for approved leave

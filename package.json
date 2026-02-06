@@ -26,6 +26,9 @@
     "vat:migrate": "tsx scripts/migrate-vat.ts",
     "vat:test": "tsx scripts/test-vat-calculator.ts",
     "vat:test-vies": "tsx scripts/test-vies-validator.ts",
+    "leave:test": "tsx scripts/test-leave-accrual.ts",
+    "leave:fix-working-hours": "tsx scripts/fix-leave-to-working-hours.ts",
+    "leave:sync-planning": "tsx scripts/sync-leave-planning-items.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

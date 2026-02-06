@@ -39,7 +39,7 @@ Centrale plaats voor ALL parts status logica:
 ```
 
 **Status Priority (worst to best):**
-1. 🟠 `WACHT_OP_BESTELLING` / `SPECIAAL` - Needs immediate action!
+1. 🟠 `WACHT_OP_BESTELLING` / `PENDING` - Needs immediate action!
 2. 🔵 `BESTELD` - Ordered but not arrived
 3. 🟣 `ONDERWEG` - On the way
 4. 🟢 `BINNEN` / `ONTVANGEN` / `KLAAR` - All ready
