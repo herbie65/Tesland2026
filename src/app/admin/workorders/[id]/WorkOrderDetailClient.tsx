@@ -91,6 +91,7 @@ type WorkOrder = {
   mileageNotAvailable?: boolean | null
   partsRequired?: boolean | null
   normalStockProducts?: boolean | null
+  partsSummaryStatus?: string | null
   workOverviewColumn?: string | null
   activeWorkStartedAt?: string | null
   activeWorkStartedBy?: string | null

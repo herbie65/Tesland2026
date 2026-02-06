@@ -56,9 +56,9 @@ export interface AuditLogOptions {
   entityId?: string            // ID of the entity
   action: string               // 'CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', etc.
   userId?: string              // Who made the change
-  userName?: string            // Denormalized for history
-  userEmail?: string           // Denormalized for history
-  userRole?: string            // Denormalized for history
+  userName?: string | null     // Denormalized for history
+  userEmail?: string | null    // Denormalized for history
+  userRole?: string | null     // Denormalized for history
   changes?: Record<string, { from: any; to: any }>  // Field-level changes
   metadata?: Record<string, any>  // Additional business context
   description?: string         // Human-readable description

@@ -94,10 +94,10 @@ export async function GET(request: NextRequest) {
       const woByPlate = await prisma.workOrder.findFirst({
         where: {
           OR: [
-            ...searchPlates.map((p) => ({ licensePlate: { equals: p, mode: 'insensitive' } })),
-            ...searchPlates.map((p) => ({ vehiclePlate: { equals: p, mode: 'insensitive' } })),
-            { licensePlate: { contains: plateRaw, mode: 'insensitive' } },
-            { vehiclePlate: { contains: plateRaw, mode: 'insensitive' } }
+            ...searchPlates.map((p) => ({ licensePlate: { equals: p, mode: 'insensitive' as const } })),
+            ...searchPlates.map((p) => ({ vehiclePlate: { equals: p, mode: 'insensitive' as const } })),
+            { licensePlate: { contains: plateRaw, mode: 'insensitive' as const } },
+            { vehiclePlate: { contains: plateRaw, mode: 'insensitive' as const } }
           ]
         },
         select: { id: true, workOrderNumber: true, licensePlate: true, vehiclePlate: true },

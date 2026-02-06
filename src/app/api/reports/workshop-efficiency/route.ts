@@ -124,9 +124,8 @@ export async function GET(request: NextRequest) {
     // Werkelijke uren: WorkSession met endedAt in periode, som durationMinutes (of endedAt - startedAt)
     const sessions = await prisma.workSession.findMany({
       where: {
-        endedAt: { not: null },
-        startedAt: { lte: toEnd },
-        endedAt: { gte: fromStart }
+        endedAt: { not: null, gte: fromStart },
+        startedAt: { lte: toEnd }
       },
       select: {
         userId: true,

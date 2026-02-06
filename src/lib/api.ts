@@ -1,8 +1,9 @@
 /**
  * Helper to make authenticated API calls with JWT token
- * Returns parsed JSON data directly
+ * Returns parsed JSON data directly.
+ * Optional type argument: apiFetch<ResponseType>(url, options) returns Promise<ResponseType>.
  */
-export async function apiFetch(url: string, options: RequestInit = {}) {
+export async function apiFetch<T = any>(url: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token')
   
   const headers = new Headers(options.headers)
@@ -30,7 +31,7 @@ export async function apiFetch(url: string, options: RequestInit = {}) {
   
   // Parse and return JSON
   const data = await response.json()
-  return data
+  return data as T
 }
 
 /**

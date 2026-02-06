@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
       entityId,
       action: 'TEST_LOG',
       userId: user.id,
-      userName: user.displayName || user.email || null,
+      userName: user.displayName || user.email || undefined,
       userEmail: user.email,
-      userRole: user.role,
+      userRole: user.role ?? undefined,
       description: 'Testlog om te controleren of audit logging werkt.',
       metadata: { test: true },
       request
