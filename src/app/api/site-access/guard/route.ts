@@ -14,13 +14,13 @@ const GUARD_HEADER = 'X-Site-Access-Guard'
  * 200 = toegestaan, 401 = redirect naar gate.
  */
 export async function GET(request: NextRequest) {
-  const headers = {
-    ...NO_CACHE,
-    [GUARD_HEADER]: '1',
-  }
   try {
     const required = isSiteAccessRequired()
-    headers['X-Guard-Required'] = required ? '1' : '0'
+    const headers = {
+      ...NO_CACHE,
+      [GUARD_HEADER]: '1',
+      'X-Guard-Required': required ? '1' : '0',
+    }
     if (!required) {
       return NextResponse.json({ ok: true }, { status: 200, headers })
     }
@@ -36,6 +36,6 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ ok: false }, { status: 401, headers })
   } catch {
-    return NextResponse.json({ ok: false }, { status: 401, headers })
+    return NextResponse.json({ ok: false }, { status: 401, headers: NO_CACHE })
   }
 }
