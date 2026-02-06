@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ExclamationTriangleIcon } from '@heroicons/react/24/solid'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
 import { apiFetch } from '@/lib/api'
 import ClickToDialButton from '@/components/ClickToDialButton'
@@ -65,6 +66,7 @@ type PlanningItem = {
   assigneeId?: string | null
   assigneeName?: string | null
   assigneeColor?: string | null
+  laborDescriptions?: string[] | null
   location?: string | null
   customerId?: string | null
   customerName?: string | null
@@ -200,6 +202,7 @@ export default function PlanningClient() {
   const [items, setItems] = useState<PlanningItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorModalType, setErrorModalType] = useState<'error' | 'hint'>('error')
   const [errorModalOpen, setErrorModalOpen] = useState(false)
   const [warning, setWarning] = useState<string | null>(null)
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -260,7 +263,7 @@ export default function PlanningClient() {
   const [planningTypeId, setPlanningTypeId] = useState('none')
   const [notes, setNotes] = useState('')
   const [priority, setPriority] = useState('medium')
-  const [durationMinutes, setDurationMinutes] = useState('60')
+  const [durationMinutes, setDurationMinutes] = useState('1:00')
   const [statusFilter, setStatusFilter] = useState('all')
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -269,6 +272,8 @@ export default function PlanningClient() {
   const [dayZoom, setDayZoom] = useState(3)
   const [dayScrollWidth, setDayScrollWidth] = useState(0)
   const [dayViewStartDate, setDayViewStartDate] = useState<Date>(new Date())
+  const [planningPartsWarningCount, setPlanningPartsWarningCount] = useState(0)
+  const [planningPartsWarningPlates, setPlanningPartsWarningPlates] = useState<string[]>([])
   const weekContainerRef = useRef<HTMLDivElement | null>(null)
   const dayScrollRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
@@ -348,9 +353,14 @@ export default function PlanningClient() {
   const [createWorkOrder, setCreateWorkOrder] = useState(true)
   const [partsRequired, setPartsRequired] = useState(false)
   const [assignmentText, setAssignmentText] = useState('')
-  const [checklistItems, setChecklistItems] = useState<Array<{ id: string; text: string; checked: boolean }>>([
+  const [checklistItems, setChecklistItems] = useState<Array<{ id: string; text: string; checked: boolean; totalAmount?: number | null }>>([
     { id: crypto.randomUUID(), text: '', checked: false }
   ])
+  const [workOrderLaborLines, setWorkOrderLaborLines] = useState<Array<{ id: string; description: string; totalAmount?: number | null }>>([])
+  const [laborProductSearch, setLaborProductSearch] = useState('')
+  const [laborProductResults, setLaborProductResults] = useState<any[]>([])
+  const [laborProductLoading, setLaborProductLoading] = useState(false)
+  const laborProductSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [agreementAmount, setAgreementAmount] = useState('')
   const [agreementNotes, setAgreementNotes] = useState('')
   const [approving, setApproving] = useState(false)
@@ -375,8 +385,9 @@ export default function PlanningClient() {
     axisWidth: number
   } | null>(null)
 
-  const raiseError = (message: string) => {
+  const raiseError = (message: string, type: 'error' | 'hint' = 'error') => {
     setError(message)
+    setErrorModalType(type)
     setErrorModalOpen(true)
   }
 
@@ -398,6 +409,23 @@ export default function PlanningClient() {
     if (trimmed.length <= maxLength) return trimmed
     return `${trimmed.slice(0, Math.max(1, maxLength - 1))}…`
   }
+  /** Bepaalt of assignmentText de JSON-checklist is; zo ja, retourneer de tekstitems voor weergave in de popover. */
+  const parseAssignmentTextForPopover = (raw: string | null | undefined): { type: 'checklist'; items: string[] } | { type: 'text'; value: string } | null => {
+    const s = (raw || '').trim()
+    if (!s) return null
+    if (s.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(s) as Array<{ text?: string; checked?: boolean }>
+        if (Array.isArray(parsed)) {
+          const items = parsed.map((e) => (e && typeof e.text === 'string' ? e.text.trim() : '')).filter(Boolean)
+          return { type: 'checklist', items }
+        }
+      } catch {
+        /* geen geldige JSON → als gewone tekst tonen */
+      }
+    }
+    return { type: 'text', value: s }
+  }
   const getPopoverPlacement = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
     const popoverWidth = 280
@@ -416,7 +444,7 @@ export default function PlanningClient() {
     const hasDuration = Number.isFinite(duration) && duration > 0
     const approvalEntry = getIndicatorEntry('approval', getApprovalCode(item))
     const partsEntry = getIndicatorEntry('partsReadiness', getPartsReadinessCode(item))
-    const complaint = item.assignmentText || item.notes || ''
+    const assignmentDisplay = parseAssignmentTextForPopover(item.assignmentText || item.notes || '')
     return (
       <div className="planning-day-popover">
         {item.isRequest ? (
@@ -451,8 +479,15 @@ export default function PlanningClient() {
         {item.planningTypeName ? (
           <div className="planning-day-popover-row">Type: {item.planningTypeName}</div>
         ) : null}
-        {item.assigneeName ? (
-          <div className="planning-day-popover-row">Monteur: {item.assigneeName}</div>
+        {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
+          <div className="planning-day-popover-row">
+            <span className="text-slate-600 text-xs font-medium">Werkzaamheden:</span>
+            <ul className="mt-0.5 list-disc list-inside text-xs text-slate-700 space-y-0.5">
+              {item.laborDescriptions.map((desc, i) => (
+                <li key={i}>{truncateText(desc, 60)}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         <div className="planning-day-popover-chips">
           {approvalEntry ? (
@@ -465,10 +500,11 @@ export default function PlanningClient() {
         {item.partsRequired === true ? (
           <div className="planning-day-popover-row">
             <span
-              className="inline-flex h-2.5 w-2.5 rounded-full"
+              className="inline-flex h-2.5 w-2.5 rounded-full shrink-0"
               style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
+              aria-label={getPartsDotLabel(item)}
             />
-            Onderdelen nodig
+            <span>{getPartsDotLabel(item)}</span>
           </div>
         ) : null}
         {item.warehouseStatus || item.warehouseEtaDate || item.warehouseLocation ? (
@@ -478,9 +514,9 @@ export default function PlanningClient() {
             {item.warehouseLocation ? ` · Locatie ${item.warehouseLocation}` : ''}
           </div>
         ) : null}
-        {complaint ? (
+        {assignmentDisplay && assignmentDisplay.type !== 'checklist' ? (
           <div className="planning-day-popover-row">
-            {truncateText(complaint, 160)}
+            {truncateText(assignmentDisplay.value, 160)}
           </div>
         ) : null}
       </div>
@@ -741,6 +777,33 @@ export default function PlanningClient() {
     )
   }
 
+  // Product search voor werkzaamheden
+  const searchLaborProducts = (query: string) => {
+    if (!query || query.trim().length < 2) {
+      setLaborProductResults([])
+      return
+    }
+    setLaborProductLoading(true)
+    apiFetch(`/api/products?search=${encodeURIComponent(query.trim())}&limit=20`)
+      .then((data: any) => {
+        setLaborProductResults(Array.isArray(data.items) ? data.items : [])
+      })
+      .catch(() => setLaborProductResults([]))
+      .finally(() => setLaborProductLoading(false))
+  }
+
+  const handleAddLaborFromProduct = (product: { name?: string; id?: string; price?: number | null }) => {
+    const name = (product.name || '').trim()
+    if (!name) return
+    const amount = product.price != null && Number.isFinite(Number(product.price)) ? Number(product.price) : null
+    setChecklistItems((items) => {
+      const newItem = { id: crypto.randomUUID(), text: name, checked: false, totalAmount: amount }
+      return [...items.filter((i) => i.text.trim() !== ''), newItem]
+    })
+    setLaborProductSearch('')
+    setLaborProductResults([])
+  }
+
   // Checklist handlers voor werkzaamheden
   const handleChecklistItemChange = (id: string, text: string) => {
     setChecklistItems((items) =>
@@ -757,7 +820,7 @@ export default function PlanningClient() {
   const handleChecklistItemKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, id: string, index: number) => {
     if (event.key === 'Enter') {
       event.preventDefault()
-      const newItem = { id: crypto.randomUUID(), text: '', checked: false }
+      const newItem = { id: crypto.randomUUID(), text: '', checked: false, totalAmount: null as number | null }
       setChecklistItems((items) => {
         const newItems = [...items]
         newItems.splice(index + 1, 0, newItem)
@@ -787,20 +850,37 @@ export default function PlanningClient() {
     if (checklistItems.length > 1) {
       setChecklistItems((items) => items.filter((item) => item.id !== id))
     } else {
-      setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
+      setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false, totalAmount: null }])
     }
   }
 
   const getPartsDotColor = (item: PlanningItem) => {
     if (item.partsRequired !== true) return null
-    const summary = item.partsSummaryStatus || ''
-    if (partsLogic?.completeSummaryStatuses?.includes(summary)) {
-      return '#16a34a'
-    }
-    if (summary === 'ONDERWEG') {
-      return '#f59e0b'
-    }
+    const summary = (item.partsSummaryStatus || '').trim().toUpperCase()
+    if (!summary) return '#ef4444'
+    const completeFromSettings = (partsLogic?.completeSummaryStatuses ?? []).map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+    const completeFallback = [
+      'KLAAR',
+      'ONTVANGEN',
+      'BINNEN',
+      'KLAARGELEGD',
+      'COMPLEET_KLAARGELEGD',
+      'COMPLEET_KLAAR_TE_LEGGEN',
+      'COMPLEET_UITGEGEVEN'
+    ]
+    const completeStatuses = [...new Set([...completeFromSettings, ...completeFallback])]
+    if (completeStatuses.includes(summary)) return '#16a34a'
+    if (summary === 'ONDERWEG' || summary === 'BESTELD') return '#eab308'
     return '#ef4444'
+  }
+
+  /** Tekst naast de onderdelen-statusbal (zichtbaar in planning). */
+  const getPartsDotLabel = (item: PlanningItem) => {
+    if (item.partsRequired !== true) return ''
+    const color = getPartsDotColor(item)
+    if (color === '#16a34a') return 'Groen: onderdelen binnen'
+    if (color === '#eab308') return 'Geel: onderdelen in behandeling'
+    return 'Rood: onderdelen nodig'
   }
 
   const getReadableTextColor = (color?: string | null) => {
@@ -1025,6 +1105,11 @@ export default function PlanningClient() {
         const roleLookup = new Map(
           (rolesData.items || []).map((role: any) => [role.id, role.includeInPlanning])
         )
+        const customerRoleIds = new Set(
+          (rolesData.items || [])
+            .filter((role: any) => role.name === 'CUSTOMER')
+            .map((role: any) => role.id)
+        )
         const allUsers = (usersData.items || []) as User[]
         
         // Plannable users: active and have a role with includeInPlanning
@@ -1037,12 +1122,13 @@ export default function PlanningClient() {
         )
         
         // Other users: active but NOT plannable (for vrij, ziek, etc.)
-        // Exclude the system "Admin" user by name (not all SYSTEM_ADMIN users)
+        // Exclude CUSTOMER role (klanten) and system "Admin" user
         setOtherUsers(
           allUsers.filter((user: User) => {
             if (user.active === false) return false
-            // Exclude the system admin user named "Admin"
             if (user.name === 'Admin') return false
+            // Klanten (CUSTOMER-rol) horen niet in de planning
+            if (user.roleId && customerRoleIds.has(user.roleId)) return false
             // Include users without role OR with non-plannable role
             if (!user.roleId) return true
             return roleLookup.get(user.roleId) !== true
@@ -1078,6 +1164,7 @@ export default function PlanningClient() {
       )
       setItems(sorted)
       setWarning(null)
+      loadPlanningPartsWarning().catch(() => {})
     } catch (err: any) {
       raiseError(err.message)
     } finally {
@@ -1147,6 +1234,26 @@ export default function PlanningClient() {
     loadLookups()
     loadPlanningSettings()
   }, [authReady, hasUser])
+
+  const loadPlanningPartsWarning = async () => {
+    try {
+      const data = await apiFetch('/api/planning/parts-warning')
+      if (data && typeof data.count === 'number') {
+        setPlanningPartsWarningCount(data.count)
+        setPlanningPartsWarningPlates(Array.isArray(data.licensePlates) ? data.licensePlates : [])
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    if (!authReady || !hasUser) return
+    loadPlanningPartsWarning()
+    const interval = setInterval(loadPlanningPartsWarning, 30000)
+    return () => clearInterval(interval)
+  }, [authReady, hasUser])
+
   const loadLeaveRequests = async () => {
     try {
       console.log('Loading leave requests...')
@@ -1444,17 +1551,20 @@ useEffect(() => {
       if (item.assignmentText) {
         const parsed = JSON.parse(item.assignmentText)
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setChecklistItems(parsed)
+          setChecklistItems(parsed.map((entry: any) => ({
+            id: entry.id || crypto.randomUUID(),
+            text: entry.text ?? '',
+            checked: entry.checked === true,
+            totalAmount: entry.totalAmount != null && Number.isFinite(Number(entry.totalAmount)) ? Number(entry.totalAmount) : null
+          })))
         } else {
-          // If it's an old-style text, convert it to a checklist item
-          setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText, checked: false }])
+          setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText, checked: false, totalAmount: null }])
         }
       } else {
-        setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
+        setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false, totalAmount: null }])
       }
     } catch (e) {
-      // If parsing fails (old-style text), convert it to a checklist item
-      setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText || '', checked: false }])
+      setChecklistItems([{ id: crypto.randomUUID(), text: item.assignmentText || '', checked: false, totalAmount: null }])
     }
     
     setAgreementAmount(
@@ -1472,53 +1582,37 @@ useEffect(() => {
     setShowModal(true)
   }
 
-  // Vehicle selection - simplified flow
-  const handleVehicleSelect = (vId: string) => {
-    console.log('=== VEHICLE SELECT START ===')
-    console.log('vehicleId:', vId)
-    console.log('showVehicleSearch BEFORE:', showVehicleSearch)
-    
-    // Find and store the full vehicle data
+  // Vehicle selection: set vehicle and auto-select associated customer
+  const handleVehicleSelect = async (vId: string) => {
     const vehicle = vehicles.find(v => v.id === vId) || vehicleSearchResults.find(v => v.id === vId)
-    console.log('Found vehicle:', vehicle)
-    
-    if (!vehicle) {
-      console.error('Vehicle not found!')
-      return
-    }
-    
-    // EERST: Sla het volledige vehicle object op
+    if (!vehicle) return
+
     setSelectedVehicleData(vehicle)
-    console.log('Set selectedVehicleData')
-    
-    // DAN: Set de vehicleId en clear de search
     setVehicleId(vId)
-    console.log('Set vehicleId')
-    
     setShowVehicleSearch(false)
-    console.log('Set showVehicleSearch to FALSE')
-    
     setVehicleSearchTerm('')
     setVehicleSearchResults([])
-    console.log('Cleared search term and results')
-    console.log('=== VEHICLE SELECT END ===')
-    
-    // If vehicle has an owner, automatically select that customer
+
     if (vehicle.customerId) {
       setCustomerId(vehicle.customerId)
-      
-      // Try to find customer data
       let customerData = customers.find(c => c.id === vehicle.customerId) ||
-        customerSearchResults.find(c => c.id === vehicle.customerId)
-      
-      // Check if vehicle has embedded customer data (from API)
-      if (!customerData && (vehicle as any).customer) {
-        customerData = (vehicle as any).customer
-      }
-      
+        customerSearchResults.find(c => c.id === vehicle.customerId) ||
+        (vehicle as any).customer
       if (customerData) {
         setSelectedCustomerData(customerData)
+      } else {
+        try {
+          const res = await apiFetch(`/api/customers/${vehicle.customerId}`)
+          if (res.success && res.item) {
+            setSelectedCustomerData(res.item)
+          }
+        } catch {
+          // Klant niet gevonden, customerId staat wel
+        }
       }
+    } else {
+      setCustomerId('none')
+      setSelectedCustomerData(null)
     }
   }
 
@@ -1537,37 +1631,14 @@ useEffect(() => {
   }
 
   const handleCustomerSelect = (cId: string) => {
-    console.log('=== CUSTOMER SELECT START ===')
-    console.log('customerId:', cId)
-    
-    const customer = customers.find(c => c.id === cId) || 
-      customerSearchResults.find(c => c.id === cId)
-    console.log('Found customer:', customer)
-    
-    if (!customer) {
-      console.error('Customer not found!')
-      return
-    }
-    
-    // EERST: Sla het volledige customer object op
+    const customer = customers.find(c => c.id === cId) || customerSearchResults.find(c => c.id === cId)
+    if (!customer) return
     setSelectedCustomerData(customer)
-    console.log('Set selectedCustomerData')
-    
-    // DAN: Set de customerId en clear de search
     setCustomerId(cId)
-    console.log('Set customerId')
-    
     setShowCustomerSearch(false)
-    console.log('Set showCustomerSearch to FALSE')
-    
     setCustomerSearchTerm('')
     setCustomerSearchResults([])
-    console.log('Cleared search term and results')
-    
-    // Check voor voertuigen van deze klant
     checkCustomerVehicles(cId)
-    
-    console.log('=== CUSTOMER SELECT END ===')
   }
   
   const checkCustomerVehicles = async (customerId: string) => {
@@ -1725,11 +1796,14 @@ useEffect(() => {
     setPlanningTypeId('none')
     setNotes('')
     setAssignmentText('')
-    setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false }])
+    setChecklistItems([{ id: crypto.randomUUID(), text: '', checked: false, totalAmount: null }])
+    setWorkOrderLaborLines([])
+    setLaborProductSearch('')
+    setLaborProductResults([])
     setAgreementAmount('')
     setAgreementNotes('')
     setPriority('medium')
-    setDurationMinutes('')
+    setDurationMinutes('1:00')
     setStatusSelection('')
     setCreateWorkOrder(true)
     setPartsRequired(false)
@@ -2157,10 +2231,11 @@ useEffect(() => {
           {event.item.partsRequired === true ? (
             <p className="flex items-center gap-2" style={{ color: subTextColor }}>
               <span
-                className="inline-flex h-2.5 w-2.5 rounded-full"
+                className="inline-flex h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: getPartsDotColor(event.item) || '#ef4444' }}
+                aria-label={getPartsDotLabel(event.item)}
               />
-              Onderdelen vereist
+              {getPartsDotLabel(event.item)}
             </p>
           ) : null}
           {event.item.warehouseStatus || event.item.warehouseEtaDate || event.item.warehouseLocation ? (
@@ -2298,10 +2373,11 @@ useEffect(() => {
               {item.partsRequired === true ? (
                 <p className="flex items-center gap-2 mt-2 text-slate-800">
                   <span
-                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                    className="inline-flex h-2.5 w-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: getPartsDotColor(item) || '#ef4444' }}
+                    aria-label={getPartsDotLabel(item)}
                   />
-                  <span className="text-[0.7rem] font-bold">Onderdelen vereist</span>
+                  <span className="text-[0.7rem] font-bold">{getPartsDotLabel(item)}</span>
                 </p>
               ) : null}
               
@@ -2584,6 +2660,13 @@ useEffect(() => {
                         <div className="mt-1 truncate text-[0.72rem] font-semibold">
                           {item.title || item.planningTypeName || 'Planning'}
                         </div>
+                        {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
+                          <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
+                            {item.laborDescriptions.length === 1
+                              ? truncateText(item.laborDescriptions[0], 28)
+                              : `${item.laborDescriptions.length} werkzaamheden`}
+                          </div>
+                        ) : null}
                         {renderDayPopover(item)}
                       </div>
                     )
@@ -2815,6 +2898,13 @@ useEffect(() => {
                         <div className="mt-1 truncate text-[0.72rem] font-semibold">
                           {item.title || item.planningTypeName || 'Planning'}
                         </div>
+                        {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0 ? (
+                          <div className="mt-0.5 truncate text-[0.65rem] opacity-90">
+                            {item.laborDescriptions.length === 1
+                              ? truncateText(item.laborDescriptions[0], 28)
+                              : `${item.laborDescriptions.length} werkzaamheden`}
+                          </div>
+                        ) : null}
                         {renderDayPopover(item)}
                       </div>
                     )
@@ -2996,6 +3086,10 @@ useEffect(() => {
       setError(null)
       setDateWarning(null)
       setOverlapWarning(null)
+      if (planningTypeId === 'none') {
+        raiseError('Kies het planningstype.', 'hint')
+        return
+      }
       if (assigneeId === 'none') {
         throw new Error('Kies een werknemer.')
       }
@@ -3078,6 +3172,26 @@ useEffect(() => {
       raiseError(err.message)
     }
   }
+
+  useEffect(() => {
+    if (!showModal || !editingItem?.workOrderId) {
+      setWorkOrderLaborLines([])
+      return
+    }
+    let cancelled = false
+    apiFetch(`/api/workorders/${editingItem.workOrderId}`)
+      .then((data: any) => {
+        if (cancelled || !data.success || !data.item?.laborLines) return
+        const lines = (data.item.laborLines || []).map((l: any) => ({
+          id: l.id,
+          description: l.description || '',
+          totalAmount: l.totalAmount != null ? Number(l.totalAmount) : null
+        }))
+        setWorkOrderLaborLines(lines)
+      })
+      .catch(() => setWorkOrderLaborLines([]))
+    return () => { cancelled = true }
+  }, [showModal, editingItem?.workOrderId])
 
   useEffect(() => {
     if (!selectedUser || !scheduledAt) {
@@ -3285,6 +3399,21 @@ useEffect(() => {
               ? format(currentDate, 'MMMM yyyy', { locale: nl })
               : format(currentDate, 'PPP', { locale: nl })}
           </span>
+          {planningPartsWarningCount > 0 && (
+            <span className="ml-2 relative inline-flex group">
+              <span className="inline-flex h-7 min-w-[28px] cursor-help items-center justify-center rounded-full bg-amber-500 text-white px-1.5">
+                <ExclamationTriangleIcon className="h-4 w-4" />
+              </span>
+              <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 w-max max-w-[260px] rounded-lg bg-slate-800 px-2.5 py-2 text-left text-xs text-white shadow-lg opacity-0 invisible transition group-hover:visible group-hover:opacity-100">
+                <span className="font-medium">Binnen 36 uur gepland, onderdelen nog rood/geel</span>
+                {planningPartsWarningPlates.length > 0 && (
+                  <div className="mt-1 border-t border-slate-600 pt-1.5 text-slate-200">
+                    {planningPartsWarningPlates.join(', ')}
+                  </div>
+                )}
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="mt-6">
@@ -3644,7 +3773,7 @@ useEffect(() => {
                     href={`/admin/workorders/${editingItem.workOrderId}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 text-white text-sm font-medium hover:from-purple-600 hover:to-blue-600 transition-all shadow-md hover:shadow-lg"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -3666,9 +3795,9 @@ useEffect(() => {
               {/* Vehicle & Customer Cards - Prominent at top */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {/* Vehicle Card */}
-                <div className="rounded-lg border border-purple-200 bg-gradient-to-br from-white to-purple-50/30 p-2 shadow-sm">
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-purple-700 uppercase tracking-wide">Voertuig</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Voertuig</span>
                     {vehicleId !== 'none' && !showVehicleSearch && (
                       <button
                         type="button"
@@ -3682,7 +3811,7 @@ useEffect(() => {
                             if (data.success) setVehicleSearchResults(data.items || [])
                           }).catch(console.error).finally(() => setSearchingVehicles(false))
                         }}
-                        className="p-1.5 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50 text-slate-400 hover:text-blue-600 transition-all hover:shadow-sm"
+                        className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                         title="Wijzig voertuig"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3702,7 +3831,7 @@ useEffect(() => {
                           if (data.success) setVehicleSearchResults(data.items || [])
                         }).catch(console.error).finally(() => setSearchingVehicles(false))
                       }}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-purple-300 text-purple-600 hover:border-purple-400 hover:text-purple-700 hover:bg-purple-50 text-sm transition-all"
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 text-sm transition-colors"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -3755,10 +3884,9 @@ useEffect(() => {
                                   onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()
-                                    console.log('Vehicle button clicked:', vehicle.id)
                                     handleVehicleSelect(vehicle.id)
                                   }}
-                                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-blue-50 transition-colors"
+                                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left"
                                 >
                                   {/* Mini license plate */}
                                   <span className="inline-flex items-stretch rounded-md overflow-hidden border border-amber-500 bg-amber-400 text-xs font-bold">
@@ -3782,13 +3910,13 @@ useEffect(() => {
                 </div>
 
                 {/* Customer Card */}
-                <div className={`rounded-lg border p-2 shadow-sm transition-all ${
+                <div className={`rounded-lg border p-3 transition-colors ${
                   vehicleId !== 'none' && customerId === 'none'
-                    ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100/50 ring-2 ring-blue-400 ring-offset-2 shadow-lg shadow-blue-200'
-                    : 'border-blue-200 bg-gradient-to-br from-white to-blue-50/30'
+                    ? 'border-amber-300 bg-amber-50/50'
+                    : 'border-slate-200 bg-white'
                 }`}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-blue-700 uppercase tracking-wide">Klant</span>
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Klant</span>
                     {customerId !== 'none' && !showCustomerSearch && (
                       <button
                         type="button"
@@ -3802,7 +3930,7 @@ useEffect(() => {
                             if (data.success) setCustomerSearchResults(data.items || [])
                           }).catch(console.error).finally(() => setSearchingCustomers(false))
                         }}
-                        className="p-1.5 rounded-lg hover:bg-gradient-to-br hover:from-blue-50 hover:to-purple-50 text-slate-400 hover:text-blue-600 transition-all hover:shadow-sm"
+                        className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                         title="Wijzig klant"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3822,7 +3950,7 @@ useEffect(() => {
                           if (data.success) setCustomerSearchResults(data.items || [])
                         }).catch(console.error).finally(() => setSearchingCustomers(false))
                       }}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-blue-300 text-blue-600 hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50 text-sm transition-all"
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 text-sm transition-colors"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -3866,7 +3994,6 @@ useEffect(() => {
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
-                                  console.log('Customer button clicked:', customer.id)
                                   handleCustomerSelect(customer.id)
                                 }}
                                 className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
@@ -3886,11 +4013,11 @@ useEffect(() => {
               </div>
 
               {/* Toggle switches section */}
-              <div className="rounded-lg border border-slate-200 bg-white p-2 space-y-1">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                 {/* Action buttons for editing */}
                 {editingItem?.isRequest ? (
                   <button
-                    className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60 transition-colors"
+                    className="w-full rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-60 transition-colors"
                     type="button"
                     onClick={handleApproveRequest}
                     disabled={approving}
@@ -3900,7 +4027,7 @@ useEffect(() => {
                 ) : null}
                 {editingItem?.partsRequired === true && editingItem?.workOrderId ? (
                   <button
-                    className="w-full rounded-lg border-2 border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                     type="button"
                     onClick={() => router.push(`/admin/magazijn/${editingItem.workOrderId}`)}
                   >
@@ -3910,12 +4037,12 @@ useEffect(() => {
                 
                 {/* Werkorder toggle */}
                 {editingItem?.workOrderId ? (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-green-50 border border-green-200">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200">
                     <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="text-xs font-medium text-green-900">
+                      <span className="text-xs font-medium text-slate-700">
                         Werkorder {editingItem.workOrderNumber || editingItem.workOrderId} gekoppeld
                       </span>
                     </div>
@@ -3925,12 +4052,12 @@ useEffect(() => {
                     {/* Werkorder aanmaken, Onderdelen nodig en Email sturen naast elkaar */}
                     <div className="grid grid-cols-3 gap-2">
                       {/* Werkorder aanmaken toggle */}
-                      <div className="flex items-center justify-between p-2 rounded-lg bg-purple-50 border border-purple-200 transition-all hover:shadow-sm">
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200">
                         <div className="flex items-center gap-1.5">
-                          <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                           </svg>
-                          <span className="text-xs font-medium text-purple-900">Werkorder aanmaken</span>
+                          <span className="text-xs font-medium text-slate-700">Werkorder aanmaken</span>
                         </div>
                         <label className="glass-toggle">
                           <input
@@ -3951,12 +4078,12 @@ useEffect(() => {
                       
                       {/* Onderdelen nodig toggle */}
                       {createWorkOrder ? (
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50 border border-amber-200 transition-all hover:shadow-sm">
+                        <div className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-slate-200">
                           <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                             </svg>
-                            <span className="text-xs font-medium text-amber-900">Onderdelen nodig</span>
+                            <span className="text-xs font-medium text-slate-700">Onderdelen nodig</span>
                           </div>
                           <label className="glass-toggle">
                             <input
@@ -3970,13 +4097,13 @@ useEffect(() => {
                         </div>
                       ) : <div />}
                       
-                      {/* Email sturen toggle - altijd zichtbaar */}
-                      <div className={`flex items-center justify-between p-2 rounded-lg transition-all ${selectedCustomer?.email ? 'bg-blue-50 border border-blue-200 hover:shadow-sm' : 'bg-slate-50 opacity-60'}`}>
+                      {/* Email sturen toggle */}
+                      <div className={`flex items-center justify-between p-2.5 rounded-lg border ${selectedCustomer?.email ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-200 opacity-70'}`}>
                         <div className="flex items-center gap-1.5">
-                          <svg className={`w-3.5 h-3.5 ${selectedCustomer?.email ? 'text-blue-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className={`w-3.5 h-3.5 ${selectedCustomer?.email ? 'text-slate-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                           </svg>
-                          <span className={`text-xs font-medium ${selectedCustomer?.email ? 'text-blue-900' : 'text-slate-500'}`}>Email sturen</span>
+                          <span className={`text-xs font-medium ${selectedCustomer?.email ? 'text-slate-700' : 'text-slate-500'}`}>Email sturen</span>
                         </div>
                         <label className="glass-toggle">
                           <input
@@ -3998,9 +4125,9 @@ useEffect(() => {
               <form id="planning-form" className="space-y-2" onSubmit={handleCreate}>
                 {/* Tijd en Duur */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
-                  <div className={`rounded-lg border p-2 transition-all ${
+                  <div className={`rounded-lg border p-3 transition-colors ${
                     customerId !== 'none' && !scheduledAt
-                      ? 'border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100/50 ring-2 ring-emerald-400 ring-offset-2 shadow-lg shadow-emerald-200'
+                      ? 'border-amber-300 bg-amber-50/50'
                       : 'border-slate-200 bg-white'
                   }`}>
                     <DateTimePicker
@@ -4059,9 +4186,9 @@ useEffect(() => {
 
                 {/* Werknemer en beschikbaarheid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className={`rounded-lg border p-2 transition-all ${
+                  <div className={`rounded-lg border p-3 transition-colors ${
                     durationMinutes && assigneeId === 'none'
-                      ? 'border-indigo-400 bg-gradient-to-br from-indigo-50 to-indigo-100/50 ring-2 ring-indigo-400 ring-offset-2 shadow-lg shadow-indigo-200'
+                      ? 'border-amber-300 bg-amber-50/50'
                       : 'border-slate-200 bg-white'
                   }`}>
                     <label className="block">
@@ -4103,9 +4230,9 @@ useEffect(() => {
                 </div>
 
                 {/* Omschrijving */}
-                <div className={`rounded-lg border p-2 transition-all ${
+                <div className={`rounded-lg border p-3 transition-colors ${
                   assigneeId !== 'none' && !title
-                    ? 'border-pink-400 bg-gradient-to-br from-pink-50 to-pink-100/50 ring-2 ring-pink-400 ring-offset-2 shadow-lg shadow-pink-200'
+                    ? 'border-amber-300 bg-amber-50/50'
                     : 'border-slate-200 bg-white'
                 }`}>
                   <label className="block">
@@ -4120,13 +4247,68 @@ useEffect(() => {
                   </label>
                 </div>
 
-                {/* Werkzaamheden - checklist met tickboxen */}
-                <div className="rounded-lg border border-slate-200 bg-white p-2">
-                  <label className="block">
-                    <span className="text-xs font-medium text-slate-700 mb-1 block">Werkzaamheden</span>
+                {/* Werkzaamheden: van werkorder (met prijzen) of vrije checklist */}
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-2">Werkzaamheden</span>
+                  {editingItem?.workOrderId && workOrderLaborLines.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-slate-500 mb-2">Van werkorder (bewerken kan in de werkorder)</p>
+                      <ul className="divide-y divide-slate-100">
+                        {workOrderLaborLines.map((line) => (
+                          <li key={line.id} className="flex items-center justify-between py-2 text-sm">
+                            <span className="text-slate-800">{line.description}</span>
+                            {line.totalAmount != null && Number.isFinite(line.totalAmount) ? (
+                              <span className="text-slate-600 tabular-nums">
+                                € {Number(line.totalAmount).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
                     <div className="space-y-2">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={laborProductSearch}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setLaborProductSearch(v)
+                            if (laborProductSearchTimeoutRef.current) clearTimeout(laborProductSearchTimeoutRef.current)
+                            laborProductSearchTimeoutRef.current = setTimeout(() => searchLaborProducts(v), 300)
+                          }}
+                          onBlur={() => setTimeout(() => setLaborProductResults([]), 150)}
+                          placeholder="Zoek in producten (min. 2 tekens)..."
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 transition-all"
+                        />
+                        {laborProductLoading && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                        )}
+                        {laborProductResults.length > 0 && (
+                          <ul className="absolute z-50 mt-1 left-0 right-0 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                            {laborProductResults.map((product) => (
+                              <li key={product.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddLaborFromProduct(product)}
+                                  className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 flex items-center justify-between gap-2"
+                                >
+                                  <span className="text-slate-800 truncate">{product.name || product.sku || '-'}</span>
+                                  {product.price != null && (
+                                    <span className="text-slate-600 tabular-nums shrink-0">
+                                      € {Number(product.price).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">Of typ vrij onderaan en druk op Enter voor een nieuwe regel.</p>
                       {checklistItems.map((item, index) => (
-                        <div key={item.id} className="flex items-start gap-2 group">
+                        <div key={item.id} className="flex items-center gap-2 group">
                           <input
                             type="text"
                             value={item.text}
@@ -4134,13 +4316,18 @@ useEffect(() => {
                             onKeyDown={(e) => handleChecklistItemKeyDown(e, item.id, index)}
                             placeholder="Typ werkzaamheid en druk op Enter voor nieuwe regel"
                             data-checklist-input
-                            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all"
+                            className="flex-1 min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200 transition-all"
                           />
+                          {item.totalAmount != null && Number.isFinite(item.totalAmount) ? (
+                            <span className="text-sm text-slate-600 tabular-nums shrink-0 w-16 text-right">
+                              € {Number(item.totalAmount).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          ) : null}
                           {checklistItems.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleChecklistItemRemove(item.id)}
-                              className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+                              className="p-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-slate-600 rounded"
                               title="Verwijder regel"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -4151,7 +4338,7 @@ useEffect(() => {
                         </div>
                       ))}
                     </div>
-                  </label>
+                  )}
                 </div>
 
                 {/* Akkoordbedrag en Afspraken naast elkaar */}
@@ -4235,19 +4422,25 @@ useEffect(() => {
       ) : null}
 
       {errorModalOpen && error ? (
-        <div className="planning-modal-overlay" onClick={() => setErrorModalOpen(false)}>
+        <div className="planning-modal-overlay" onClick={() => { setErrorModalOpen(false); setError(null) }}>
           <div className="planning-modal" onClick={(event) => event.stopPropagation()}>
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-xl font-semibold text-slate-900">Foutmelding</h2>
+              <h2 className="text-xl font-semibold text-slate-900">
+                {errorModalType === 'hint' ? 'Let op' : 'Foutmelding'}
+              </h2>
               <button
-                className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                 type="button"
-                onClick={() => setErrorModalOpen(false)}
+                onClick={() => { setErrorModalOpen(false); setError(null) }}
               >
                 Sluiten
               </button>
             </div>
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className={`mt-4 rounded-xl px-4 py-3 text-sm ${
+              errorModalType === 'hint'
+                ? 'border border-slate-200 bg-slate-50 text-slate-700'
+                : 'border border-red-200 bg-red-50 text-red-700'
+            }`}>
               {error}
             </div>
           </div>
@@ -4278,8 +4471,10 @@ useEffect(() => {
                 >
                   <p className="font-semibold">{item.title || 'Werkorder'}</p>
                   <p className="text-amber-700">
-                    {item.scheduledAt ? new Date(item.scheduledAt).toLocaleString() : '-'} ·{' '}
-                    {item.assigneeName || 'Onbekend'}
+                    {item.scheduledAt ? new Date(item.scheduledAt).toLocaleString() : '-'}
+                    {Array.isArray(item.laborDescriptions) && item.laborDescriptions.length > 0
+                      ? ` · ${item.laborDescriptions.length === 1 ? item.laborDescriptions[0] : `${item.laborDescriptions.length} werkzaamheden`}`
+                      : ''}
                   </p>
                   <p className="text-amber-700">
                     Parts-status: {statusLabel(item.partsSummaryStatus)}
