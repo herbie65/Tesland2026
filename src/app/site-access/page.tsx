@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function SiteAccessPage() {
+function SiteAccessContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const next = searchParams.get('next') || '/'
@@ -71,5 +71,21 @@ export default function SiteAccessPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function SiteAccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm animate-pulse">
+          <div className="h-6 bg-slate-200 rounded w-3/4 mb-4" />
+          <div className="h-4 bg-slate-100 rounded w-full mb-4" />
+          <div className="h-10 bg-slate-100 rounded w-full" />
+        </div>
+      </div>
+    }>
+      <SiteAccessContent />
+    </Suspense>
   )
 }
