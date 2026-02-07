@@ -23,6 +23,15 @@ const asNumber = (v: unknown) => {
   return Number.isFinite(n) ? n : 0
 }
 
+/** Zet nooit "hoog" of "laag" achter arbeid op de factuur. */
+const laborNameForInvoice = (name: string): string => {
+  return name
+    .replace(/\bhoog\b/gi, '')
+    .replace(/\blaag\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Arbeid'
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     await requireRole(request, ['SYSTEM_ADMIN', 'MANAGEMENT'])
@@ -135,13 +144,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const rateEntry = laborHourlyRateName ? rates.find((r) => r.name === laborHourlyRateName) : rates[0]
         const ratePerHour = rateEntry?.ratePerHour ?? 0
         let minutes = 0
+        const rateName = rateEntry?.name ?? 'Standaard'
+        const safeRateName = /hoog|laag/i.test(rateName) ? 'Standaard' : rateName
         if (laborBillingMode === 'PLANNED') {
           minutes = Number((workOrder as any).planningItem?.durationMinutes ?? 0) || 0
-          laborName = `Arbeid (gepland, ${rateEntry?.name ?? 'Standaard'})`
+          laborName = `Arbeid (gepland, ${safeRateName})`
         } else {
           const sessions = (workOrder as any).workSessions ?? []
           minutes = sessions.reduce((sum: number, s: { durationMinutes?: number | null }) => sum + Number(s.durationMinutes ?? 0), 0)
-          laborName = `Arbeid (werkelijk, ${rateEntry?.name ?? 'Standaard'})`
+          laborName = `Arbeid (werkelijk, ${safeRateName})`
         }
         laborTotal = (minutes / 60) * ratePerHour
       }
@@ -150,8 +161,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const vatCalc = await calculateLineVat(laborTotal, rateCode)
         orderLines.push({
           productId: null,
-          sku: 'LABOR-INVOICE',
-          name: laborName,
+          sku: 'arbeid',
+          name: laborNameForInvoice(laborName),
           quantity: 1,
           unitPrice: laborTotal,
           totalPrice: laborTotal,
@@ -170,7 +181,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         const vatCalc = await calculateLineVat(total, rateCode)
         orderLines.push({
           productId: null,
-          sku,
+          sku: 'arbeid',
           name,
           quantity: 1,
           unitPrice: total,

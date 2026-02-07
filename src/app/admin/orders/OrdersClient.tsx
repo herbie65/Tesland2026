@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { isDutchLicensePlate, normalizeLicensePlate } from '@/lib/license-plate'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getToken } from '@/lib/api'
 
 type Customer = {
   id: string
@@ -72,6 +72,13 @@ export default function OrdersClient() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false)
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null)
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [openRowActionId, setOpenRowActionId] = useState<string | null>(null)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  const rowActionsRef = useRef<HTMLDivElement | null>(null)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'orderNumber',
     'title',
@@ -85,12 +92,12 @@ export default function OrdersClient() {
 
   const columnOptions = useMemo(
     () => [
-      { key: 'orderNumber', label: 'Ordernr' },
+      { key: 'orderNumber', label: 'Bestelnr' },
       { key: 'title', label: 'Titel' },
       { key: 'customer', label: 'Klant' },
       { key: 'vehicle', label: 'Voertuig' },
       { key: 'plate', label: 'Kenteken' },
-      { key: 'orderStatus', label: 'Orderstatus' },
+      { key: 'orderStatus', label: 'Bestelstatus' },
       { key: 'paymentStatus', label: 'Betaling' },
       { key: 'shipmentStatus', label: 'Verzending' },
       { key: 'paymentMethod', label: 'Betaalmethode' },
@@ -103,7 +110,7 @@ export default function OrdersClient() {
   )
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-orders-columns')
+    const stored = window.localStorage.getItem('tesland2026-orders-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -117,7 +124,7 @@ export default function OrdersClient() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem('tladmin-orders-columns', JSON.stringify(visibleColumns))
+    window.localStorage.setItem('tesland2026-orders-columns', JSON.stringify(visibleColumns))
   }, [visibleColumns])
 
   const customerLookup = useMemo(() => {
@@ -201,6 +208,28 @@ export default function OrdersClient() {
     loadItems()
   }, [])
 
+  useEffect(() => {
+    if (!actionsOpen) return
+    const onOutside = (e: MouseEvent) => {
+      if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+        setActionsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [actionsOpen])
+
+  useEffect(() => {
+    if (openRowActionId === null) return
+    const onOutside = (e: MouseEvent) => {
+      if (rowActionsRef.current && !rowActionsRef.current.contains(e.target as Node)) {
+        setOpenRowActionId(null)
+      }
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [openRowActionId])
+
   const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     try {
@@ -242,6 +271,7 @@ export default function OrdersClient() {
       setScheduledAt('')
       setNotes('')
       await loadItems()
+      setShowNewOrderModal(false)
     } catch (err: any) {
       setError(err.message)
     }
@@ -311,6 +341,89 @@ export default function OrdersClient() {
       return acc
     }, {})
   }, [shippingMethods])
+
+  const findCodeByLabel = (entries: StatusEntry[], label: string): string | null => {
+    const entry = entries.find((e) => e.label.toLowerCase().includes(label.toLowerCase()))
+    return entry?.code ?? null
+  }
+
+  const handlePaklijst = async (orderId: string) => {
+    const token = getToken()
+    if (!token) {
+      setError('Niet ingelogd')
+      return
+    }
+    try {
+      const res = await fetch(`/api/orders/${orderId}/paklijst`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `Paklijst laden mislukt (${res.status})`)
+      }
+      const html = await res.text()
+      const win = window.open('', '_blank')
+      if (win) {
+        win.document.write(html)
+        win.document.close()
+      } else {
+        setError('Popup geblokkeerd – sta pop-ups toe voor deze site.')
+      }
+      setActionsOpen(false)
+    } catch (err: any) {
+      setError(err.message || 'Fout bij genereren paklijst')
+    }
+  }
+
+  const handleOrderAction = async (
+    orderId: string,
+    action: 'annuleren' | 'verwerken' | 'verzenden'
+  ) => {
+    setActionLoading(action)
+    setError(null)
+    try {
+      let body: { orderStatus?: string; shipmentStatus?: string } = {}
+      if (action === 'annuleren') {
+        const code = findCodeByLabel(orderStatuses, 'Geannuleerd')
+        if (!code) throw new Error('Geen status "Geannuleerd" gevonden in instellingen')
+        body.orderStatus = code
+      } else if (action === 'verwerken') {
+        const code = findCodeByLabel(orderStatuses, 'In verwerking')
+        if (!code) throw new Error('Geen status "In verwerking" gevonden in instellingen')
+        body.orderStatus = code
+      } else {
+        const code = findCodeByLabel(shipmentStatuses, 'Verzonden')
+        if (!code) throw new Error('Geen verzendstatus "Verzonden" gevonden in instellingen')
+        body.shipmentStatus = code
+      }
+      const response = await apiFetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const data = response
+      if (!data?.success) {
+        throw new Error(data?.error || 'Actie mislukt')
+      }
+      await loadItems()
+      if (viewingOrder?.id === orderId) {
+        setViewingOrder((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...body
+              }
+            : null
+        )
+      }
+      setActionsOpen(false)
+      setOpenRowActionId(null)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const toggleColumn = (key: string) => {
     setVisibleColumns((prev) =>
@@ -399,176 +512,318 @@ export default function OrdersClient() {
 
   return (
     <div className="space-y-10">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold">Nieuwe order</h2>
-        <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Titel
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Orderstatus
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={orderStatus}
-              onChange={(event) => setOrderStatus(event.target.value)}
-              disabled={!statusesReady}
-            >
-              <option value="">Kies status</option>
-              {orderStatuses.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Betalingsstatus
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={paymentStatus}
-              onChange={(event) => setPaymentStatus(event.target.value)}
-              disabled={!statusesReady}
-            >
-              <option value="">Kies betalingsstatus</option>
-              {paymentStatuses.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Verzendstatus
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={shipmentStatus}
-              onChange={(event) => setShipmentStatus(event.target.value)}
-              disabled={!statusesReady}
-            >
-              <option value="">Kies verzendstatus</option>
-              {shipmentStatuses.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Betaalmethode
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={paymentMethod}
-              onChange={(event) => setPaymentMethod(event.target.value)}
-              disabled={!paymentMethods.length}
-            >
-              <option value="">Kies betaalmethode</option>
-              {paymentMethods.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Verzendmethode
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={shippingMethod}
-              onChange={(event) => setShippingMethod(event.target.value)}
-              disabled={!shippingMethods.length}
-            >
-              <option value="">Kies verzendmethode</option>
-              {shippingMethods.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Klant
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
-            >
-              <option value="none">Niet gekoppeld</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Voertuig
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
-              value={vehicleId}
-              onChange={(event) => setVehicleId(event.target.value)}
-            >
-              <option value="none">Niet gekoppeld</option>
-              {vehicles.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.brand} {vehicle.model}
-                  {vehicle.licensePlate
-                    ? ` (${normalizeLicensePlate(vehicle.licensePlate)})`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Bedrag
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              type="number"
-              min="0"
-              step="0.01"
-              value={totalAmount}
-              onChange={(event) => setTotalAmount(event.target.value)}
-              placeholder="Optioneel"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Planning datum/tijd
-            <input
-              className="rounded-lg border border-slate-200 px-3 py-2 text-base"
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(event) => setScheduledAt(event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
-            Notities
-            <textarea
-              className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Optioneel"
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
-              type="submit"
-            >
-              Opslaan
-            </button>
+      {showNewOrderModal ? (
+        <div className="planning-modal-overlay" onClick={() => setShowNewOrderModal(false)}>
+          <div className="planning-modal max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-xl font-semibold mb-4">Nieuwe bestelling</h2>
+            <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreate}>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Titel
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Bestelstatus
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={orderStatus}
+                  onChange={(event) => setOrderStatus(event.target.value)}
+                  disabled={!statusesReady}
+                >
+                  <option value="">Kies status</option>
+                  {orderStatuses.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Betalingsstatus
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={paymentStatus}
+                  onChange={(event) => setPaymentStatus(event.target.value)}
+                  disabled={!statusesReady}
+                >
+                  <option value="">Kies betalingsstatus</option>
+                  {paymentStatuses.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Verzendstatus
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={shipmentStatus}
+                  onChange={(event) => setShipmentStatus(event.target.value)}
+                  disabled={!statusesReady}
+                >
+                  <option value="">Kies verzendstatus</option>
+                  {shipmentStatuses.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Betaalmethode
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={paymentMethod}
+                  onChange={(event) => setPaymentMethod(event.target.value)}
+                  disabled={!paymentMethods.length}
+                >
+                  <option value="">Kies betaalmethode</option>
+                  {paymentMethods.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Verzendmethode
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={shippingMethod}
+                  onChange={(event) => setShippingMethod(event.target.value)}
+                  disabled={!shippingMethods.length}
+                >
+                  <option value="">Kies verzendmethode</option>
+                  {shippingMethods.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Klant
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={customerId}
+                  onChange={(event) => setCustomerId(event.target.value)}
+                >
+                  <option value="none">Niet gekoppeld</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Voertuig
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-base"
+                  value={vehicleId}
+                  onChange={(event) => setVehicleId(event.target.value)}
+                >
+                  <option value="none">Niet gekoppeld</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.brand} {vehicle.model}
+                      {vehicle.licensePlate
+                        ? ` (${normalizeLicensePlate(vehicle.licensePlate)})`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Bedrag
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={totalAmount}
+                  onChange={(event) => setTotalAmount(event.target.value)}
+                  placeholder="Optioneel"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Planning datum/tijd
+                <input
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700 sm:col-span-2">
+                Notities
+                <textarea
+                  className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-base"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  placeholder="Optioneel"
+                />
+              </label>
+              <div className="flex items-end gap-2 sm:col-span-2">
+                <button
+                  className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+                  type="submit"
+                >
+                  Opslaan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowNewOrderModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-slate-700 hover:bg-slate-50"
+                >
+                  Annuleren
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-      </section>
+        </div>
+      ) : null}
+
+      {viewingOrder ? (
+        <div className="planning-modal-overlay" onClick={() => setViewingOrder(null)}>
+          <div className="planning-modal max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+              <h2 className="text-xl font-semibold">
+                Bestelling {viewingOrder.orderNumber || viewingOrder.id}
+              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative" ref={actionsRef}>
+                  <button
+                    type="button"
+                    onClick={() => setActionsOpen((o) => !o)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Acties ▾
+                  </button>
+                  {actionsOpen ? (
+                    <div className="absolute right-0 top-full z-10 mt-1 min-w-[160px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                        onClick={() => handlePaklijst(viewingOrder.id)}
+                      >
+                        Paklijst
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => handleOrderAction(viewingOrder.id, 'annuleren')}
+                        disabled={actionLoading !== null}
+                      >
+                        {actionLoading === 'annuleren' ? '…' : 'Annuleren'}
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => handleOrderAction(viewingOrder.id, 'verwerken')}
+                        disabled={actionLoading !== null}
+                      >
+                        {actionLoading === 'verwerken' ? '…' : 'Verwerken'}
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => handleOrderAction(viewingOrder.id, 'verzenden')}
+                        disabled={actionLoading !== null}
+                      >
+                        {actionLoading === 'verzenden' ? '…' : 'Verzenden'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingOrder(null)}
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Sluiten
+                </button>
+              </div>
+            </div>
+            <dl className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Titel</dt>
+                <dd className="text-slate-900">{viewingOrder.title}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Bestelnr</dt>
+                <dd className="text-slate-900">{viewingOrder.orderNumber || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Klant</dt>
+                <dd className="text-slate-900">{viewingOrder.customerId ? customerLookup[viewingOrder.customerId] || viewingOrder.customerId : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Voertuig</dt>
+                <dd className="text-slate-900">{viewingOrder.vehicleId ? vehicleLookup[viewingOrder.vehicleId] || viewingOrder.vehicleLabel : '-'}</dd>
+              </div>
+              {viewingOrder.vehiclePlate ? (
+                <div>
+                  <dt className="text-xs font-medium text-slate-500">Kenteken</dt>
+                  <dd>
+                    <span className={`license-plate text-sm ${isDutchLicensePlate(viewingOrder.vehiclePlate) ? 'nl' : ''}`}>
+                      {normalizeLicensePlate(viewingOrder.vehiclePlate)}
+                    </span>
+                  </dd>
+                </div>
+              ) : null}
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Bestelstatus</dt>
+                <dd className="text-slate-900">{viewingOrder.orderStatus ? orderStatusLabel[viewingOrder.orderStatus] || viewingOrder.orderStatus : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Betalingsstatus</dt>
+                <dd className="text-slate-900">{viewingOrder.paymentStatus ? paymentStatusLabel[viewingOrder.paymentStatus] || viewingOrder.paymentStatus : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Verzendstatus</dt>
+                <dd className="text-slate-900">{viewingOrder.shipmentStatus ? shipmentStatusLabel[viewingOrder.shipmentStatus] || viewingOrder.shipmentStatus : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Betaalmethode</dt>
+                <dd className="text-slate-900">{viewingOrder.paymentMethod ? paymentMethodLabel[viewingOrder.paymentMethod] || viewingOrder.paymentMethod : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Verzendmethode</dt>
+                <dd className="text-slate-900">{viewingOrder.shippingMethod ? shippingMethodLabel[viewingOrder.shippingMethod] || viewingOrder.shippingMethod : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Bedrag</dt>
+                <dd className="text-slate-900">{Number.isFinite(Number(viewingOrder.totalAmount)) ? `€${Number(viewingOrder.totalAmount).toFixed(2)}` : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Planning</dt>
+                <dd className="text-slate-900">{viewingOrder.scheduledAt ? new Date(viewingOrder.scheduledAt).toLocaleString() : '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Aangemaakt</dt>
+                <dd className="text-slate-900">{viewingOrder.createdAt ? new Date(viewingOrder.createdAt).toLocaleString() : '-'}</dd>
+              </div>
+              {viewingOrder.notes ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-xs font-medium text-slate-500">Notities</dt>
+                  <dd className="mt-1 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-900 whitespace-pre-wrap">{viewingOrder.notes}</dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
+        </div>
+      ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold">Orders</h2>
+            <h2 className="text-xl font-semibold">Bestellingen</h2>
             {!statusesReady ? (
               <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 Statusdefinities worden geladen...
@@ -576,6 +831,13 @@ export default function OrdersClient() {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowNewOrderModal(true)}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-800"
+            >
+              Nieuwe bestelling
+            </button>
             <input
               className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
               placeholder="Zoeken..."
@@ -627,7 +889,7 @@ export default function OrdersClient() {
         {loading ? (
           <p className="mt-4 text-sm text-slate-500">Laden...</p>
         ) : sortedItems.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">Geen orders gevonden.</p>
+          <p className="mt-4 text-sm text-slate-500">Geen bestellingen gevonden.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -636,7 +898,7 @@ export default function OrdersClient() {
                   {visibleColumns.includes('orderNumber') ? (
                     <th className="px-4 py-2 text-left">
                       <button type="button" onClick={() => updateSort('orderNumber')}>
-                        Ordernr
+                        Bestelnr
                       </button>
                     </th>
                   ) : null}
@@ -671,7 +933,7 @@ export default function OrdersClient() {
                   {visibleColumns.includes('orderStatus') ? (
                     <th className="px-4 py-2 text-left">
                       <button type="button" onClick={() => updateSort('orderStatus')}>
-                        Orderstatus
+                        Bestelstatus
                       </button>
                     </th>
                   ) : null}
@@ -729,7 +991,11 @@ export default function OrdersClient() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {sortedItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
+                  <tr
+                    key={item.id}
+                    className="hover:bg-slate-50 cursor-pointer"
+                    onDoubleClick={() => setViewingOrder(item)}
+                  >
                     {visibleColumns.includes('orderNumber') ? (
                       <td className="px-4 py-2 font-medium text-slate-900">{item.orderNumber || item.id}</td>
                     ) : null}
@@ -807,8 +1073,8 @@ export default function OrdersClient() {
                         {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
+                    <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-wrap justify-end items-center gap-2">
                         <select
                           className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs"
                           value={item.orderStatus || ''}
@@ -822,6 +1088,53 @@ export default function OrdersClient() {
                             </option>
                           ))}
                         </select>
+                        <div
+                          className="relative"
+                          ref={openRowActionId === item.id ? rowActionsRef : undefined}
+                        >
+                          <button
+                            type="button"
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                            onClick={() => setOpenRowActionId(openRowActionId === item.id ? null : item.id)}
+                          >
+                            Acties ▾
+                          </button>
+                          {openRowActionId === item.id ? (
+                            <div className="absolute right-0 top-full z-20 mt-1 min-w-[140px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                              <button
+                                type="button"
+                                className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                onClick={() => { handlePaklijst(item.id); setOpenRowActionId(null) }}
+                              >
+                                Paklijst
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                onClick={() => handleOrderAction(item.id, 'annuleren')}
+                                disabled={actionLoading !== null}
+                              >
+                                {actionLoading === 'annuleren' ? '…' : 'Annuleren'}
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                onClick={() => handleOrderAction(item.id, 'verwerken')}
+                                disabled={actionLoading !== null}
+                              >
+                                {actionLoading === 'verwerken' ? '…' : 'Verwerken'}
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                onClick={() => handleOrderAction(item.id, 'verzenden')}
+                                disabled={actionLoading !== null}
+                              >
+                                {actionLoading === 'verzenden' ? '…' : 'Verzenden'}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                         <button
                           className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
                           type="button"

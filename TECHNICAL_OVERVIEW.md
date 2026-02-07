@@ -1,8 +1,8 @@
-# 🚗 TLadmin - Complete Technische Documentatie
+# 🚗 Tesland2026 - Complete Technische Documentatie
 
-## 📋 Wat is TLadmin?
+## 📋 Wat is Tesland2026?
 
-**TLadmin** is een complete **garage management systeem** (Garage Management System / Workshop Management Software) voor autobedrijven. Het is specifiek gebouwd voor **Tesland2026** om het volledige bedrijfsproces te beheren:
+**Tesland2026** is een complete **garage management systeem** (Garage Management System / Workshop Management Software) voor autobedrijven. Het is specifiek gebouwd voor **Tesland2026** om het volledige bedrijfsproces te beheren:
 
 ### Hoofdfuncties
 
@@ -262,7 +262,7 @@ Page (website content)
 ## 📁 Project Structuur
 
 ```
-TLadmin/
+Tesland2026/
 ├── src/
 │   ├── app/
 │   │   ├── page.tsx                    # Public homepage
@@ -433,7 +433,7 @@ useEffect(() => {
 
 ## 🔄 Data Import: Automaat Migratie
 
-### Van Automaat naar TLadmin
+### Van Automaat naar Tesland2026
 
 **Automaat** = Het oude garage systeem van de klant
 
@@ -582,7 +582,7 @@ npm run prisma:seed
 
 # Of handmatig:
 ssh root@VPS_IP
-cd /opt/tladmin
+cd /opt/tesland2026
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -760,7 +760,7 @@ SCHEMA_UPDATE_README.md       # Database schema updates
 ```bash
 # Clone & install
 git clone <repo>
-cd TLadmin
+cd Tesland2026
 npm install
 
 # Setup .env.local
@@ -879,6 +879,6 @@ cat backup.sql | docker compose exec -T postgres psql -U appuser tesland
 
 ---
 
-**Dit is TLadmin - Een complete, moderne garage management oplossing! 🚗✨**
+**Dit is Tesland2026 - Een complete, moderne garage management oplossing! 🚗✨**
 
 *Gebouwd met ❤️ voor Tesland2026*

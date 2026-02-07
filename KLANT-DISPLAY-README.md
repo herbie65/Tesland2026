@@ -245,4 +245,4 @@ Bij vragen of problemen:
 
 ## 📄 Licentie
 
-Dit systeem is onderdeel van TLadmin - Tesland Business Management System.
+Dit systeem is onderdeel van Tesland2026 - Tesland Business Management System.

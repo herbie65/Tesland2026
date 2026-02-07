@@ -188,13 +188,13 @@ export async function createDhlLabel(input: CreateDhlLabelInput): Promise<Create
       lines: { orderBy: { createdAt: 'asc' } }
     }
   })
-  if (!order) return { success: false, error: 'Order niet gevonden' }
+  if (!order) return { success: false, error: 'Bestelling niet gevonden' }
 
   const shippingAddress =
     order.shippingAddress && typeof order.shippingAddress === 'object'
       ? (order.shippingAddress as Record<string, unknown>)
       : null
-  if (!shippingAddress) return { success: false, error: 'Order mist shippingAddress' }
+  if (!shippingAddress) return { success: false, error: 'Bestelling mist shippingAddress' }
 
   const receiverCountryCode = normalizeCountryCode(
     shippingAddress.countryCode || shippingAddress.country || shippingAddress.land

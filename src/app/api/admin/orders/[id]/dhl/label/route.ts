@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const order = await prisma.order.findUnique({ where: { id } })
     if (!order) {
-      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 })
+      return NextResponse.json({ success: false, error: 'Bestelling niet gevonden' }, { status: 404 })
     }
 
     const result = await createDhlLabel({ orderId: id })

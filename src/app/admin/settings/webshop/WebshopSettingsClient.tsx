@@ -143,7 +143,7 @@ export default function WebshopSettingsClient() {
           />
         </label>
         <label className="grid gap-1 text-sm font-medium text-slate-700">
-          Order status (checkout)
+          Bestelstatus (checkout)
           <input
             className="rounded-lg border border-slate-200 px-3 py-2"
             value={settings.orderStatusOnCheckout}

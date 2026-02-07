@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-TLadmin is a business management system for an automotive service company (Tesla parts focus), built for the Dutch market. It manages customers, vehicles, work orders, inventory, invoicing, and integrates with external systems like RDW (Dutch vehicle authority), Magento (e-commerce), and VIES (EU VAT validation).
+Tesland2026 is a business management system for an automotive service company (Tesla parts focus), built for the Dutch market. It manages customers, vehicles, work orders, inventory, invoicing, and integrates with external systems like RDW (Dutch vehicle authority), Magento (e-commerce), and VIES (EU VAT validation).
 
 ## Tech Stack
 
@@ -117,6 +117,10 @@ Tracks overall parts readiness for a work order:
 - `ONDERWEG` - In transit
 - `ONTVANGEN` - Received
 - `KLAAR` - Ready for work
+
+### Bestellingen vs Werkorders
+- **Bestellingen** (Verkopen → Bestellingen) = verkooporders alleen (Order-model: webshop, verkoop, betaling/verzending). Gebruik `/api/orders` en de bestellingen-pagina alleen voor dit type.
+- **Werkorders** = werkplaats (planning, uitvoering, onderdelen, GEREED/GEFACTUREERD). Afgewerkte werkorders worden **niet** in de bestellingenlijst opgenomen; de twee stromen blijven gescheiden. Een gezamenlijk overzicht (bijv. “nog te factureren”) kan via een apart rapport of pagina.
 
 ## External Integrations
 

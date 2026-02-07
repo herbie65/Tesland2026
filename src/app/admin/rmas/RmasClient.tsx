@@ -31,7 +31,7 @@ export default function RmasClient() {
 
   const columnOptions = [
     { key: 'rmaNumber', label: 'RMA' },
-    { key: 'orderId', label: 'Order' },
+    { key: 'orderId', label: 'Bestelling' },
     { key: 'customerId', label: 'Klant' },
     { key: 'status', label: 'Status' },
     { key: 'notes', label: 'Notities' },
@@ -39,7 +39,7 @@ export default function RmasClient() {
   ]
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-rmas-columns')
+    const stored = window.localStorage.getItem('tesland2026-rmas-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -53,7 +53,7 @@ export default function RmasClient() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem('tladmin-rmas-columns', JSON.stringify(visibleColumns))
+    window.localStorage.setItem('tesland2026-rmas-columns', JSON.stringify(visibleColumns))
   }, [visibleColumns])
 
   const loadItems = async () => {

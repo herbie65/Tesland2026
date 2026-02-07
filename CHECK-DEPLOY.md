@@ -2,14 +2,14 @@
 
 ## 1. Database niet bereikbaar
 
-Met `docker-compose.yml` (alleen tladmin, `network_mode: host`) draait er **geen** Postgres-container. De app praat met Postgres op de **host** of elders.
+Met `docker-compose.yml` (alleen tesland2026, `network_mode: host`) draait er **geen** Postgres-container. De app praat met Postgres op de **host** of elders.
 
 - **PostgreSQL op dezelfde server (poort 5432):**  
   In `.env.production` moet staan:
   ```bash
   DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/tesland?schema=public
   ```
-  Vervang USER en PASSWORD. **Niet** `@postgres:5432` gebruiken (die hostnaam bestaat niet als je alleen tladmin draait).
+  Vervang USER en PASSWORD. **Niet** `@postgres:5432` gebruiken (die hostnaam bestaat niet als je alleen tesland2026 draait).
 
 - **Controleren of Postgres draait:**
   ```bash

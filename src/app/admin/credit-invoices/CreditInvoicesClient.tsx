@@ -31,7 +31,7 @@ export default function CreditInvoicesClient() {
 
   const columnOptions = [
     { key: 'creditNumber', label: 'Creditnr' },
-    { key: 'orderId', label: 'Order' },
+    { key: 'orderId', label: 'Bestelling' },
     { key: 'customerId', label: 'Klant' },
     { key: 'amount', label: 'Bedrag' },
     { key: 'reason', label: 'Reden' },
@@ -39,7 +39,7 @@ export default function CreditInvoicesClient() {
   ]
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-credit-columns')
+    const stored = window.localStorage.getItem('tesland2026-credit-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -53,7 +53,7 @@ export default function CreditInvoicesClient() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem('tladmin-credit-columns', JSON.stringify(visibleColumns))
+    window.localStorage.setItem('tesland2026-credit-columns', JSON.stringify(visibleColumns))
   }, [visibleColumns])
 
   const loadItems = async () => {

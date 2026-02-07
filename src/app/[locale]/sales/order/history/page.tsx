@@ -80,7 +80,7 @@ export default function OrderHistoryPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left">Order</th>
+                    <th className="px-4 py-3 text-left">Bestelling</th>
                     <th className="px-4 py-3 text-left">Status</th>
                     <th className="px-4 py-3 text-left">Betaling</th>
                     <th className="px-4 py-3 text-left">Totaal</th>

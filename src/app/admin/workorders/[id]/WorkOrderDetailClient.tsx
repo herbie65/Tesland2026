@@ -164,6 +164,7 @@ export default function WorkOrderDetailClient() {
 
   // Factureren modal (management: controle werkzaamheden/onderdelen, tariefkeuze)
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoiceSuccessNumber, setInvoiceSuccessNumber] = useState<string | null>(null)
   const [invoicePrepWorkPartsChecked, setInvoicePrepWorkPartsChecked] = useState(false)
   const [laborBillingMode, setLaborBillingMode] = useState<'PLANNED' | 'ACTUAL' | 'FIXED'>('ACTUAL')
   const [laborFixedAmountInput, setLaborFixedAmountInput] = useState('')
@@ -807,8 +808,7 @@ export default function WorkOrderDetailClient() {
         throw new Error(res?.error || 'Factuur maken mislukt')
       }
       setShowInvoiceModal(false)
-      alert(`Factuur gemaakt: ${res.invoice?.invoiceNumber || ''}`)
-      router.push('/admin/invoices')
+      setInvoiceSuccessNumber(res.invoice?.invoiceNumber || '')
     } catch (e: any) {
       alert(`Fout bij factuur maken: ${e.message}`)
     } finally {
@@ -2180,6 +2180,42 @@ export default function WorkOrderDetailClient() {
                   className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Annuleren
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Factuur gemaakt: optie om werkorder op iPad te tonen */}
+        {invoiceSuccessNumber && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+              <p className="text-base font-medium text-slate-900 mb-4">Factuur gemaakt: {invoiceSuccessNumber}</p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleSendToDisplay()
+                    setInvoiceSuccessNumber(null)
+                  }}
+                  disabled={sendingToDisplay}
+                  className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {sendingToDisplay ? 'Bezig...' : 'Laat zien op iPad'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { router.push('/admin/invoices'); setInvoiceSuccessNumber(null) }}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Naar facturen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceSuccessNumber(null)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Sluiten
                 </button>
               </div>
             </div>

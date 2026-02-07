@@ -67,7 +67,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: WrenchScrewdriverIcon,
     children: [
       { type: 'link', name: 'Overzicht', href: '/admin/magazijn', icon: WrenchScrewdriverIcon },
-      { type: 'link', name: 'Orders', href: '/admin/orders', icon: ShoppingCartIcon },
       { type: 'link', name: "RMA's", href: '/admin/rmas', icon: ArrowUturnLeftIcon },
       { type: 'link', name: 'Producten', href: '/admin/products', icon: CubeIcon }
     ]
@@ -77,7 +76,7 @@ const NAV_ITEMS: NavItem[] = [
     name: 'Verkopen',
     icon: ShoppingCartIcon,
     children: [
-      { type: 'link', name: 'Orders', href: '/admin/orders', icon: ShoppingCartIcon },
+      { type: 'link', name: 'Bestellingen', href: '/admin/orders', icon: ShoppingCartIcon },
       { type: 'link', name: 'Offertes', href: '/admin/offertes', icon: DocumentTextIcon },
       { type: 'link', name: 'Facturen', href: '/admin/invoices', icon: DocumentTextIcon },
       { type: 'link', name: 'Creditfacturen', href: '/admin/credit-invoices', icon: ReceiptRefundIcon }

@@ -2,7 +2,7 @@
 
 ## ✅ Wat is er gebouwd?
 
-Een **volledig werkend import systeem** dat alle producten, categorieën en afbeeldingen van uw Magento webshop (tesland.com) importeert naar uw nieuwe TLadmin systeem.
+Een **volledig werkend import systeem** dat alle producten, categorieën en afbeeldingen van uw Magento webshop (tesland.com) importeert naar uw nieuwe Tesland2026 systeem.
 
 ---
 
@@ -11,7 +11,7 @@ Een **volledig werkend import systeem** dat alle producten, categorieën en afbe
 ### Stap 1: Controle (2 minuten)
 
 ```bash
-cd /Users/herbertkats/Desktop/Tesland2026/TLadmin
+cd /Users/herbertkats/Desktop/Tesland2026
 npm install
 npm run import:magento:check
 ```
@@ -69,7 +69,7 @@ npm run import:magento:sync
 # OF automatisch elke nacht om 02:00
 crontab -e
 # Voeg toe:
-0 2 * * * cd /Users/herbertkats/Desktop/Tesland2026/TLadmin && npm run import:magento:sync >> /var/log/magento-sync.log 2>&1
+0 2 * * * cd /Users/herbertkats/Desktop/Tesland2026 && npm run import:magento:sync >> /var/log/magento-sync.log 2>&1
 ```
 
 Dit update alleen **gewijzigde** producten en voorraad (duurt 5-15 minuten).
@@ -259,7 +259,7 @@ curl -H "Authorization: Bearer phm668kh5eas2vuwk72i6q7nu4m3d1tz" \
 ### Foto's niet zichtbaar?
 
 ```bash
-chmod -R 755 /Users/herbertkats/Desktop/Tesland2026/TLadmin/public/media/products/
+chmod -R 755 /Users/herbertkats/Desktop/Tesland2026/public/media/products/
 ```
 
 ---
@@ -302,7 +302,7 @@ SELECT * FROM magento_sync_logs ORDER BY started_at DESC LIMIT 1;
 **Ready?** Begin hier:
 
 ```bash
-cd /Users/herbertkats/Desktop/Tesland2026/TLadmin
+cd /Users/herbertkats/Desktop/Tesland2026
 npm run import:magento:check
 ```
 

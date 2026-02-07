@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import QRCode from 'qrcode'
 import { apiFetch, getToken } from '@/lib/api'
 
 type Invoice = {
@@ -8,7 +9,7 @@ type Invoice = {
   invoiceNumber?: string | null
   orderId?: string | null
   customerId?: string | null
-  order?: { orderNumber: string } | null
+  order?: { orderNumber: string; title?: string | null } | null
   customer?: { name: string } | null
   totalAmount?: number | string | null
   paymentStatus?: string | null
@@ -23,6 +24,10 @@ export default function InvoicesClient() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState('createdAt')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [mollieLoadingId, setMollieLoadingId] = useState<string | null>(null)
+  const [mollieModal, setMollieModal] = useState<{ checkoutUrl: string; invoiceNumber?: string } | null>(null)
+  const [mollieQrDataUrl, setMollieQrDataUrl] = useState<string | null>(null)
+  const [sendingToDisplay, setSendingToDisplay] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     'invoiceNumber',
     'orderNumber',
@@ -31,22 +36,35 @@ export default function InvoicesClient() {
     'paymentStatus',
     'dueDate',
     'createdAt',
-    'pdf'
+    'pdf',
+    'mollie'
   ])
+
+  /** Factuur uit werkorder: toon werkordernummer; anders ordernummer. */
+  const orderOrWorkOrderDisplay = (item: Invoice): string => {
+    const o = item.order
+    if (!o) return '-'
+    const title = (o.title || '').trim()
+    if (title.toLowerCase().startsWith('werkorder ')) {
+      return title.replace(/^werkorder\s+/i, '').trim() || '-'
+    }
+    return o.orderNumber || '-'
+  }
 
   const columnOptions = [
     { key: 'invoiceNumber', label: 'Factuurnr' },
-    { key: 'orderNumber', label: 'Order' },
+    { key: 'orderNumber', label: 'Bestelling / Werkorder' },
     { key: 'customerName', label: 'Klant' },
     { key: 'total', label: 'Totaal' },
     { key: 'paymentStatus', label: 'Status' },
     { key: 'dueDate', label: 'Vervalt' },
     { key: 'createdAt', label: 'Aangemaakt' },
-    { key: 'pdf', label: 'PDF' }
+    { key: 'pdf', label: 'PDF' },
+    { key: 'mollie', label: 'Betaal' }
   ]
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('tladmin-invoices-columns')
+    const stored = window.localStorage.getItem('tesland2026-invoices-columns')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -60,7 +78,7 @@ export default function InvoicesClient() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem('tladmin-invoices-columns', JSON.stringify(visibleColumns))
+    window.localStorage.setItem('tesland2026-invoices-columns', JSON.stringify(visibleColumns))
   }, [visibleColumns])
 
   const loadItems = async () => {
@@ -89,6 +107,52 @@ export default function InvoicesClient() {
     )
   }
 
+  const handleMolliePayment = async (item: Invoice) => {
+    const amount = Number(item.totalAmount ?? 0)
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Factuur heeft geen bedrag om te betalen.')
+      return
+    }
+    const paid = (item.paymentStatus || '').toUpperCase()
+    if (paid === 'PAID' || paid === 'BETAALD') {
+      alert('Deze factuur is al betaald.')
+      return
+    }
+    setMollieLoadingId(item.id)
+    setError(null)
+    try {
+      const data = await apiFetch<{ success: boolean; checkoutUrl?: string; error?: string }>('/api/payments/mollie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: item.id,
+          amount: amount.toFixed(2),
+          description: `Factuur ${item.invoiceNumber || item.id}`
+        })
+      })
+      if (!data?.success || !data.checkoutUrl) {
+        throw new Error(data?.error || 'Mollie betaling aanmaken mislukt')
+      }
+      setMollieModal({ checkoutUrl: data.checkoutUrl, invoiceNumber: item.invoiceNumber ?? undefined })
+      await loadItems()
+    } catch (err: any) {
+      setError(err.message || 'Mollie betaling mislukt')
+      alert(err.message || 'Mollie betaling mislukt. Controleer Instellingen → Mollie.')
+    } finally {
+      setMollieLoadingId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (!mollieModal?.checkoutUrl) {
+      setMollieQrDataUrl(null)
+      return
+    }
+    QRCode.toDataURL(mollieModal.checkoutUrl, { width: 260, margin: 2 })
+      .then(setMollieQrDataUrl)
+      .catch(() => setMollieQrDataUrl(null))
+  }, [mollieModal?.checkoutUrl])
+
   const updateSort = (key: string) => {
     if (sortKey === key) {
       setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
@@ -104,7 +168,7 @@ export default function InvoicesClient() {
     return items.filter((item) => {
       const fields = [
         item.invoiceNumber || item.id,
-        item.order?.orderNumber || '',
+        orderOrWorkOrderDisplay(item),
         item.customer?.name || '',
         item.paymentStatus || '',
         item.dueDate ? new Date(item.dueDate).toISOString() : ''
@@ -122,7 +186,7 @@ export default function InvoicesClient() {
           case 'invoiceNumber':
             return item.invoiceNumber || item.id
           case 'orderNumber':
-            return item.order?.orderNumber || ''
+            return orderOrWorkOrderDisplay(item)
           case 'customerName':
             return item.customer?.name || ''
           case 'total':
@@ -203,7 +267,7 @@ export default function InvoicesClient() {
                 {visibleColumns.includes('orderNumber') ? (
                   <th className="px-4 py-2 text-left">
                     <button type="button" onClick={() => updateSort('orderNumber')}>
-                      Order
+                      Bestelling / Werkorder
                     </button>
                   </th>
                 ) : null}
@@ -238,6 +302,9 @@ export default function InvoicesClient() {
                 {visibleColumns.includes('pdf') ? (
                   <th className="px-4 py-2 text-left">PDF</th>
                 ) : null}
+                {visibleColumns.includes('mollie') ? (
+                  <th className="px-4 py-2 text-left">Betaal</th>
+                ) : null}
                 {visibleColumns.includes('createdAt') ? (
                   <th className="px-4 py-2 text-left">
                     <button type="button" onClick={() => updateSort('createdAt')}>
@@ -254,7 +321,7 @@ export default function InvoicesClient() {
                     <td className="px-4 py-2 font-medium text-slate-900">{item.invoiceNumber || item.id}</td>
                   ) : null}
                   {visibleColumns.includes('orderNumber') ? (
-                    <td className="px-4 py-2 text-slate-700">{item.order?.orderNumber ?? '-'}</td>
+                    <td className="px-4 py-2 text-slate-700">{orderOrWorkOrderDisplay(item)}</td>
                   ) : null}
                   {visibleColumns.includes('customerName') ? (
                     <td className="px-4 py-2 text-slate-700">{item.customer?.name ?? '-'}</td>
@@ -321,12 +388,116 @@ export default function InvoicesClient() {
                       </button>
                     </td>
                   ) : null}
+                  {visibleColumns.includes('mollie') ? (
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMolliePayment(item)}
+                        disabled={
+                          mollieLoadingId === item.id ||
+                          !Number.isFinite(Number(item.totalAmount)) ||
+                          Number(item.totalAmount) <= 0 ||
+                          ['PAID', 'BETAALD'].includes((item.paymentStatus || '').toUpperCase())
+                        }
+                        className="text-emerald-600 hover:text-emerald-800 disabled:text-slate-400 disabled:cursor-not-allowed text-sm font-medium"
+                      >
+                        {mollieLoadingId === item.id ? '…' : 'Mollie'}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Modal: betaallink voor klant (QR + link) */}
+      {mollieModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setMollieModal(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mollie-modal-title"
+        >
+          <div
+            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="mollie-modal-title" className="text-lg font-semibold text-slate-900">
+              Betaallink voor klant{mollieModal.invoiceNumber ? ` – Factuur ${mollieModal.invoiceNumber}` : ''}
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Laat de klant deze QR code scannen om te betalen, of stuur de betaallink (bijv. per e-mail of app).
+            </p>
+            <div className="mt-4 flex justify-center">
+              {mollieQrDataUrl ? (
+                <img src={mollieQrDataUrl} alt="QR code betaallink" className="rounded-lg border border-slate-200" />
+              ) : (
+                <div className="h-[260px] w-[260px] animate-pulse rounded-lg bg-slate-100" />
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  setSendingToDisplay(true)
+                  try {
+                    await apiFetch('/api/display/active', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        payment: {
+                          checkoutUrl: mollieModal.checkoutUrl,
+                          invoiceNumber: mollieModal.invoiceNumber,
+                        },
+                      }),
+                    })
+                    alert('Betaallink wordt nu getoond op het iPad-display.')
+                  } catch (err: any) {
+                    alert(err?.message || 'Fout bij tonen op iPad.')
+                  } finally {
+                    setSendingToDisplay(false)
+                  }
+                }}
+                disabled={sendingToDisplay}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {sendingToDisplay ? 'Bezig…' : 'Laat zien op iPad'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(mollieModal.checkoutUrl)
+                    alert('Betaallink gekopieerd naar klembord.')
+                  } catch {
+                    alert('Kopiëren mislukt.')
+                  }
+                }}
+                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                Kopieer betaallink
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open(mollieModal.checkoutUrl, '_blank', 'noopener,noreferrer')}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Open link
+              </button>
+              <button
+                type="button"
+                onClick={() => setMollieModal(null)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Sluiten
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

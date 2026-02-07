@@ -1,7 +1,7 @@
 services:
-  tladmin:
+  tesland2026:
     build: .
-    container_name: tladmin
+    container_name: tesland2026
     restart: unless-stopped
     env_file:
       - .env.production
@@ -10,5 +10,5 @@ services:
     # (ports/networks ignored when network_mode: host)
 
 networks:
-  tladmin-network:
+  tesland2026-network:
     driver: bridge

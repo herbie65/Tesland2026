@@ -86,15 +86,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create payment
+    // Base URL: env or derived from request (so redirect works on localhost too)
+    const requestOrigin = request.nextUrl?.origin || new URL(request.url).origin
+    const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || requestOrigin).replace(/\/$/, '')
+
+    const finalRedirectUrl = redirectUrl || `${baseUrl}/admin/invoices`
+
+    // Mollie must be able to reach the webhook; on localhost it cannot, so omit webhookUrl there
+    const webhookHost = baseUrl ? new URL(baseUrl).hostname : ''
+    const isUnreachable = /^localhost$|^127\.0\.0\.1$|^\[::1\]$/i.test(webhookHost)
+    const finalWebhookUrl =
+      webhookUrl || (!isUnreachable ? `${baseUrl}/api/payments/mollie/webhook` : undefined)
+
     const molliePayment = await mollieClient.createPayment({
       amount: {
         value: parseFloat(amount).toFixed(2),
         currency: 'EUR'
       },
       description: description || `Factuur ${invoice.invoiceNumber}`,
-      redirectUrl: redirectUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/admin/invoices/${invoiceId}`,
-      webhookUrl: webhookUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/api/payments/mollie/webhook`,
+      redirectUrl: finalRedirectUrl,
+      ...(finalWebhookUrl && { webhookUrl: finalWebhookUrl }),
       metadata: {
         invoiceId,
         invoiceNumber: invoice.invoiceNumber,

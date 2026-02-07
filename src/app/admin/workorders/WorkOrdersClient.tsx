@@ -807,7 +807,7 @@ export default function WorkOrdersClient() {
                   </select>
                 </div>
                 <div className="workorder-field">
-                  <span className="workorder-label">Order datum</span>
+                  <span className="workorder-label">Besteldatum</span>
                   <div className="workorder-value">
                     {new Date().toLocaleDateString('nl-NL')}
                   </div>

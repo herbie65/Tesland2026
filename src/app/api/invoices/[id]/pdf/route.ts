@@ -41,9 +41,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const vatSettings = await getVatSettings()
-    const orderLines = invoice.orderId && invoice.order?.lines
+    const rawLines = invoice.orderId && invoice.order?.lines
       ? invoice.order.lines
       : []
+
+    // Labor: SKU altijd "arbeid", nooit "hoog" of "laag" in de omschrijving op de factuur
+    const isLaborSku = (sku: string) =>
+      sku === 'arbeid' || sku === 'LABOR-INVOICE' || (sku && sku.toUpperCase().startsWith('LABOR-'))
+    const cleanName = (name: string) =>
+      name
+        .replace(/\bhoog\b/gi, '')
+        .replace(/\blaag\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim() || 'Arbeid'
+
+    const orderLines = rawLines.map((l) => ({
+      sku: isLaborSku(l.sku) ? 'arbeid' : l.sku,
+      name: isLaborSku(l.sku) ? cleanName(l.name) : l.name,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      totalPrice: l.totalPrice
+    }))
 
     const pdfBuffer = await generateInvoicePdf({
       invoice: {
@@ -63,7 +81,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
         customerVatNumber: invoice.customerVatNumber,
         customerIsB2B: invoice.customerIsB2B
       },
-      order: invoice.order ? { orderNumber: invoice.order.orderNumber } : null,
+      order: invoice.order
+        ? (() => {
+            const title = (invoice.order as { title?: string | null }).title?.trim() || ''
+            const fromWorkOrder = title.toLowerCase().startsWith('werkorder ')
+            const workOrderNumber = fromWorkOrder ? title.replace(/^werkorder\s+/i, '').trim() : null
+            return {
+              orderNumber: fromWorkOrder ? null : invoice.order.orderNumber,
+              workOrderNumber: workOrderNumber || null
+            }
+          })()
+        : null,
       customer: invoice.customer
         ? {
             name: invoice.customer.name,

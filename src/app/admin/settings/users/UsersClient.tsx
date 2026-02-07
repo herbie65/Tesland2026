@@ -42,7 +42,7 @@ const ALL_PAGES = [
   { path: '/admin/products', label: 'Producten', group: 'Voorraad' },
   { path: '/admin/categories', label: 'Categorieën', group: 'Voorraad' },
   { path: '/admin/magazijn', label: 'Magazijn', group: 'Voorraad' },
-  { path: '/admin/orders', label: 'Orders', group: 'Verkoop' },
+  { path: '/admin/orders', label: 'Bestellingen', group: 'Verkoop' },
   { path: '/admin/invoices', label: 'Facturen', group: 'Verkoop' },
   { path: '/admin/credit-invoices', label: 'Creditfacturen', group: 'Verkoop' },
   { path: '/admin/rmas', label: 'RMA', group: 'Verkoop' },

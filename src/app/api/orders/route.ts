@@ -4,10 +4,14 @@ import { requireRole } from '@/lib/auth'
 import { getPaymentMethods, getSalesStatusSettings, getShippingMethods } from '@/lib/settings'
 import { generateSalesNumber } from '@/lib/numbering'
 
+/**
+ * Bestellingen = alleen verkooporders (Order). Orders die uit een gefactureerde werkorder
+ * komen (titel begint met "Werkorder ") worden uitgefilterd – die horen bij Werkorders, niet bij Bestellingen.
+ */
 export async function GET(request: NextRequest) {
   try {
     await requireRole(request, ['MANAGEMENT'])
-    const items = await prisma.order.findMany({
+    const all = await prisma.order.findMany({
       include: {
         customer: true,
         vehicle: true,
@@ -15,6 +19,8 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: 'desc' }
     })
+    // Verberg orders die uit werkorder-facturatie komen (alleen echte verkooporders tonen)
+    const items = all.filter((o) => !o.title?.trim().toLowerCase().startsWith('werkorder '))
     return NextResponse.json({ success: true, items })
   } catch (error: any) {
     console.error('Error fetching orders:', error)
@@ -70,7 +76,7 @@ export async function POST(request: NextRequest) {
     
     const existing = await prisma.order.findUnique({ where: { orderNumber } })
     if (existing) {
-      return NextResponse.json({ success: false, error: 'Order number already exists' }, { status: 409 })
+      return NextResponse.json({ success: false, error: 'Bestelnummer bestaat al' }, { status: 409 })
     }
 
     const item = await prisma.order.create({

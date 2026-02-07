@@ -1,6 +1,6 @@
 # HR Verlof & Opbouw Beleid
 
-Dit document beschrijft het verlof- en opbouwbeleid zoals geïmplementeerd in TLadmin.
+Dit document beschrijft het verlof- en opbouwbeleid zoals geïmplementeerd in Tesland2026.
 
 ## Uitgangspunten
 

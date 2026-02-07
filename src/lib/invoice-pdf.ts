@@ -33,7 +33,7 @@ type InvoicePdfInput = {
     customerVatNumber?: string | null
     customerIsB2B?: boolean | null
   }
-  order?: { orderNumber?: string | null } | null
+  order?: { orderNumber?: string | null; workOrderNumber?: string | null } | null
   customer?: {
     name: string
     email?: string | null
@@ -116,8 +116,10 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
 
   drawText(`Factuurnummer: ${input.invoice.invoiceNumber}`, 11)
   drawText(`Factuurdatum: ${new Date(input.invoice.invoiceDate).toLocaleDateString('nl-NL')}`, 11)
-  if (input.order?.orderNumber) {
-    drawText(`Order: ${input.order.orderNumber}`, 11)
+  if (input.order?.workOrderNumber) {
+    drawText(`Werkorder: ${input.order.workOrderNumber}`, 11)
+  } else if (input.order?.orderNumber) {
+    drawText(`Bestelling: ${input.order.orderNumber}`, 11)
   }
 
   y -= 12

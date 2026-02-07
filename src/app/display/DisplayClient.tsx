@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import QRCode from 'qrcode'
 import SignaturePad from '@/components/SignaturePad'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
+
+type ActivePayment = { checkoutUrl: string; invoiceNumber?: string }
 
 interface WorkOrder {
   id: string
@@ -69,6 +72,8 @@ interface WorkOrder {
 
 export default function DisplayClient() {
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null)
+  const [activePayment, setActivePayment] = useState<ActivePayment | null>(null)
+  const [paymentQrDataUrl, setPaymentQrDataUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showSignature, setShowSignature] = useState(false)
   const [showPinCodeEntry, setShowPinCodeEntry] = useState(false)
@@ -94,12 +99,16 @@ export default function DisplayClient() {
       const response = await fetch('/api/display/active')
       const data = await response.json()
 
-      if (data.workOrder) {
+      if (data.activePayment?.checkoutUrl) {
+        setActivePayment(data.activePayment)
+        setWorkOrder(null)
+        setSigned(false)
+      } else if (data.workOrder) {
         setWorkOrder(data.workOrder)
+        setActivePayment(null)
         setSigned(!!data.workOrder.customerSignedAt)
         setCustomerName(data.workOrder.customerName || '')
-        
-        // Pre-fill customer form
+
         if (data.workOrder.customer) {
           setCustomerForm({
             name: data.workOrder.customer.name || '',
@@ -113,11 +122,12 @@ export default function DisplayClient() {
         }
       } else {
         setWorkOrder(null)
+        setActivePayment(null)
         setSigned(false)
       }
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching work order:', error)
+      console.error('Error fetching display:', error)
       setLoading(false)
     }
   }, [])
@@ -157,6 +167,16 @@ export default function DisplayClient() {
 
     return () => clearInterval(interval)
   }, [fetchActiveWorkOrder])
+
+  useEffect(() => {
+    if (!activePayment?.checkoutUrl) {
+      setPaymentQrDataUrl(null)
+      return
+    }
+    QRCode.toDataURL(activePayment.checkoutUrl, { width: 320, margin: 2 })
+      .then(setPaymentQrDataUrl)
+      .catch(() => setPaymentQrDataUrl(null))
+  }, [activePayment?.checkoutUrl])
 
   const handleSignatureSave = async (signatureData: string) => {
     if (!workOrder) return
@@ -215,6 +235,53 @@ export default function DisplayClient() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-4 text-lg text-gray-600">Laden...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (activePayment) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+        <div className="max-w-lg mx-auto">
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('/api/display/active', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ workOrderId: null }),
+                  })
+                  setActivePayment(null)
+                } catch (e) {
+                  console.error('Error clearing display:', e)
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-white/70 backdrop-blur-md text-gray-700 rounded-xl hover:bg-white/90 shadow-lg"
+              title="Verberg (voor medewerkers)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              <span className="font-medium">Verberg</span>
+            </button>
+          </div>
+          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <h1 className="text-2xl font-bold text-gray-800 mb-2">
+              Betalen{activePayment.invoiceNumber ? ` – Factuur ${activePayment.invoiceNumber}` : ''}
+            </h1>
+            <p className="text-gray-600 mb-6">
+              Scan de QR code met uw telefoon om te betalen.
+            </p>
+            <div className="flex justify-center">
+              {paymentQrDataUrl ? (
+                <img src={paymentQrDataUrl} alt="QR code om te betalen" className="rounded-xl border-2 border-gray-200" />
+              ) : (
+                <div className="w-[320px] h-[320px] animate-pulse rounded-xl bg-gray-100" />
+              )}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -514,12 +581,13 @@ export default function DisplayClient() {
                   body: JSON.stringify({ workOrderId: null }),
                 })
                 setWorkOrder(null)
+                setActivePayment(null)
               } catch (error) {
                 console.error('Error clearing display:', error)
               }
             }}
             className="flex items-center gap-2 px-4 py-2 bg-white/70 backdrop-blur-md text-gray-700 rounded-xl hover:bg-white/90 transition-all shadow-lg hover:shadow-xl hover:scale-105"
-            title="Verberg werkorder (voor medewerkers)"
+            title="Verberg (voor medewerkers)"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

@@ -2,7 +2,7 @@
  * Magento Full Import Script
  * 
  * Imports all products, categories, images, and inventory from Magento 2.4.6
- * to TLadmin Prisma/PostgreSQL database.
+ * to Tesland2026 Prisma/PostgreSQL database.
  * 
  * Usage: node --loader ts-node/esm scripts/import-magento-full.ts
  */

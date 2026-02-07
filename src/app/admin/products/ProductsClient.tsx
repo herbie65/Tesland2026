@@ -970,7 +970,11 @@ export default function ProductsClient() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pageItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
+                  <tr
+                    key={item.id}
+                    className="hover:bg-slate-50 cursor-pointer"
+                    onDoubleClick={() => openEditById(item.id)}
+                  >
                     <td className="px-3 py-2">
                       <input
                         type="checkbox"
@@ -1085,7 +1089,7 @@ export default function ProductsClient() {
                         {item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}
                       </td>
                     ) : null}
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap justify-end gap-2">
                         <button
                           className="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"

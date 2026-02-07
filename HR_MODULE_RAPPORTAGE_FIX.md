@@ -15,7 +15,7 @@
 
 ### Dubbele Aftrek in Berekening
 
-**File:** `TLadmin/src/app/admin/leave-reports/LeaveReportsClient.tsx`
+**File:** `src/app/admin/leave-reports/LeaveReportsClient.tsx`
 
 **Voor (FOUT):**
 ```typescript
@@ -152,7 +152,7 @@ Resterend:  -2 dagen  ✓ (Huidig saldo)
 
 ## Aangepaste Bestanden
 
-1. ✅ `TLadmin/src/app/admin/leave-reports/LeaveReportsClient.tsx`
+1. ✅ `src/app/admin/leave-reports/LeaveReportsClient.tsx`
    - `calculateUserStats()` functie gefixed
    - Allocated berekening: `currentBalance + used`
    - Remaining berekening: `currentBalance` (direct)
@@ -379,7 +379,7 @@ Check: remaining + used === allocated
 Als er problemen zijn:
 
 ```bash
-cd /Users/herbertkats/Desktop/Tesland2026/TLadmin
+cd /Users/herbertkats/Desktop/Tesland2026
 
 # View changes
 git diff src/app/admin/leave-reports/LeaveReportsClient.tsx

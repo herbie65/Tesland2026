@@ -369,7 +369,7 @@ export default function BackOrdersClient() {
           disabled={syncingBex}
           className="rounded bg-purple-600 px-4 py-2 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
         >
-          {syncingBex ? 'Synchroniseren...' : '🔄 Sync BeX Orders'}
+          {syncingBex ? 'Synchroniseren...' : '🔄 Sync BeX Bestellingen'}
         </button>
       </div>
 

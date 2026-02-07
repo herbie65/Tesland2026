@@ -4,48 +4,68 @@ import { prisma } from '@/lib/prisma'
 
 const DISPLAY_SETTINGS_KEY = 'displaySettings'
 
+type DisplaySettings = {
+  activeWorkOrderId: string | null
+  activePayment: { checkoutUrl: string; invoiceNumber?: string } | null
+  lastUpdated: string | null
+}
+
 // Helper function to get display settings from database
-async function getDisplaySettings() {
+async function getDisplaySettings(): Promise<DisplaySettings> {
   const setting = await prisma.setting.findUnique({
     where: { group: DISPLAY_SETTINGS_KEY },
   })
-  
+
   if (!setting) {
-    return { activeWorkOrderId: null, lastUpdated: null }
+    return { activeWorkOrderId: null, activePayment: null, lastUpdated: null }
   }
-  
-  return setting.data as { activeWorkOrderId: string | null; lastUpdated: string | null }
+
+  const data = setting.data as Record<string, unknown>
+  return {
+    activeWorkOrderId: (data?.activeWorkOrderId as string) ?? null,
+    activePayment: (data?.activePayment as DisplaySettings['activePayment']) ?? null,
+    lastUpdated: (data?.lastUpdated as string) ?? null,
+  }
 }
 
 // Helper function to update display settings in database
-async function updateDisplaySettings(activeWorkOrderId: string | null) {
+async function updateDisplaySettings(updates: Partial<DisplaySettings>) {
+  const current = await getDisplaySettings()
+  const next: DisplaySettings = {
+    activeWorkOrderId: updates.activeWorkOrderId !== undefined ? updates.activeWorkOrderId : current.activeWorkOrderId,
+    activePayment: updates.activePayment !== undefined ? updates.activePayment : current.activePayment,
+    lastUpdated: new Date().toISOString(),
+  }
   await prisma.setting.upsert({
     where: { group: DISPLAY_SETTINGS_KEY },
     create: {
       group: DISPLAY_SETTINGS_KEY,
-      data: {
-        activeWorkOrderId,
-        lastUpdated: new Date().toISOString(),
-      },
+      data: next,
     },
     update: {
-      data: {
-        activeWorkOrderId,
-        lastUpdated: new Date().toISOString(),
-      },
+      data: next,
     },
   })
 }
 
-// GET /api/display/active - Get the active workorder to display
+// GET /api/display/active - Get the active workorder or payment to display
 export async function GET(request: NextRequest) {
   try {
-    // Get active workorder ID from database
     const displaySettings = await getDisplaySettings()
-    const activeWorkOrderId = displaySettings.activeWorkOrderId
 
+    // Payment view takes precedence when set
+    if (displaySettings.activePayment?.checkoutUrl) {
+      return NextResponse.json({
+        workOrderId: null,
+        workOrder: null,
+        activePayment: displaySettings.activePayment,
+        lastUpdated: displaySettings.lastUpdated,
+      })
+    }
+
+    const activeWorkOrderId = displaySettings.activeWorkOrderId
     if (!activeWorkOrderId) {
-      return NextResponse.json({ workOrderId: null }, { status: 200 })
+      return NextResponse.json({ workOrderId: null, workOrder: null, activePayment: null }, { status: 200 })
     }
 
     // Fetch the full work order data
@@ -86,13 +106,14 @@ export async function GET(request: NextRequest) {
 
     if (!workOrder) {
       // Work order was deleted, clear the active display in database
-      await updateDisplaySettings(null)
-      return NextResponse.json({ workOrderId: null }, { status: 200 })
+      await updateDisplaySettings({ activeWorkOrderId: null })
+      return NextResponse.json({ workOrderId: null, workOrder: null }, { status: 200 })
     }
 
     return NextResponse.json({
       workOrderId: activeWorkOrderId,
       workOrder,
+      activePayment: null,
       lastUpdated: displaySettings.lastUpdated,
     })
   } catch (error) {
@@ -104,21 +125,39 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/display/active - Set the active workorder to display (admin only)
+// POST /api/display/active - Set the active workorder or payment to display (admin only)
 export async function POST(request: NextRequest) {
   try {
     const user = await requireRole(request, ['MANAGEMENT', 'MONTEUR'])
 
-    const body = await request.json()
-    const { workOrderId } = body
+    const body = await request.json().catch(() => ({}))
+    const { workOrderId, payment } = body
 
-    if (!workOrderId) {
-      // Clear the display in database
-      await updateDisplaySettings(null)
-      return NextResponse.json({ success: true, workOrderId: null })
+    // Set payment view (betaallink/QR for iPad)
+    if (payment && typeof payment.checkoutUrl === 'string') {
+      await updateDisplaySettings({
+        activeWorkOrderId: null,
+        activePayment: {
+          checkoutUrl: payment.checkoutUrl,
+          invoiceNumber: payment.invoiceNumber ?? undefined,
+        },
+      })
+      console.log(`Display set to payment (Factuur ${payment.invoiceNumber ?? '?'}) by ${user.email}`)
+      return NextResponse.json({
+        success: true,
+        workOrderId: null,
+        activePayment: { checkoutUrl: payment.checkoutUrl, invoiceNumber: payment.invoiceNumber },
+        lastUpdated: new Date().toISOString(),
+      })
     }
 
-    // Verify work order exists
+    // Clear display
+    if (!workOrderId) {
+      await updateDisplaySettings({ activeWorkOrderId: null, activePayment: null })
+      return NextResponse.json({ success: true, workOrderId: null, activePayment: null })
+    }
+
+    // Set work order view
     const workOrder = await prisma.workOrder.findUnique({
       where: { id: workOrderId },
       select: { id: true, workOrderNumber: true },
@@ -131,14 +170,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Store active workorder ID in database
-    await updateDisplaySettings(workOrderId)
+    await updateDisplaySettings({ activeWorkOrderId: workOrderId, activePayment: null })
 
     console.log(`Display activated for work order ${workOrder.workOrderNumber} by ${user.email}`)
 
     return NextResponse.json({
       success: true,
       workOrderId,
+      activePayment: null,
       lastUpdated: new Date().toISOString(),
     })
   } catch (error: any) {

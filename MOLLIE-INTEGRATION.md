@@ -1,6 +1,6 @@
 # Mollie Payment Integratie
 
-Deze documentatie beschrijft de Mollie payment integratie in TLadmin.
+Deze documentatie beschrijft de Mollie payment integratie in Tesland2026.
 
 ## Overzicht
 
@@ -49,7 +49,7 @@ npm run prisma:generate
 3. Kopieer je **Test API key** (begint met `test_`)
 4. Voor productie: kopieer je **Live API key** (begint met `live_`)
 
-### 2. TLadmin Settings
+### 2. Tesland2026 Settings
 
 1. Log in als SYSTEM_ADMIN
 2. Ga naar **Admin** → **Instellingen** → **💳 Mollie Betalingen**
@@ -248,7 +248,7 @@ Voor lokale webhook testing:
 ### Checklist
 
 - [ ] Mollie account geactiveerd voor live payments
-- [ ] Live API key ingesteld in TLadmin
+- [ ] Live API key ingesteld in Tesland2026
 - [ ] Test Modus uitgeschakeld
 - [ ] Webhook URL correct geconfigureerd in Mollie dashboard
 - [ ] SSL certificaat actief op je domein
@@ -287,7 +287,7 @@ Voor lokale webhook testing:
 
 - Mollie Documentatie: [docs.mollie.com](https://docs.mollie.com)
 - Mollie Support: [mollie.com/contact](https://www.mollie.com/contact)
-- TLadmin Issues: Neem contact op met je development team
+- Tesland2026 Issues: Neem contact op met je development team
 
 ## Licentie
 
