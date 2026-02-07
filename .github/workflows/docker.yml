@@ -22,8 +22,10 @@ jobs:
             echo "📂 Navigating to project directory..."
             cd /home/herbert/tesland2026 || { echo "❌ Directory not found!"; exit 1; }
             
-            echo "📥 Pulling latest code from GitHub..."
-            git pull origin main
+            echo "📥 Fetching and resetting to origin/main (discards local changes on server)..."
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
             
             echo "🛑 Stopping existing containers..."
             docker compose down
