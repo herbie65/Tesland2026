@@ -24,7 +24,12 @@ jobs:
             cd /home/herbert/tesland2026 || { echo "❌ Directory not found!"; exit 1; }
             
             echo "📥 Overschrijf alles op de server met origin/main..."
-            git fetch origin main
+            for i in 1 2 3; do
+              if git fetch origin main; then break; fi
+              echo "⚠️ git fetch attempt $i failed, retrying in 5s..."
+              [ $i -eq 3 ] && { echo "❌ git fetch failed after 3 attempts"; exit 1; }
+              sleep 5
+            done
             git reset --hard origin/main
             git clean -fd
             # Alle gevolgde bestanden = exact zoals main; niet-gevolgde worden verwijderd. .env e.d. (in .gitignore) blijft staan.
