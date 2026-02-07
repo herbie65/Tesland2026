@@ -22,10 +22,11 @@ jobs:
             echo "📂 Navigating to project directory..."
             cd /home/herbert/tesland2026 || { echo "❌ Directory not found!"; exit 1; }
             
-            echo "📥 Fetching and resetting to origin/main (discards local changes on server)..."
+            echo "📥 Overschrijf alles op de server met origin/main..."
             git fetch origin main
             git reset --hard origin/main
             git clean -fd
+            # Alle gevolgde bestanden = exact zoals main; niet-gevolgde worden verwijderd. .env e.d. (in .gitignore) blijft staan.
             
             echo "🛑 Stopping existing containers..."
             docker compose down
