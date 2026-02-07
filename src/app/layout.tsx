@@ -75,7 +75,7 @@ export default async function RootLayout({
   // Site-wachtwoord: check in Node-runtime (env beschikbaar bij runtime)
   if (isSiteAccessRequired()) {
     const pathname = (await headers()).get("x-pathname") ?? "";
-    const isGate = pathname.startsWith("/_site-access");
+    const isGate = pathname.startsWith("/site-access");
     const isSiteAccessApi = pathname.startsWith("/api/site-access");
     if (!isGate && !isSiteAccessApi) {
       const cookieStore = await cookies();
@@ -85,7 +85,7 @@ export default async function RootLayout({
       const expected = getSiteAccessCookieValue(password, secret);
       if (!cookie || cookie !== expected) {
         const search = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
-        redirect(`/_site-access${search}`);
+        redirect(`/site-access${search}`);
       }
     }
   }

@@ -50,7 +50,7 @@ export async function middleware(request: NextRequest) {
   const nextOpts = { request: { headers: requestHeaders } }
 
   // Gate-pagina: geen locale-redirect
-  if (pathname.startsWith('/_site-access')) {
+  if (pathname.startsWith('/site-access')) {
     return NextResponse.next(nextOpts)
   }
 
@@ -64,7 +64,7 @@ export async function middleware(request: NextRequest) {
       })
       if (guardRes.status === 401) {
         const url = request.nextUrl.clone()
-        url.pathname = '/_site-access'
+        url.pathname = '/site-access'
         url.searchParams.set('next', pathname)
         return NextResponse.redirect(url)
       }
